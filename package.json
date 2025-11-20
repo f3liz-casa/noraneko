@@ -10,6 +10,7 @@
   "license": "MPL-2.0",
   "devDependencies": {
     "@bytecodealliance/preview2-shim": "^0.17.4",
+    "@f3liz/mus-uc-devtools": "npm:@jsr/f3liz__mus-uc-devtools@^0.1.0",
     "@prettier/plugin-oxc": "^0.0.4",
     "@types/node": "^24.9.2",
     "@vitejs/plugin-react-swc": "^4.2.0",
@@ -21,7 +22,6 @@
     "oxlint": "^1.24.0",
     "pathe": "^2.0.3",
     "prettier": "^3.6.2",
-    "puppeteer-core": "^24.27.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.12",
     "vite-plugin-solid": "^2.11.10"
