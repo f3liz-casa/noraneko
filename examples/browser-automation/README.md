@@ -17,7 +17,8 @@ This directory contains examples demonstrating browser automation using `mus-uc-
 Demonstrates:
 - Launching Noraneko with Marionette automation enabled
 - Waiting for the browser to be fully loaded
-- Taking a screenshot using the Marionette protocol
+- Switching to chrome context for full browser access
+- Taking a screenshot of the **entire browser window** (including UI/chrome) using Firefox's privileged APIs
 - Saving the screenshot to the `screenshots/` directory
 
 **Usage:**
@@ -31,7 +32,9 @@ deno run -A examples/browser-automation/screenshot-example.ts
 
 Demonstrates:
 - Using `mus-uc-devtools` integration for browser control
-- Enhanced Marionette protocol handling
+- Switching to chrome context for privileged access
+- Taking **full browser screenshots** including the browser UI/chrome (not just content viewport)
+- Enhanced Marionette protocol handling with chrome context
 - Better error handling and status reporting
 - Capturing larger screenshots with chunked reading
 
@@ -56,15 +59,23 @@ Firefox's Marionette protocol is used for browser automation:
 - Text-based protocol over TCP
 - Commands are sent as JSON arrays: `[message_type, message_id, command, params]`
 - Responses include command results (like screenshot data in base64 format)
+- Supports two contexts:
+  - **Content context** (default): Standard WebDriver API, screenshots only capture content viewport
+  - **Chrome context**: Privileged access to Firefox internals, can capture full browser including UI
 
 ### Screenshot Capture
 
-The examples demonstrate:
+The examples demonstrate taking **full browser screenshots** (including browser UI):
 1. Connecting to the Marionette server
 2. Creating a new WebDriver session
-3. Executing the `WebDriver:TakeScreenshot` command
-4. Receiving and decoding base64 screenshot data
-5. Saving to a PNG file in the `screenshots/` directory
+3. **Switching to chrome context** using `Marionette:SetContext` command
+4. Executing privileged JavaScript to capture the entire browser window using `drawWindow()`
+5. Receiving and decoding base64 screenshot data
+6. Saving to a PNG file in the `screenshots/` directory
+
+**Key difference from standard WebDriver screenshots:**
+- WebDriver's `TakeScreenshot` in content context only captures the page content (viewport)
+- Chrome context with `drawWindow()` captures the **entire browser window** including toolbars, tabs, and UI elements
 
 ## Configuration Options
 

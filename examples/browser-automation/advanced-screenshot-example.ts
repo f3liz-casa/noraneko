@@ -41,6 +41,7 @@ async function takeScreenshotWithDevtools(marionettePort: number): Promise<void>
 
 async function takeScreenshotRaw(marionettePort: number): Promise<void> {
   console.log("[example] Connecting to Marionette on port", marionettePort);
+  console.log("[example] Using chrome context for full browser screenshot");
   
   const conn = await Deno.connect({ hostname: "localhost", port: marionettePort });
   const decoder = new TextDecoder();
@@ -72,12 +73,40 @@ async function takeScreenshotRaw(marionettePort: number): Promise<void> {
       }
     }
     
-    // Wait a bit for page to render
+    // Switch to chrome context for full browser access
+    console.log("[example] Switching to chrome context...");
+    const setChromeContextCmd = JSON.stringify([0, 2, "Marionette:SetContext", { value: "chrome" }]);
+    await conn.write(encoder.encode(`${setChromeContextCmd.length}:${setChromeContextCmd}`));
+    
+    // Read context switch response
+    const n3 = await conn.read(buffer);
+    if (n3) {
+      console.log("[example] Successfully switched to chrome context");
+    }
+    
+    // Wait a bit for browser to be fully rendered
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // Take screenshot
-    const screenshotCmd = JSON.stringify([0, 2, "WebDriver:TakeScreenshot", {}]);
-    await conn.write(encoder.encode(`${screenshotCmd.length}:${screenshotCmd}`));
+    // Execute script to take full browser screenshot
+    console.log("[example] Taking full browser screenshot with chrome context...");
+    const screenshotScript = `
+      const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+      const window = Services.wm.getMostRecentWindow("navigator:browser");
+      const canvas = window.document.createElementNS("http://www.w3.org/1999/xhtml", "canvas");
+      const context = canvas.getContext("2d");
+      const width = window.outerWidth;
+      const height = window.outerHeight;
+      canvas.width = width;
+      canvas.height = height;
+      context.drawWindow(window, 0, 0, width, height, "rgb(255,255,255)");
+      return canvas.toDataURL("image/png").split(",")[1];
+    `;
+    
+    const executeScriptCmd = JSON.stringify([0, 3, "WebDriver:ExecuteScript", { 
+      script: screenshotScript,
+      args: []
+    }]);
+    await conn.write(encoder.encode(`${executeScriptCmd.length}:${executeScriptCmd}`));
     
     // Read screenshot (may need multiple reads for large images)
     const chunks: Uint8Array[] = [];

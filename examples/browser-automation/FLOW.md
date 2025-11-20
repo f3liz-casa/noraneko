@@ -33,19 +33,25 @@
    └─ Receive: Session ID
    │
    ▼
-7. Take Screenshot
-   ├─ Send: [0, 2, "WebDriver:TakeScreenshot", {}]
-   └─ Receive: Base64 encoded PNG data
+7. Switch to Chrome Context
+   ├─ Send: [0, 2, "Marionette:SetContext", {value: "chrome"}]
+   └─ Enable privileged access to browser internals
    │
    ▼
-8. Save Screenshot
+8. Take Full Browser Screenshot
+   ├─ Send: [0, 3, "WebDriver:ExecuteScript", {script: ...}]
+   ├─ Script uses drawWindow() to capture entire browser
+   └─ Receive: Base64 encoded PNG data (includes UI/chrome)
+   │
+   ▼
+9. Save Screenshot
    ├─ Decode base64 to binary
    ├─ Create screenshots/ directory
-   └─ Save as: noraneko-YYYY-MM-DDTHH-MM-SS-mmmZ.png
+   └─ Save as: noraneko-fullbrowser-YYYY-MM-DDTHH-MM-SS-mmmZ.png
    │
    ▼
-9. SUCCESS
-   ├─ Screenshot saved
+10. SUCCESS
+   ├─ Full browser screenshot saved (including UI)
    └─ Browser keeps running (Ctrl+C to close)
 ```
 
@@ -82,12 +88,17 @@ noraneko/
 - **Port**: 2828 (default)
 - **Commands Format**: `length:json`
 - **Example**: `45:[0,1,"WebDriver:NewSession",{"capabilities":{}}]`
+- **Contexts**: 
+  - Content context (default): Standard WebDriver, content-only screenshots
+  - **Chrome context**: Privileged access, full browser screenshots
 
 ### 3. Screenshot Capture
-- **Command**: `WebDriver:TakeScreenshot`
+- **Command**: `WebDriver:ExecuteScript` in chrome context
+- **Method**: Uses Firefox's `drawWindow()` API to capture entire browser window
 - **Response**: JSON with base64 PNG data
 - **Format**: `{value: "iVBORw0KGgoAAAANSUhEUgAA..."}`
 - **Output**: PNG file in screenshots/ directory
+- **Captures**: **Full browser including UI/chrome**, not just content viewport
 
 ## Usage Examples
 
