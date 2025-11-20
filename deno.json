@@ -3,6 +3,7 @@
   "links": ["libs/@types/gecko"],
   "workspace": ["./libs/*", "./browser-features/*", "./bridge/*"],
   "imports": {
+    "@f3liz/mus-uc-devtools": "jsr:@f3liz/mus-uc-devtools@^0.1.0",
     "@std/cli": "jsr:@std/cli@^1.0.23",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
     "@std/fs": "jsr:@std/fs@^1.0.19",

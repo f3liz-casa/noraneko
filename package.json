@@ -21,7 +21,6 @@
     "oxlint": "^1.24.0",
     "pathe": "^2.0.3",
     "prettier": "^3.6.2",
-    "puppeteer-core": "^24.27.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.12",
     "vite-plugin-solid": "^2.11.10"

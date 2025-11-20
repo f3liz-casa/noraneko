@@ -49,7 +49,6 @@
     "npm:oxlint@^1.24.0": "1.24.0",
     "npm:pathe@^2.0.3": "2.0.3",
     "npm:prettier@^3.6.2": "3.6.2",
-    "npm:puppeteer-core@^24.27.0": "24.27.0_devtools-protocol@0.0.1521046",
     "npm:rolldown-vite@^7.1.20": "7.1.20_@types+node@24.9.2_picomatch@4.0.3",
     "npm:rolldown-vite@latest": "7.1.20_@types+node@24.9.2_picomatch@4.0.3",
     "npm:rolldown@^1.0.0-beta.32": "1.0.0-beta.9-commit.d91dfb5",
@@ -2866,6 +2865,7 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@f3liz/mus-uc-devtools@0.1",
       "jsr:@std/cli@^1.0.23",
       "jsr:@std/encoding@^1.0.10",
       "jsr:@std/fs@^1.0.19",
@@ -2892,7 +2892,6 @@
         "npm:oxlint@^1.24.0",
         "npm:pathe@^2.0.3",
         "npm:prettier@^3.6.2",
-        "npm:puppeteer-core@^24.27.0",
         "npm:solid-js@^1.9.10",
         "npm:tailwindcss@^4.1.16",
         "npm:typescript@^5.9.3",
