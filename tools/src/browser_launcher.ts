@@ -30,6 +30,7 @@ export async function browserCommand(port: number): Promise<string[]> {
     PATHS.profile_test,
     "--remote-debugging-port",
     String(port),
+    "--marionette",
     "--wait-for-browser",
     "--jsdebugger",
   ];

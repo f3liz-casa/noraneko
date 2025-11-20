@@ -16,15 +16,15 @@ class MarionetteClient {
   private socket: Deno.TcpConn | null = null;
   private messageId = 0;
   private context = "chrome";
-  
+
   constructor(
     private host: string = "localhost",
-    private port: number = 2828
+    private port: number = 2828,
   ) {}
 
   async connect(): Promise<void> {
     console.log(`Connecting to Marionette at ${this.host}:${this.port}...`);
-    
+
     this.socket = await Deno.connect({
       hostname: this.host,
       port: this.port,
@@ -34,16 +34,23 @@ class MarionetteClient {
     const buffer = new Uint8Array(4096);
     const n = await this.socket.read(buffer);
     if (n) {
-      const handshake = JSON.parse(new TextDecoder().decode(buffer.subarray(0, n)));
+      const handshake = JSON.parse(
+        new TextDecoder().decode(buffer.subarray(0, n)),
+      );
       console.log("Marionette handshake:", handshake);
-      
+
       if (handshake.applicationType !== "gecko") {
-        throw new Error(`Unexpected application type: ${handshake.applicationType}`);
+        throw new Error(
+          `Unexpected application type: ${handshake.applicationType}`,
+        );
       }
     }
   }
 
-  async sendCommand(name: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  async sendCommand(
+    name: string,
+    params: Record<string, unknown> = {},
+  ): Promise<unknown> {
     if (!this.socket) {
       throw new Error("Not connected");
     }
@@ -72,7 +79,7 @@ class MarionetteClient {
     }
 
     const responseData = JSON.parse(response.substring(colonPos + 1));
-    
+
     if (responseData.error) {
       throw new Error(JSON.stringify(responseData.error));
     }
@@ -104,13 +111,13 @@ class MarionetteClient {
 async function captureFullscreenScreenshot(
   host: string,
   port: number,
-  outputPath: string
+  outputPath: string,
 ): Promise<void> {
   const client = new MarionetteClient(host, port);
 
   try {
     await client.connect();
-    
+
     // Set to chrome context to access browser chrome APIs
     await client.setContext("chrome");
 
@@ -148,8 +155,11 @@ async function captureFullscreenScreenshot(
       };
     `;
 
-    const result = await client.executeScript(script) as Record<string, unknown>;
-    
+    const result = await client.executeScript(script) as Record<
+      string,
+      unknown
+    >;
+
     if (result.error) {
       throw new Error(result.error as string);
     }
@@ -163,7 +173,10 @@ async function captureFullscreenScreenshot(
     // Convert data URL to binary data
     const dataUrl = result.dataUrl as string;
     const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
-    const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+    const binaryData = Uint8Array.from(
+      atob(base64Data),
+      (c) => c.charCodeAt(0),
+    );
 
     // Ensure output directory exists
     const outputDir = path.dirname(outputPath);
@@ -172,7 +185,6 @@ async function captureFullscreenScreenshot(
     // Save the screenshot
     await Deno.writeFile(outputPath, binaryData);
     console.log(`Screenshot saved to: ${outputPath}`);
-
   } finally {
     client.disconnect();
     console.log("Disconnected from browser");
@@ -182,7 +194,7 @@ async function captureFullscreenScreenshot(
 async function main() {
   // Parse command line arguments
   const args = Deno.args;
-  
+
   let host = "localhost";
   let port = 2828;
   let outputPath = "./screenshots/noraneko-fullscreen.png";
@@ -233,7 +245,7 @@ Note:
   console.log();
 
   await captureFullscreenScreenshot(host, port, outputPath);
-  
+
   console.log("\nExample completed successfully!");
 }
 
