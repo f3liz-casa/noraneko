@@ -17,6 +17,15 @@ Have a nice day!
 <img src=".github/assets/readme/noraneko.structure.dark.excalidraw.svg#gh-dark-mode-only" width="1200px" alt="Noraneko Logo and Workmark"></img>
 </p>
 
+## How to start developing?
+
+Currently no auto-download tool is there that successfully integrates to dev process.
+For now, please follow under steps.
+1. download artifact for your machine in https://github.com/f3liz-dev/noraneko-runtime/actions/runs/19563609488
+2. extract it to project root of noraneko (the content of zips will be .zip in windows, .tar.xz (or .tar.gz) for linux)
+3. run `deno install` and `deno task feles-build stage`
+Then the browser will start, and you can check update with re-running the `deno task feles-build stage`
+
 ## Credits
 
 Thank you [@CutterKnife](https://github.com/CutterKnife) for the logo!
