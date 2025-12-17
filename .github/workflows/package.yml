@@ -62,6 +62,8 @@ jobs:
           repository: ${{ github.repository }}-runtime
           ref: ${{ steps.get-commit.outputs.commit_hash }}
           submodules: "recursive"
+          fetch-depth: 1
+          filter: blob:none
 
       - name: Apply upstream patches
         run: |
