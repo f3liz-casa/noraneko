@@ -12,16 +12,22 @@
  * 2. Original modules are disabled via preferences
  * 3. Patched modules are loaded from the hotfix directory
  * 4. Hotfixes can be reverted by clearing preferences
+ * 5. On nightly channel, automatically checks for and prompts for hotfix updates
  */
 
 import type {
+  HotfixAutoUpdateConfig,
   HotfixConsentResult,
   HotfixManifest,
   HotfixPatch,
   InstalledHotfix,
   SignerIdentity,
 } from "../common/hotfix-types.ts";
-import { HotfixStatus } from "../common/hotfix-types.ts";
+import {
+  DEFAULT_AUTO_UPDATE_CONFIG,
+  HotfixStatus,
+  UpdateChannel,
+} from "../common/hotfix-types.ts";
 import {
   HotfixSignatureVerifier,
   hotfixSignatureVerifier,
@@ -32,6 +38,7 @@ const PREF_HOTFIX_INSTALLED = "noraneko.hotfix.installed";
 const PREF_HOTFIX_DISABLED_MODULES = "noraneko.hotfix.disabled_modules";
 const PREF_HOTFIX_UNLOCK_CODES = "noraneko.hotfix.unlock_codes";
 const PREF_HOTFIX_TRUSTED_DECISIONS = "noraneko.hotfix.trusted_decisions";
+const PREF_HOTFIX_AUTO_UPDATE_CONFIG = "noraneko.hotfix.auto_update_config";
 
 // Hotfix distribution URL (can be overridden via pref for testing)
 const PREF_HOTFIX_MANIFEST_URL = "noraneko.hotfix.manifest_url";
@@ -45,11 +52,43 @@ export class HotfixLoader {
   private profileDir: string;
   private hotfixDir: string;
   private verifier: HotfixSignatureVerifier;
+  private autoUpdateTimer: number | null = null;
+  private currentChannel: UpdateChannel;
 
   constructor() {
     this.profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
     this.hotfixDir = PathUtils.join(this.profileDir, "noraneko-hotfixes");
     this.verifier = hotfixSignatureVerifier;
+    this.currentChannel = this.detectUpdateChannel();
+  }
+
+  /**
+   * Detect the current update channel
+   */
+  private detectUpdateChannel(): UpdateChannel {
+    try {
+      // Try to get the update channel from AppConstants
+      const { AppConstants } = ChromeUtils.importESModule(
+        "resource://gre/modules/AppConstants.sys.mjs",
+      );
+      
+      // AppConstants.MOZ_UPDATE_CHANNEL contains the channel string
+      const channel = (AppConstants as any).MOZ_UPDATE_CHANNEL || "default";
+      const channelLower = channel.toLowerCase();
+      
+      if (channelLower.includes("nightly")) {
+        return UpdateChannel.NIGHTLY;
+      } else if (channelLower.includes("beta")) {
+        return UpdateChannel.BETA;
+      } else if (channelLower.includes("release")) {
+        return UpdateChannel.RELEASE;
+      }
+      
+      return UpdateChannel.DEFAULT;
+    } catch (error) {
+      console.warn("[HotfixLoader] Failed to detect update channel:", error);
+      return UpdateChannel.DEFAULT;
+    }
   }
 
   /**
@@ -57,6 +96,7 @@ export class HotfixLoader {
    */
   async initialize(): Promise<void> {
     console.log("[HotfixLoader] Initializing hotfix system...");
+    console.log(`[HotfixLoader] Detected update channel: ${this.currentChannel}`);
 
     // Ensure hotfix directory exists
     await this.ensureHotfixDirectory();
@@ -69,7 +109,159 @@ export class HotfixLoader {
       }
     }
 
+    // Start automatic update checking for nightly channel
+    if (this.currentChannel === UpdateChannel.NIGHTLY) {
+      await this.startAutoUpdateChecking();
+    }
+
     console.log("[HotfixLoader] Hotfix system initialized");
+  }
+
+  /**
+   * Start automatic update checking for nightly channel
+   */
+  private async startAutoUpdateChecking(): Promise<void> {
+    const config = this.getAutoUpdateConfig();
+    
+    if (!config.enabled) {
+      console.log("[HotfixLoader] Automatic update checking is disabled");
+      return;
+    }
+
+    console.log("[HotfixLoader] Starting automatic update checking for nightly channel");
+
+    // Perform initial check if needed
+    const now = Date.now();
+    const lastCheck = new Date(config.lastCheckTime).getTime();
+    const timeSinceLastCheck = now - lastCheck;
+
+    if (timeSinceLastCheck >= config.checkInterval) {
+      // Run check immediately
+      await this.checkForUpdates();
+    }
+
+    // Schedule periodic checks
+    this.autoUpdateTimer = setInterval(async () => {
+      await this.checkForUpdates();
+    }, config.checkInterval);
+  }
+
+  /**
+   * Stop automatic update checking
+   */
+  stopAutoUpdateChecking(): void {
+    if (this.autoUpdateTimer !== null) {
+      clearInterval(this.autoUpdateTimer);
+      this.autoUpdateTimer = null;
+      console.log("[HotfixLoader] Stopped automatic update checking");
+    }
+  }
+
+  /**
+   * Check for available hotfix updates
+   */
+  private async checkForUpdates(): Promise<void> {
+    console.log("[HotfixLoader] Checking for hotfix updates...");
+
+    try {
+      // Update last check time
+      const config = this.getAutoUpdateConfig();
+      config.lastCheckTime = new Date().toISOString();
+      this.saveAutoUpdateConfig(config);
+
+      // Fetch available hotfixes
+      const manifests = await this.fetchAvailableHotfixes();
+      
+      if (manifests.length === 0) {
+        console.log("[HotfixLoader] No hotfixes available");
+        return;
+      }
+
+      // Filter out already installed hotfixes
+      const installedHotfixes = this.getInstalledHotfixes();
+      const installedIds = new Set(
+        installedHotfixes
+          .filter((h) => h.status === HotfixStatus.INSTALLED)
+          .map((h) => h.id)
+      );
+
+      const newHotfixes = manifests.filter((m) => !installedIds.has(m.id));
+
+      if (newHotfixes.length === 0) {
+        console.log("[HotfixLoader] No new hotfixes available");
+        return;
+      }
+
+      console.log(`[HotfixLoader] Found ${newHotfixes.length} new hotfix(es)`);
+
+      // Prompt user for each new hotfix
+      for (const manifest of newHotfixes) {
+        await this.promptAndInstallHotfix(manifest);
+      }
+    } catch (error) {
+      console.error("[HotfixLoader] Error checking for updates:", error);
+    }
+  }
+
+  /**
+   * Prompt user and install a hotfix if approved
+   */
+  private async promptAndInstallHotfix(manifest: HotfixManifest): Promise<void> {
+    try {
+      // Download the hotfix first
+      const downloaded = await this.downloadHotfix(manifest);
+      if (!downloaded) {
+        console.error(`[HotfixLoader] Failed to download hotfix: ${manifest.id}`);
+        return;
+      }
+
+      // Install will verify signature and request user consent
+      const installed = await this.installHotfix(manifest);
+      if (installed) {
+        console.log(`[HotfixLoader] Successfully installed hotfix: ${manifest.id}`);
+        
+        // Notify user that a restart is needed
+        this.notifyRestartRequired(manifest);
+      } else {
+        console.log(`[HotfixLoader] Hotfix installation declined or failed: ${manifest.id}`);
+        // Clean up downloaded files
+        await this.cleanupHotfix(manifest.id);
+      }
+    } catch (error) {
+      console.error(`[HotfixLoader] Error installing hotfix ${manifest.id}:`, error);
+    }
+  }
+
+  /**
+   * Notify user that a browser restart is required
+   */
+  private notifyRestartRequired(manifest: HotfixManifest): void {
+    const promptService = Services.prompt;
+    const title = "Restart Required";
+    const message = `Hotfix "${manifest.id}" has been installed successfully.\n\nA browser restart is required to apply the changes.\n\nWould you like to restart now?`;
+
+    const buttonFlags =
+      Ci.nsIPromptService.BUTTON_POS_0 * Ci.nsIPromptService.BUTTON_TITLE_IS_STRING +
+      Ci.nsIPromptService.BUTTON_POS_1 * Ci.nsIPromptService.BUTTON_TITLE_IS_STRING;
+
+    const result = promptService.confirmEx(
+      null,
+      title,
+      message,
+      buttonFlags,
+      "Restart Now",
+      "Restart Later",
+      "",
+      null,
+      {}
+    );
+
+    if (result === 0) {
+      // User chose to restart now
+      Services.startup.quit(
+        Ci.nsIAppStartup.eRestart | Ci.nsIAppStartup.eAttemptQuit
+      );
+    }
   }
 
   /**
@@ -188,19 +380,26 @@ export class HotfixLoader {
   async requestUserConsent(
     manifest: HotfixManifest,
     signerIdentity: SignerIdentity,
+    isVerified: boolean = true,
   ): Promise<HotfixConsentResult> {
-    // Check if we have a trusted decision stored
-    const trustedDecisions = this.getTrustedDecisions();
-    if (trustedDecisions[manifest.id]) {
-      return {
-        approved: true,
-        decidedAt: new Date().toISOString(),
-        rememberDecision: true,
-      };
+    // Check if we have a trusted decision stored (only for verified hotfixes)
+    if (isVerified) {
+      const trustedDecisions = this.getTrustedDecisions();
+      if (trustedDecisions[manifest.id]) {
+        return {
+          approved: true,
+          decidedAt: new Date().toISOString(),
+          rememberDecision: true,
+        };
+      }
     }
 
     // Show consent dialog to user
-    const approved = await this.showConsentDialog(manifest, signerIdentity);
+    const approved = await this.showConsentDialog(
+      manifest,
+      signerIdentity,
+      isVerified
+    );
 
     const result: HotfixConsentResult = {
       approved,
@@ -213,12 +412,13 @@ export class HotfixLoader {
 
   /**
    * Install a hotfix after verification and consent
+   * SECURITY: Always verifies signatures before installation
    */
   async installHotfix(manifest: HotfixManifest): Promise<boolean> {
     console.log(`[HotfixLoader] Installing hotfix: ${manifest.id}`);
 
     try {
-      // Verify signature again before installation
+      // SECURITY: Always verify signature before installation
       const manifestPath = PathUtils.join(
         this.hotfixDir,
         manifest.id,
@@ -232,17 +432,36 @@ export class HotfixLoader {
         manifestContent,
       );
 
+      // SECURITY: If signature verification fails, ask user with default "don't apply"
       if (!verificationResult.isValid) {
         console.error(
           `[HotfixLoader] Installation verification failed: ${verificationResult.errorMessage}`,
         );
-        return false;
+        
+        // Ask user whether to apply despite verification failure
+        const applyAnyway = await this.askUserAboutFailedVerification(
+          storedManifest,
+          verificationResult.errorMessage || "Unknown verification error"
+        );
+        
+        if (!applyAnyway) {
+          console.log("[HotfixLoader] User declined to apply unverified hotfix");
+          return false;
+        }
+        
+        console.warn("[HotfixLoader] User chose to apply unverified hotfix (not recommended)");
       }
 
-      // Request user consent
+      // Request user consent (only if signature is valid OR user explicitly approved despite failure)
       const consentResult = await this.requestUserConsent(
         storedManifest,
-        verificationResult.verifiedIdentity!,
+        verificationResult.verifiedIdentity || {
+          issuer: "Unknown",
+          subject: "Unknown",
+          repository: "Unknown",
+          workflowRef: "Unknown",
+        },
+        verificationResult.isValid, // Pass verification status
       );
 
       if (!consentResult.approved) {
@@ -261,7 +480,12 @@ export class HotfixLoader {
         version: storedManifest.version,
         status: HotfixStatus.INSTALLED,
         installedAt: new Date().toISOString(),
-        signerIdentity: verificationResult.verifiedIdentity!,
+        signerIdentity: verificationResult.verifiedIdentity || {
+          issuer: "Unknown",
+          subject: "Unknown",
+          repository: "Unknown",
+          workflowRef: "Unknown",
+        },
         disabledModules: storedManifest.patches.map((p) => p.moduleName),
         injectedModules: storedManifest.patches.map((p) => p.patchedModulePath),
       };
@@ -274,6 +498,47 @@ export class HotfixLoader {
       console.error("[HotfixLoader] Installation error:", error);
       return false;
     }
+  }
+
+  /**
+   * Ask user whether to apply hotfix despite failed verification
+   * SECURITY: Default button is "Don't Apply" for safety
+   */
+  private async askUserAboutFailedVerification(
+    manifest: HotfixManifest,
+    errorMessage: string
+  ): Promise<boolean> {
+    const promptService = Services.prompt;
+
+    const title = "⚠️ Hotfix Verification Failed";
+    const message = `WARNING: The signature verification for hotfix "${manifest.id}" has failed.
+
+Error: ${errorMessage}
+
+This hotfix may not be from a trusted source and could be potentially dangerous.
+
+Do you want to apply this hotfix anyway?
+
+IMPORTANT: It is strongly recommended to choose "Don't Apply" unless you trust this hotfix from a verified source.`;
+
+    const buttonFlags =
+      Ci.nsIPromptService.BUTTON_POS_0 * Ci.nsIPromptService.BUTTON_TITLE_IS_STRING +
+      Ci.nsIPromptService.BUTTON_POS_1 * Ci.nsIPromptService.BUTTON_TITLE_IS_STRING +
+      Ci.nsIPromptService.BUTTON_POS_1_DEFAULT; // Default to "Don't Apply"
+
+    const result = promptService.confirmEx(
+      null,
+      title,
+      message,
+      buttonFlags,
+      "Apply Anyway (Not Recommended)",
+      "Don't Apply (Recommended)",
+      "",
+      null,
+      {}
+    );
+
+    return result === 0; // True only if user explicitly chose "Apply Anyway"
   }
 
   /**
@@ -433,6 +698,16 @@ export class HotfixLoader {
       : "0.0.0";
 
     return manifests.filter((manifest) => {
+      // Check channel compatibility
+      if (manifest.targetChannels && manifest.targetChannels.length > 0) {
+        if (!manifest.targetChannels.includes(this.currentChannel)) {
+          console.log(
+            `[HotfixLoader] Hotfix ${manifest.id} not applicable to channel ${this.currentChannel}`
+          );
+          return false;
+        }
+      }
+
       // Check version compatibility
       if (
         manifest.minVersion &&
@@ -524,12 +799,19 @@ export class HotfixLoader {
   private async showConsentDialog(
     manifest: HotfixManifest,
     signerIdentity: SignerIdentity,
+    isVerified: boolean = true,
   ): Promise<boolean> {
     // Use Services.prompt for the consent dialog
     const promptService = Services.prompt;
 
-    const title = "Install Hotfix?";
-    const message = `A verified hotfix is available for installation.
+    const verificationStatus = isVerified 
+      ? "✓ Signature verified and trusted" 
+      : "⚠️ WARNING: Signature verification failed";
+
+    const title = isVerified ? "Install Hotfix?" : "⚠️ Install Unverified Hotfix?";
+    const message = `${isVerified ? "A verified" : "An UNVERIFIED"} hotfix is available for installation.
+
+${verificationStatus}
 
 Hotfix: ${manifest.id} v${manifest.version}
 Description: ${manifest.description}
@@ -646,6 +928,25 @@ Do you want to install this hotfix?`;
     Services.prefs.setStringPref(
       PREF_HOTFIX_INSTALLED,
       JSON.stringify(installed),
+    );
+  }
+
+  private getAutoUpdateConfig(): HotfixAutoUpdateConfig {
+    try {
+      const stored = Services.prefs.getStringPref(
+        PREF_HOTFIX_AUTO_UPDATE_CONFIG,
+        JSON.stringify(DEFAULT_AUTO_UPDATE_CONFIG),
+      );
+      return JSON.parse(stored) as HotfixAutoUpdateConfig;
+    } catch {
+      return DEFAULT_AUTO_UPDATE_CONFIG;
+    }
+  }
+
+  private saveAutoUpdateConfig(config: HotfixAutoUpdateConfig): void {
+    Services.prefs.setStringPref(
+      PREF_HOTFIX_AUTO_UPDATE_CONFIG,
+      JSON.stringify(config),
     );
   }
 }

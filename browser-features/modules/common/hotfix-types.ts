@@ -30,6 +30,8 @@ export interface HotfixManifest {
   minVersion: string;
   /** Maximum Noraneko version this hotfix applies to (optional) */
   maxVersion?: string;
+  /** Target update channels (if not specified, applies to all channels) */
+  targetChannels?: UpdateChannel[];
 }
 
 /**
@@ -172,6 +174,28 @@ export interface TrustedSignerConfig {
 }
 
 /**
+ * Update channel type for filtering hotfixes
+ */
+export enum UpdateChannel {
+  NIGHTLY = "nightly",
+  BETA = "beta",
+  RELEASE = "release",
+  DEFAULT = "default",
+}
+
+/**
+ * Configuration for automatic hotfix updates on nightly channel
+ */
+export interface HotfixAutoUpdateConfig {
+  /** Whether automatic checks are enabled */
+  enabled: boolean;
+  /** Interval in milliseconds between checks (default: 24 hours) */
+  checkInterval: number;
+  /** Last time an automatic check was performed */
+  lastCheckTime: string;
+}
+
+/**
  * Default trusted signer configuration for Noraneko
  */
 export const DEFAULT_TRUSTED_SIGNER_CONFIG: TrustedSignerConfig = {
@@ -184,4 +208,13 @@ export const DEFAULT_TRUSTED_SIGNER_CONFIG: TrustedSignerConfig = {
     ".github/workflows/hotfix*.yml",
     ".github/workflows/hotfix*.yaml",
   ],
+};
+
+/**
+ * Default auto-update configuration for nightly channel
+ */
+export const DEFAULT_AUTO_UPDATE_CONFIG: HotfixAutoUpdateConfig = {
+  enabled: true, // Auto-enabled for nightly builds
+  checkInterval: 24 * 60 * 60 * 1000, // 24 hours
+  lastCheckTime: new Date(0).toISOString(), // Epoch time (force first check)
 };
