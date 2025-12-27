@@ -5,7 +5,7 @@ This document provides a comprehensive overview of the Noraneko build system, ex
 ## Overview
 
 Noraneko's build system is designed to:
-1. Download and extract the pre-built Firefox/Noraneko runtime binary
+1. Download and extract the prebuilt Firefox/Noraneko runtime binary
 2. Apply custom patches to the runtime
 3. Build browser features and modules using Vite/Deno
 4. Inject the built assets into the runtime
@@ -67,11 +67,13 @@ All build components are located in `tools/src/`:
 3. If patches change, old ones are reversed before applying new ones
 4. Patches use `git apply` with `--unsafe-paths`
 
-**Patched Files (Current):**
-- Browser initialization (`browser-init.js`)
+**Patched Files:**
+Check `tools/patches/` for the current list of patches. Common patches target:
+- Browser initialization and startup
 - Tab browser functionality
-- AsyncTabSwitcher, BrowserGlue, CustomizableUI
-- UrlbarController, SessionStore modules
+- Module system integrations
+
+> **Note:** Patches with `.temp` suffix are not applied automatically.
 
 ### 3. Symlinker (`symlinker.ts`)
 

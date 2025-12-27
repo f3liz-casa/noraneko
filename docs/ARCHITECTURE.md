@@ -297,7 +297,7 @@ Noraneko integrates with Firefox through:
 ## Key Concepts
 
 ### Artifact Builds
-Noraneko uses Firefox's artifact build system - a pre-built binary is downloaded and patched rather than compiling Firefox from source.
+Noraneko uses Firefox's artifact build system - a prebuilt binary is downloaded and patched rather than compiling Firefox from source.
 
 ### Chrome Registration
 Firefox uses `chrome.manifest` files to register content at chrome:// URLs. Noraneko creates its own manifest during build.

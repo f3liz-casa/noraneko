@@ -66,7 +66,7 @@ This document contains questions that would help future AI agents (or developers
 ## Technical Debt & Future Plans
 
 ### 12. Known Issues
-- **Q12.1:** The `libs/user-js-runner` is excluded from Deno checks. What is its status?
+- **Q12.1:** The `libs/user-js-runner` is excluded from Deno checks in `deno.json`, but the directory doesn't exist. Is this exclusion still needed, or should it be removed?
 - **Q12.2:** Several `@ts-expect-error` comments exist. Are these tracked for resolution?
 - **Q12.3:** What is the status of the `experiment` folder in `browser-features/chrome/`?
 
