@@ -198,17 +198,13 @@ async function copyModuleFiles(
     // Determine target file extension
     // .sys.mts files become .sys.mjs, .mts files become .mjs, .ts files become .js
     let targetExt: string;
-    let originalExt: string;
     
     if (sourceFile.endsWith(".sys.mts")) {
       targetExt = ".sys.mjs";
-      originalExt = ".sys.mjs";
     } else if (sourceFile.endsWith(".mts")) {
       targetExt = ".mjs";
-      originalExt = ".mjs";
     } else if (sourceFile.endsWith(".ts")) {
       targetExt = ".js";
-      originalExt = ".js";
     } else {
       console.error(`❌ Unsupported file extension for: ${sourceFile}`);
       throw new Error(`Unsupported file extension: ${sourceFile}`);
@@ -225,7 +221,7 @@ async function copyModuleFiles(
 
     patchInfos.push({
       moduleName,
-      originalModulePath: `resource://noraneko/modules/${moduleName}${originalExt}`,
+      originalModulePath: `resource://noraneko/modules/${moduleName}${targetExt}`,
       patchedModulePath: `patches/${moduleName}${targetExt}`,
       patchedModuleHash: hash,
     });
