@@ -3,8 +3,7 @@
 import * as path from "@std/path";
 import { PROJECT_ROOT, PATHS } from "./defines.ts";
 import {
-  createSymlink,
-  exists,
+  createMountSymlinks,
   Logger,
   runCommandChecked,
   safeRemove,
@@ -133,40 +132,10 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
   }
 
   if (mode.startsWith("production")) {
-    const mounts: Array<[string, string]> = [
-      ["content", "bridge/loader-features/_dist"],
-      ["startup", "bridge/startup/_dist"],
-      ["skin", "browser-features/skin"],
-      ["resource", "bridge/loader-modules/_dist"],
-    ];
-
     const dirPath = "_dist/noraneko";
-    try {
-      if (exists(dirPath)) {
-        safeRemove(dirPath);
-      }
-    } catch {}
+    safeRemove(dirPath);
     Deno.mkdirSync(dirPath);
-
-    for (const [subdir, target] of mounts) {
-      const linkPath = path.resolve(dirPath, subdir);
-      const targetPath = path.resolve(target);
-      try {
-        if (exists(linkPath)) {
-          safeRemove(linkPath);
-        }
-      } catch {
-        // ignore
-      }
-
-      try {
-        createSymlink(linkPath, targetPath);
-      } catch (e: any) {
-        logger.warn(
-          `Failed to create symlink ${linkPath} -> ${targetPath}: ${e?.message ?? e}`,
-        );
-      }
-    }
+    createMountSymlinks(dirPath);
   }
 
   logger.success("Build complete.");

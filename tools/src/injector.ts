@@ -6,7 +6,7 @@ import {
   Logger,
   exists,
   safeRemove,
-  createSymlink,
+  createMountSymlinks,
 } from "./utils.ts";
 import { BIN_DIR, PROD_BIN_DIR, PROJECT_ROOT } from "./defines.ts";
 
@@ -78,33 +78,7 @@ export function run(mode: string, dirName = "noraneko-devdir"): void {
   }
 
   createManifest(mode, dirPath);
-
-  const mounts: Array<[string, string]> = [
-    ["content", "bridge/loader-features/_dist"],
-    ["startup", "bridge/startup/_dist"],
-    ["skin", "browser-features/skin"],
-    ["resource", "bridge/loader-modules/_dist"],
-  ];
-
-  for (const [subdir, target] of mounts) {
-    const linkPath = path.resolve(dirPath, subdir);
-    const targetPath = path.resolve(target);
-    try {
-      if (exists(linkPath)) {
-        safeRemove(linkPath);
-      }
-    } catch {
-      // ignore
-    }
-
-    try {
-      createSymlink(linkPath, targetPath);
-    } catch (e: any) {
-      logger.warn(
-        `Failed to create symlink ${linkPath} -> ${targetPath}: ${e?.message ?? e}`,
-      );
-    }
-  }
+  createMountSymlinks(dirPath);
 
   logger.success("Manifest injected successfully.");
 }

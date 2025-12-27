@@ -231,3 +231,26 @@ export const ProcessUtils = {
     return status.code ?? 0;
   },
 } as const;
+
+/**
+ * Standard mount points for noraneko symlinks.
+ * Used by both builder.ts and injector.ts.
+ */
+export const NORANEKO_MOUNTS: ReadonlyArray<readonly [string, string]> = [
+  ["content", "bridge/loader-features/_dist"],
+  ["startup", "bridge/startup/_dist"],
+  ["skin", "browser-features/skin"],
+  ["resource", "bridge/loader-modules/_dist"],
+] as const;
+
+/**
+ * Creates symlinks for all noraneko mount points in the given directory.
+ * @param dirPath - The directory to create symlinks in
+ */
+export function createMountSymlinks(dirPath: string): void {
+  for (const [subdir, target] of NORANEKO_MOUNTS) {
+    const linkPath = path.resolve(dirPath, subdir);
+    const targetPath = path.resolve(target);
+    createSymlink(linkPath, targetPath);
+  }
+}

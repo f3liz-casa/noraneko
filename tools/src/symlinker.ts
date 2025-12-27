@@ -2,7 +2,7 @@
 
 import * as path from "@std/path";
 import { PATHS } from "./defines.ts";
-import { Logger, exists, safeRemove, createSymlink } from "./utils.ts";
+import { Logger, createSymlink } from "./utils.ts";
 
 const logger = new Logger("symlinker");
 
@@ -17,20 +17,7 @@ export function run(): void {
   ];
 
   for (const [link, target] of pairs) {
-    try {
-      if (exists(link)) {
-        try {
-          safeRemove(link);
-        } catch {
-          // ignore
-        }
-      }
-      createSymlink(link, target);
-    } catch (e: any) {
-      console.warn(
-        `Failed to create symlink ${link} -> ${target}: ${e?.message ?? e}`,
-      );
-    }
+    createSymlink(link, target);
   }
 
   logger.success("Symlinks created successfully.");

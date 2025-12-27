@@ -13,44 +13,62 @@ import { Logger } from "./src/utils.ts";
 
 const logger = new Logger("feles-build");
 
-async function runDev(): Promise<void> {
-  logger.info("Starting development environment...");
+/**
+ * Simple writable-like object to capture ready signal from DevServer.run.
+ * Extracted to avoid duplication in runDev and runStage.
+ */
+class ReadyPipe {
+  private listeners: Array<(chunk: string) => void> = [];
 
-  // Initial setup
+  on(event: "data", cb: (chunk: string) => void) {
+    if (event === "data") this.listeners.push(cb);
+  }
+
+  write(chunk: Uint8Array | string) {
+    const s =
+      typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
+    for (const cb of this.listeners) cb(s);
+  }
+
+  end() {
+    // no-op
+  }
+}
+
+/**
+ * Performs common initialization: Initializer, Patcher, and Symlinker.
+ */
+async function runCommonInit(): Promise<void> {
   await Initializer.run();
   Patcher.run("apply");
   Symlinker.run();
+}
 
-  const buildid2 = Update.generateUuidV7();
-  await Builder.run("dev", buildid2);
+/**
+ * Performs common dev environment setup: Injector, XHTML injection, and DevEnvManager.
+ */
+async function setupDevEnvironment(): Promise<void> {
   Injector.run("dev");
   await Injector.injectXhtmlFromTs(true);
   DevEnvManager.setup();
+}
 
-  // Graceful shutdown
+/**
+ * Registers SIGINT handler for graceful shutdown of dev servers.
+ */
+function registerShutdownHandler(): void {
   Deno.addSignalListener("SIGINT", () => {
     logger.info("Shutting down...");
     DevServer.shutdown();
     Deno.exit(130);
   });
+}
 
-  // Simple writable-like object to capture ready signal from DevServer.run
-  class ReadyPipe {
-    private listeners: Array<(chunk: string) => void> = [];
-    on(event: "data", cb: (chunk: string) => void) {
-      if (event === "data") this.listeners.push(cb);
-    }
-    write(chunk: Uint8Array | string) {
-      const s =
-        typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
-      for (const cb of this.listeners) cb(s);
-    }
-    end() {
-      // no-op
-    }
-  }
+/**
+ * Starts dev servers and launches the browser when ready.
+ */
+function startDevServerAndBrowser(): void {
   const pipe = new ReadyPipe();
-  let readyReceived = false;
 
   pipe.on("data", (chunk: string) => {
     const s = chunk.toString().trim();
@@ -58,26 +76,30 @@ async function runDev(): Promise<void> {
       s === (DevServer as any).DEV_SERVER?.ready_string ||
       s.includes("nora-")
     ) {
-      readyReceived = true;
       logger.success("Dev servers are ready.");
-      // Launch browser
       BrowserLauncher.run().catch((e: any) => {
         logger.error(`Browser launcher failed: ${e?.message ?? e}`);
       });
     }
   });
 
-  // Start dev server (it will write to the writer and end it)
-  // DevServer.run expects a writable-like object.
   DevServer.run(pipe as any).catch((e: any) => {
     logger.error(`Dev server failed: ${e?.message ?? e}`);
     Deno.exit(1);
   });
+}
 
-  // Wait until browser finishes; the BrowserLauncher.run call above is async but we don't await here
-  // After browser closed, shut down servers
-  // Simple polling to detect when ready was received and browser process done is not trivial here.
-  // Keep process alive until SIGINT or process termination from BrowserLauncher path
+async function runDev(): Promise<void> {
+  logger.info("Starting development environment...");
+
+  await runCommonInit();
+
+  const buildid2 = Update.generateUuidV7();
+  await Builder.run("dev", buildid2);
+  await setupDevEnvironment();
+
+  registerShutdownHandler();
+  startDevServerAndBrowser();
 }
 
 async function runStage(): Promise<void> {
@@ -85,75 +107,21 @@ async function runStage(): Promise<void> {
     "Starting staged production build (production assets) with browser in dev mode...",
   );
 
-  // Initial setup
-  await Initializer.run();
-  Patcher.run("apply");
-  Symlinker.run();
+  await runCommonInit();
 
-  // Build production assets
   const buildid2 = Update.generateUuidV7();
   await Builder.run("production", buildid2);
+  await setupDevEnvironment();
 
-  // Inject manifests but keep dev-style directory so dev servers and browser use the built assets
-  Injector.run("dev");
-  await Injector.injectXhtmlFromTs(true);
-  DevEnvManager.setup();
-
-  // Graceful shutdown
-  Deno.addSignalListener("SIGINT", () => {
-    logger.info("Shutting down...");
-    DevServer.shutdown();
-    Deno.exit(130);
-  });
-
-  // Simple writable-like object to capture ready signal from DevServer.run
-  class ReadyPipe {
-    private listeners: Array<(chunk: string) => void> = [];
-    on(event: "data", cb: (chunk: string) => void) {
-      if (event === "data") this.listeners.push(cb);
-    }
-    write(chunk: Uint8Array | string) {
-      const s =
-        typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk);
-      for (const cb of this.listeners) cb(s);
-    }
-    end() {
-      // no-op
-    }
-  }
-  const pipe = new ReadyPipe();
-  let readyReceived = false;
-
-  pipe.on("data", (chunk: string) => {
-    const s = chunk.toString().trim();
-    if (
-      s === (DevServer as any).DEV_SERVER?.ready_string ||
-      s.includes("nora-")
-    ) {
-      readyReceived = true;
-      logger.success("Dev servers are ready.");
-      // Launch browser
-      BrowserLauncher.run().catch((e: any) => {
-        logger.error(`Browser launcher failed: ${e?.message ?? e}`);
-      });
-    }
-  });
-
-  // Start dev server (it will write to the writer and end it)
-  // DevServer.run expects a writable-like object.
-  DevServer.run(pipe as any).catch((e: any) => {
-    logger.error(`Dev server failed: ${e?.message ?? e}`);
-    Deno.exit(1);
-  });
-
-  // Keep process alive until SIGINT or browser termination like runDev
+  registerShutdownHandler();
+  startDevServerAndBrowser();
 }
 
 async function runBuild(phase?: string): Promise<void> {
   const optionsPhase = phase ?? null;
   if (!optionsPhase) {
     console.error("Error: --phase is required for the build command.");
-    process.exit(1);
+    Deno.exit(1);
   }
 
   if (optionsPhase === "before-mach") {
@@ -166,7 +134,7 @@ async function runBuild(phase?: string): Promise<void> {
     await Injector.injectXhtmlFromTs(false, true);
   } else {
     console.error(`Unknown phase: ${optionsPhase}`);
-    process.exit(1);
+    Deno.exit(1);
   }
 }
 
