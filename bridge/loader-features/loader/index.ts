@@ -12,6 +12,9 @@ import { registerModuleEventDispatcher } from "./event-dispatcher-registry.ts";
 
 console.log("[noraneko] Initializing scripts...");
 
+// Hotfix system preference keys
+const PREF_HOTFIX_DISABLED_MODULES = "noraneko.hotfix.disabled_modules";
+
 export const loader = {
   load: initScripts,
 };
@@ -32,6 +35,9 @@ export async function initScripts() {
     ).toISOString()}`,
   );
 
+  // Initialize hotfix system
+  await initializeHotfixSystem();
+
   setPrefFeatures(MODULES_KEYS);
 
   // Get enabled features from preferences
@@ -39,11 +45,57 @@ export async function initScripts() {
     Services.prefs.getStringPref("noraneko.features.enabled", "{}"),
   ) as typeof MODULES_KEYS;
 
-  // Load enabled modules
+  // Load enabled modules (filtering out hotfix-disabled modules)
   const modules = await loadEnabledModules(enabled_features);
 
   // Initialize modules after session is ready
   await initializeModules(modules);
+}
+
+/**
+ * Initialize the hotfix system
+ */
+async function initializeHotfixSystem(): Promise<void> {
+  try {
+    const { hotfixLoader } = ChromeUtils.importESModule(
+      "resource://noraneko/modules/HotfixLoader.sys.mjs",
+    );
+    await hotfixLoader.initialize();
+    console.log("[noraneko] Hotfix system initialized");
+  } catch (error) {
+    console.error("[noraneko] Failed to initialize hotfix system:", error);
+    // Continue without hotfix system - non-fatal error
+  }
+}
+
+/**
+ * Check if a module is disabled by the hotfix system
+ */
+function isModuleDisabledByHotfix(moduleName: string): boolean {
+  try {
+    const disabled = Services.prefs.getStringPref(
+      PREF_HOTFIX_DISABLED_MODULES,
+      "[]",
+    );
+    const disabledModules = JSON.parse(disabled) as string[];
+    return disabledModules.includes(moduleName);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get the patched module path if available
+ */
+function getPatchedModulePath(moduleName: string): string | null {
+  try {
+    const { hotfixLoader } = ChromeUtils.importESModule(
+      "resource://noraneko/modules/HotfixLoader.sys.mjs",
+    );
+    return hotfixLoader.getPatchedModulePath(moduleName);
+  } catch {
+    return null;
+  }
 }
 
 async function setPrefFeatures(all_features_keys: typeof MODULES_KEYS) {
@@ -89,6 +141,28 @@ async function loadEnabledModules(
             categoryKey as keyof typeof enabled_features
           ].includes(moduleName)
         ) {
+          // Check if module is disabled by hotfix
+          if (isModuleDisabledByHotfix(moduleName)) {
+            console.log(`[noraneko] Module ${moduleName} disabled by hotfix, loading patched version`);
+            const patchedPath = getPatchedModulePath(moduleName);
+            if (patchedPath) {
+              try {
+                // Load the patched module from the hotfix directory
+                const patchedModule = await loadPatchedModule(patchedPath, moduleName);
+                if (patchedModule) {
+                  modules.push(patchedModule);
+                  return;
+                }
+              } catch (e) {
+                console.error(`[noraneko] Failed to load patched module ${moduleName}:`, e);
+                // Fall through to load original module as fallback
+              }
+            }
+            // Skip the original module if no patched version available
+            console.warn(`[noraneko] No patched version found for disabled module ${moduleName}`);
+            return;
+          }
+
           try {
             const moduleExports = await categoryValue[moduleName]();
             const metadata =
@@ -119,6 +193,41 @@ async function loadEnabledModules(
 
   await Promise.all(loadModulePromises);
   return modules;
+}
+
+/**
+ * Load a patched module from the hotfix directory
+ */
+async function loadPatchedModule(
+  patchedPath: string,
+  moduleName: string,
+): Promise<LoadedModule | null> {
+  try {
+    // Convert file path to file:// URL for loading
+    const fileUrl = `file://${patchedPath}`;
+    const moduleExports = ChromeUtils.importESModule(fileUrl);
+
+    const metadata =
+      (moduleExports as any).default?._metadata?.() ||
+      ({
+        moduleName,
+        dependencies: [],
+        softDependencies: [],
+      } satisfies ModuleMetadata);
+
+    return {
+      name: moduleName,
+      metadata,
+      ...(moduleExports as {
+        init?: typeof Function;
+        initBeforeSessionStoreInit?: typeof Function;
+        default?: any;
+      }),
+    };
+  } catch (error) {
+    console.error(`[noraneko] Failed to load patched module from ${patchedPath}:`, error);
+    return null;
+  }
 }
 
 async function initializeModules(modules: LoadedModule[]) {
