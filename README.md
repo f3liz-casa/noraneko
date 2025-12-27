@@ -47,6 +47,28 @@ Thank you [@CutterKnife](https://github.com/CutterKnife) for the logo!
 
 Thank you!
 
+## Documentation
+
+For developers and contributors, see the following documentation:
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/ARCHITECTURE.md) | High-level architecture overview |
+| [Build System](docs/BUILD_SYSTEM.md) | Build system and tooling documentation |
+| [RPC System](docs/RPC_SYSTEM_README.md) | Inter-module communication system |
+| [Shared Code](docs/SHARED_CODE_STRUCTURE.md) | Shared code organization |
+| [Questions](docs/QUESTIONS.md) | Open questions for contributors |
+
+### Quick Start (Development)
+
+```bash
+# Install dependencies
+deno install --allow-scripts
+
+# Run development build with hot reload
+deno task feles-build dev
+```
+
 ## Useful Links
 
 [![Link to Noraneko Runtime Repository](.github/assets/readme/Link2RuntimeRepo.svg)](https://github.com/f3liz-dev/noraneko-runtime/)
