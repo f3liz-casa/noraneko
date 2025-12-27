@@ -196,7 +196,7 @@ async function copyModuleFiles(
     }
 
     // Determine target file extension
-    // .mts files become .sys.mjs, .ts files become .js
+    // .sys.mts files become .sys.mjs, .mts files become .mjs, .ts files become .js
     let targetExt: string;
     let originalExt: string;
     
@@ -292,7 +292,7 @@ ${patches.map((p) => `- \`${p.moduleName}\` (hash: \`${p.patchedModuleHash.subst
 
 The module files have been copied to \`hotfixes/source/patches/\`. Edit them to fix the bug:
 
-${patches.map((p) => `- \`hotfixes/source/patches/${p.moduleName}.sys.mjs\``).join("\n")}
+${patches.map((p) => `- \`hotfixes/source/${p.patchedModulePath}\``).join("\n")}
 
 ### 2. Test Your Changes Locally
 
