@@ -57,7 +57,7 @@ async function computeFileHash(filePath: string): Promise<string> {
  * Read user input from stdin
  */
 async function readInput(): Promise<string> {
-  const buf = new Uint8Array(1024);
+  const buf = new Uint8Array(8192); // Increased buffer for longer inputs
   const n = await Deno.stdin.read(buf);
   if (n === null) {
     return "";
@@ -125,7 +125,7 @@ async function gatherHotfixConfig(): Promise<HotfixConfig> {
   if (!modulesInput) {
     throw new Error("At least one module is required");
   }
-  const modules = modulesInput.split(",").map((m) => m.trim()).filter((m) => m);
+  const modules = modulesInput.split(",").map((m) => m.trim()).filter((m) => m.length > 0);
 
   // Min version
   const minVersion = await prompt(
@@ -146,7 +146,7 @@ async function gatherHotfixConfig(): Promise<HotfixConfig> {
     "",
   );
   const targetChannels = channelsInput
-    ? channelsInput.split(",").map((c) => c.trim()).filter((c) => c)
+    ? channelsInput.split(",").map((c) => c.trim()).filter((c) => c.length > 0)
     : undefined;
 
   return {
