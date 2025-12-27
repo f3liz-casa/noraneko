@@ -1,10 +1,10 @@
-# Automatic RPC Type Inference
+# Automatic EventDispatcher Type Inference
 
 ## Overview
 
-The RPC system now features **automatic type inference** using TypeScript's declaration merging. This means:
+The EventDispatcher system features **automatic type inference** using TypeScript's declaration merging. This means:
 - ✅ No manual interface declarations needed
-- ✅ Types extracted directly from `rpcMethods` in module metadata
+- ✅ Types extracted directly from `@eventMethod` decorated methods
 - ✅ Single source of truth - define methods once
 - ✅ Refactoring safe - change methods, types update automatically
 - ✅ Full IDE autocomplete support
@@ -16,28 +16,30 @@ The RPC system now features **automatic type inference** using TypeScript's decl
 Each module registers itself in a global registry:
 
 ```typescript
-@noraComponent(import.meta.hot)
-export default class MyModule extends NoraComponentBase {
-  _metadata() {
-    return {
-      moduleName: "my-module",
-      dependencies: [],
-      softDependencies: [],
-      rpcMethods: {
-        myMethod: (arg: string) => this.myMethod(arg),
-        getData: () => this.getData(),
-      },
-    } as const; // Important: use 'as const' for literal types
-  }
+import { component, eventMethod } from "#features-chrome/utils/base";
+
+@component({
+  moduleName: "my-module",
+  hot: import.meta.hot,
+})
+export default class MyModule {
+  @eventMethod
+  myMethod(arg: string): void { /* ... */ }
   
-  private myMethod(arg: string): void { /* ... */ }
-  private getData(): Promise<string> { /* ... */ }
+  @eventMethod
+  getData(): string { /* ... */ }
 }
 
-// Register in global registry
+// Register interface globally
 declare global {
   interface FeatureModuleRegistry {
     MyModule: typeof MyModule;
+  }
+  interface FeatureModuleEventMethods {
+    "my-module": {
+      myMethod(arg: string): void;
+      getData(): string;
+    };
   }
 }
 ```
@@ -45,22 +47,31 @@ declare global {
 ### 2. Automatic Type Extraction
 
 The type system automatically:
-1. Extracts module name from `_metadata().moduleName`
-2. Extracts RPC methods from `_metadata().rpcMethods`
+1. Extracts module name from `@component({ moduleName })`
+2. Extracts event methods decorated with `@eventMethod`
 3. Wraps all methods with `Either<Error, T>` for error safety
 4. Creates type mapping from module name to methods
 
 ### 3. Using Inferred Types
 
 ```typescript
-@noraComponent(import.meta.hot)
-export class ConsumerModule extends NoraComponentBase {
-  // Types automatically inferred from my-module's rpcMethods!
-  protected rpc!: RPCDependenciesWithSoft<[], ["my-module"]>;
+import { component } from "#features-chrome/utils/base";
+import type { EventDispatcherDependencies } from "../event-dispatcher-interfaces.ts";
+import * as E from "fp-ts/Either";
+import { pipe } from "fp-ts/function";
+
+@component({
+  moduleName: "consumer-module",
+  softDependencies: ["my-module"],
+  hot: import.meta.hot,
+})
+export class ConsumerModule {
+  // Types automatically inferred from my-module's event methods!
+  protected events!: EventDispatcherDependencies<["my-module"]>;
   
   async init() {
     // Full IDE autocomplete - no manual interfaces needed!
-    const result = await this.rpc["my-module"].myMethod("test");
+    const result = await this.events["my-module"].myMethod("test");
     
     pipe(
       result,
@@ -75,37 +86,30 @@ export class ConsumerModule extends NoraComponentBase {
 
 ## Type System Architecture
 
-### Core Types (features-rpc.d.ts)
+### Core Types (features-event-dispatcher.d.ts)
 
 ```typescript
-// Extract module name from class
-type ExtractModuleName<T> = T extends {
-  _metadata(): { moduleName: infer N };
-} ? N : never;
-
-// Extract RPC methods from class
-type ExtractRpcMethods<T> = T extends {
-  _metadata(): { rpcMethods: infer R };
-} ? R : never;
+// Extract event methods via declaration merging
+interface FeatureModuleEventMethods {
+  // Modules add their event interfaces here
+  "my-module": {
+    myMethod(arg: string): void;
+    getData(): string;
+  };
+}
 
 // Global registry (augmented by each module)
 interface FeatureModuleRegistry {
   // Modules add themselves here
 }
-
-// Map module names to their RPC methods
-type FeatureRpcMethods = {
-  [K in keyof FeatureModuleClassMap]: 
-    ExtractRpcMethods<InstanceType<FeatureModuleClassMap[K]>>;
-};
 ```
 
 ### Either Wrapping
 
-All RPC methods are automatically wrapped:
+All event methods are automatically wrapped:
 
 ```typescript
-// Original method: (arg: string) => Promise<string>
+// Original method: (arg: string) => string
 // Becomes: (arg: string) => Promise<Either<Error, string>>
 
 // For soft dependencies, undefined is added:
@@ -118,39 +122,41 @@ All RPC methods are automatically wrapped:
 
 **Before (manual interfaces):**
 ```typescript
-// rpc-interfaces.ts
-export interface MyModuleRPC {
+// event-dispatcher-interfaces.ts
+export interface MyModuleEvents {
   myMethod(arg: string): Promise<Either<Error, void>>;
   getData(): Promise<Either<Error, string>>;
 }
 
-// my-module/index.ts
-_metadata() {
-  return {
-    rpcMethods: {
-      myMethod: (arg: string) => this.myMethod(arg),
-      getData: () => this.getData(),
-    },
-  };
-}
+// my-module/index.ts - had to define methods twice
 ```
 
 **After (automatic inference):**
 ```typescript
 // my-module/index.ts
-_metadata() {
-  return {
-    moduleName: "my-module",
-    rpcMethods: {
-      myMethod: (arg: string) => this.myMethod(arg),
-      getData: () => this.getData(),
-    },
-  } as const;
+import { component, eventMethod } from "#features-chrome/utils/base";
+
+@component({
+  moduleName: "my-module",
+  hot: import.meta.hot,
+})
+export default class MyModule {
+  @eventMethod
+  myMethod(arg: string): void { /* ... */ }
+  
+  @eventMethod
+  getData(): string { /* ... */ }
 }
 
 declare global {
   interface FeatureModuleRegistry {
     MyModule: typeof MyModule;
+  }
+  interface FeatureModuleEventMethods {
+    "my-module": {
+      myMethod(arg: string): void;
+      getData(): string;
+    };
   }
 }
 
@@ -162,11 +168,8 @@ declare global {
 Change a method signature:
 ```typescript
 // Change from string to number
-private getData(): Promise<number> { /* ... */ }
-
-rpcMethods: {
-  getData: () => this.getData(), // Type automatically updates!
-}
+@eventMethod
+getData(): number { /* ... */ }
 ```
 
 All consumers get type errors if they use it incorrectly - no manual interface update needed!
@@ -176,7 +179,7 @@ All consumers get type errors if they use it incorrectly - no manual interface u
 Full autocomplete works because types are inferred from actual implementations:
 
 ```typescript
-this.rpc["my-module"]. // <-- IDE shows all available methods with signatures
+this.events["my-module"]. // <-- IDE shows all available methods with signatures
 ```
 
 ## Migration Guide
@@ -190,60 +193,57 @@ declare global {
   interface FeatureModuleRegistry {
     YourModuleClassName: typeof YourModuleClassName;
   }
+  interface FeatureModuleEventMethods {
+    "your-module": {
+      yourMethod(arg: string): void;
+    };
+  }
 }
 ```
 
-### Step 2: Use `as const` in Metadata
+### Step 2: Use @eventMethod Decorator
 
 ```typescript
-_metadata() {
-  return {
-    moduleName: "your-module",
-    dependencies: [],
-    softDependencies: [],
-    rpcMethods: {
-      yourMethod: (arg: string) => this.yourMethod(arg),
-    },
-  } as const; // <-- Add this
+import { component, eventMethod } from "#features-chrome/utils/base";
+
+@component({
+  moduleName: "your-module",
+  hot: import.meta.hot,
+})
+export default class YourModule {
+  @eventMethod
+  yourMethod(arg: string): void { /* ... */ }
 }
 ```
 
-### Step 3: Update RPC Type Declaration
+### Step 3: Update Events Type Declaration
 
 ```typescript
-// Old
-protected rpc!: RPCDependencies<["dependency"]>;
+import type { EventDispatcherDependencies } from "../event-dispatcher-interfaces.ts";
 
-// New (if all soft dependencies)
-protected rpc!: RPCDependenciesWithSoft<[], ["dependency"]>;
-
-// Or (if mixed)
-protected rpc!: RPCDependenciesWithSoft<["hard-dep"], ["soft-dep"]>;
+protected events!: EventDispatcherDependencies<["dependency"]>;
 ```
 
 ### Step 4: Remove Manual Interfaces
 
-Delete manual interface declarations from `rpc-interfaces.ts` - they're no longer needed!
+Delete manual interface declarations - they're no longer needed as they're in the global registry!
 
 ## Advanced Usage
 
 ### Multiple Dependencies
 
 ```typescript
-protected rpc!: RPCDependenciesWithSoft<
-  ["required-module"], // Hard dependencies
-  ["optional-module-a", "optional-module-b"] // Soft dependencies
->;
+protected events!: EventDispatcherDependencies<["module-a", "module-b"]>;
 ```
 
 ### Accessing Methods
 
 ```typescript
-// Hard dependency - throws if not available
-const result = await this.rpc["required-module"].method();
+import * as E from "fp-ts/Either";
+import { pipe } from "fp-ts/function";
 
-// Soft dependency - returns undefined if not available
-const result = await this.rpc["optional-module"].method();
+// All methods return Either<Error, T | undefined>
+const result = await this.events["module-a"].method();
 
 pipe(
   result,
@@ -265,30 +265,29 @@ pipe(
 ### "Type 'X' is not assignable to type 'Y'"
 
 Make sure you:
-1. Added `as const` to metadata return
-2. Registered module in `FeatureModuleRegistry`
+1. Used `@eventMethod` decorator on exposed methods
+2. Registered module in `FeatureModuleRegistry` and `FeatureModuleEventMethods`
 3. Used correct module name in dependency array
 
 ### Autocomplete Not Working
 
 1. Restart TypeScript server in your IDE
 2. Check that module is registered globally
-3. Verify `features-rpc.d.ts` is in your project
+3. Verify `features-event-dispatcher.d.ts` is in your project
 
 ### "Cannot find name 'FeatureModuleRegistry'"
 
 Import the types:
 ```typescript
-import type { FeatureRpcMethods } from "../common/features-rpc.d.ts";
+import type { EventDispatcherDependencies } from "../event-dispatcher-interfaces.ts";
 ```
 
 ## Technical Details
 
 This system uses:
-- **Declaration Merging**: Augments global `FeatureModuleRegistry`
+- **Declaration Merging**: Augments global `FeatureModuleRegistry` and `FeatureModuleEventMethods`
 - **Conditional Types**: Extracts metadata types
-- **Mapped Types**: Creates RPC method mappings
-- **Template Literal Types**: Infers module names
+- **Mapped Types**: Creates event method mappings
 - **Type Inference**: Extracts method signatures
 
 No code generation, no build step - pure TypeScript type system!
