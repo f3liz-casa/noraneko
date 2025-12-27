@@ -51,8 +51,6 @@ If you prefer to set up a hotfix manually:
 
 #### 1. Prepare the Patch
 
-#### 1. Prepare the Patch
-
 Create your patched module file in `source/patches/`:
 
 ```bash
@@ -60,8 +58,6 @@ Create your patched module file in `source/patches/`:
 cp browser-features/modules/modules/YourModule.sys.mts hotfixes/source/patches/YourModule.sys.mjs
 # Edit the patch file to fix the bug
 ```
-
-#### 2. Run the Signing Workflow
 
 #### 2. Run the Signing Workflow
 
@@ -89,10 +85,12 @@ Share the generated unlock code with testers or affected users. They can enter t
 
 ### Keyless Signing (Sigstore)
 
-The system uses Sigstore's keyless signing infrastructure:
+The system uses Sigstore's keyless signing infrastructure via the [@freedomofpress/sigstore-browser](https://github.com/freedomofpress/sigstore-browser) library:
 - No private keys to manage or leak
 - Signatures are tied to GitHub Actions OIDC identity
 - All signatures are recorded in Rekor transparency log
+- Full verification including certificate chains, transparency logs, and timestamps
+- TUF-based trusted root management for secure updates
 
 ### Identity Verification
 
