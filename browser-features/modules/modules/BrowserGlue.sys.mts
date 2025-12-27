@@ -165,6 +165,22 @@ const JS_WINDOW_ACTORS: {
     },
     matches: ["*://localhost/*", "chrome://noraneko-settings/*"],
   },
+  NRHotfixManager: {
+    parent: {
+      esModuleURI: localPathToResourceURI(
+        "../actors/NRHotfixManagerParent.sys.mts",
+      ),
+    },
+    child: {
+      esModuleURI: localPathToResourceURI(
+        "../actors/NRHotfixManagerChild.sys.mts",
+      ),
+      events: {
+        DOMDocElementInserted: {},
+      },
+    },
+    matches: ["*://localhost/*", "chrome://noraneko-settings/*"],
+  },
 };
 
 ActorManagerParent.addJSWindowActors(JS_WINDOW_ACTORS);
