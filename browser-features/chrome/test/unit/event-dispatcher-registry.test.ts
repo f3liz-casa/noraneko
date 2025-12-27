@@ -7,7 +7,7 @@ import {
   unregisterModuleEventDispatcher,
   isModuleRegistered,
 } from "#bridge-loader-features/loader/event-dispatcher-registry.ts";
-import * as E from "fp-ts/Either";
+import * as E from "fp-ts/lib/Either.js";
 
 // Test module A with event methods
 const moduleAFunctions = {
