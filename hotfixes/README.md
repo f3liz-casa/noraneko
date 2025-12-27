@@ -21,7 +21,37 @@ hotfixes/
 
 ## Creating a Hotfix
 
-### 1. Prepare the Patch
+### Option 1: Using the Hotfix Creator Tool (Recommended)
+
+Use the interactive CLI tool to quickly set up a hotfix:
+
+```bash
+deno task hotfix:create
+```
+
+The tool will:
+1. Prompt you for hotfix details (ID, version, description, modules)
+2. Copy module files to `hotfixes/source/patches/`
+3. Calculate SHA-256 hashes for patch files
+4. Generate a template manifest and README with instructions
+
+You can also use non-interactive mode:
+
+```bash
+deno task hotfix:create --non-interactive \
+  --id fix-sidebar-crash \
+  --version 1.0.0 \
+  --description "Fix sidebar crash on tab close" \
+  --modules sidebar
+```
+
+### Option 2: Manual Setup
+
+If you prefer to set up a hotfix manually:
+
+#### 1. Prepare the Patch
+
+#### 1. Prepare the Patch
 
 Create your patched module file in `source/patches/`:
 
@@ -31,7 +61,9 @@ cp browser-features/modules/modules/YourModule.sys.mts hotfixes/source/patches/Y
 # Edit the patch file to fix the bug
 ```
 
-### 2. Run the Signing Workflow
+#### 2. Run the Signing Workflow
+
+#### 2. Run the Signing Workflow
 
 Use the GitHub Actions workflow to sign and publish the hotfix:
 
@@ -49,7 +81,7 @@ Use the GitHub Actions workflow to sign and publish the hotfix:
    - Record the signature in Rekor transparency log
    - Upload the hotfix artifacts
 
-### 3. Distribute the Unlock Code
+#### 3. Distribute the Unlock Code
 
 Share the generated unlock code with testers or affected users. They can enter this code in **Settings → Advanced → Hotfix** to download and install the patch.
 
