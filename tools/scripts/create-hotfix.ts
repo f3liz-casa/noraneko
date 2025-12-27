@@ -40,6 +40,9 @@ interface PatchInfo {
   patchedModuleHash: string;
 }
 
+// Constants
+const HASH_DISPLAY_LENGTH = 16;
+
 /**
  * Compute SHA-256 hash of a file
  */
@@ -51,25 +54,39 @@ async function computeFileHash(filePath: string): Promise<string> {
 }
 
 /**
+ * Read user input from stdin
+ */
+async function readInput(): Promise<string> {
+  const buf = new Uint8Array(1024);
+  const n = await Deno.stdin.read(buf);
+  if (n === null) {
+    return "";
+  }
+  return new TextDecoder().decode(buf.subarray(0, n)).trim();
+}
+
+/**
  * Prompt user for input with a default value
  */
 async function prompt(message: string, defaultValue?: string): Promise<string> {
   const defaultText = defaultValue ? ` [${defaultValue}]` : "";
-  const input = window.prompt(`${message}${defaultText}`);
+  console.log(`${message}${defaultText}`);
+  const input = await readInput();
   
-  if (input === null) {
-    throw new Error("User cancelled");
+  if (input === "") {
+    return defaultValue || "";
   }
   
-  return input.trim() || defaultValue || "";
+  return input;
 }
 
 /**
  * Prompt user for confirmation
  */
 async function confirm(message: string): Promise<boolean> {
-  const result = window.confirm(message);
-  return result;
+  console.log(`${message} (y/N)`);
+  const input = await readInput();
+  return input.toLowerCase() === "y" || input.toLowerCase() === "yes";
 }
 
 /**
@@ -244,7 +261,7 @@ function generateReadme(config: HotfixConfig, patches: PatchInfo[]): string {
 
 ## Modules Patched
 
-${patches.map((p) => `- \`${p.moduleName}\` (hash: \`${p.patchedModuleHash.substring(0, 16)}...\`)`).join("\n")}
+${patches.map((p) => `- \`${p.moduleName}\` (hash: \`${p.patchedModuleHash.substring(0, HASH_DISPLAY_LENGTH)}...\`)`).join("\n")}
 
 ## Next Steps
 
@@ -271,8 +288,7 @@ Once tested, use the GitHub Actions workflow to sign the hotfix:
    - **version**: \`${config.version}\`
    - **description**: \`${config.description}\`
    - **patch_modules**: \`${config.modules.join(",")}\`
-   - **min_version**: \`${config.minVersion}\`
-   ${config.maxVersion ? `- **max_version**: \`${config.maxVersion}\`` : ""}
+   - **min_version**: \`${config.minVersion}\`${config.maxVersion ? `\n   - **max_version**: \`${config.maxVersion}\`` : ""}
 
 3. Run the workflow
 
