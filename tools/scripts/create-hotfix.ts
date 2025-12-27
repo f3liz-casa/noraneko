@@ -195,8 +195,25 @@ async function copyModuleFiles(
       throw new Error(`Module file not found: ${moduleName}`);
     }
 
-    // Determine target file extension (.mjs for .mts files)
-    const targetExt = sourceFile.endsWith(".mts") ? ".sys.mjs" : ".js";
+    // Determine target file extension
+    // .mts files become .sys.mjs, .ts files become .js
+    let targetExt: string;
+    let originalExt: string;
+    
+    if (sourceFile.endsWith(".sys.mts")) {
+      targetExt = ".sys.mjs";
+      originalExt = ".sys.mjs";
+    } else if (sourceFile.endsWith(".mts")) {
+      targetExt = ".mjs";
+      originalExt = ".mjs";
+    } else if (sourceFile.endsWith(".ts")) {
+      targetExt = ".js";
+      originalExt = ".js";
+    } else {
+      console.error(`❌ Unsupported file extension for: ${sourceFile}`);
+      throw new Error(`Unsupported file extension: ${sourceFile}`);
+    }
+    
     const targetFile = join(patchesDir, `${moduleName}${targetExt}`);
 
     // Copy file
@@ -208,7 +225,7 @@ async function copyModuleFiles(
 
     patchInfos.push({
       moduleName,
-      originalModulePath: `resource://noraneko/modules/${moduleName}.sys.mjs`,
+      originalModulePath: `resource://noraneko/modules/${moduleName}${originalExt}`,
       patchedModulePath: `patches/${moduleName}${targetExt}`,
       patchedModuleHash: hash,
     });
@@ -224,7 +241,7 @@ function generateManifestTemplate(
   config: HotfixConfig,
   patches: PatchInfo[],
 ): string {
-  const manifest = {
+  const manifest: Record<string, any> = {
     id: config.id,
     version: config.version,
     description: config.description,
@@ -243,9 +260,15 @@ function generateManifestTemplate(
     },
     createdAt: new Date().toISOString(),
     minVersion: config.minVersion,
-    ...(config.maxVersion && { maxVersion: config.maxVersion }),
-    ...(config.targetChannels && { targetChannels: config.targetChannels }),
   };
+  
+  // Add optional fields only if they have values
+  if (config.maxVersion) {
+    manifest.maxVersion = config.maxVersion;
+  }
+  if (config.targetChannels && config.targetChannels.length > 0) {
+    manifest.targetChannels = config.targetChannels;
+  }
 
   return JSON.stringify(manifest, null, 2);
 }
