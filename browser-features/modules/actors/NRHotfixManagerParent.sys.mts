@@ -11,9 +11,7 @@ import { hotfixLoader } from "../modules/HotfixLoader.sys.mts";
 import type {
   HotfixManifest,
   InstalledHotfix,
-  VerificationResult,
 } from "../common/hotfix-types.ts";
-import { HotfixStatus } from "../common/hotfix-types.ts";
 
 export class NRHotfixManagerParent extends JSWindowActorParent {
   constructor() {

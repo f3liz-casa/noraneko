@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+/// <reference lib="deno.ns" />
 
 /**
  * Unit tests for Hotfix System Types and Verification Logic

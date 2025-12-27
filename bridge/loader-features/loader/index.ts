@@ -197,14 +197,26 @@ async function loadEnabledModules(
 
 /**
  * Load a patched module from the hotfix directory
+ * Security: Validates the path is within the expected hotfix directory
  */
 async function loadPatchedModule(
   patchedPath: string,
   moduleName: string,
 ): Promise<LoadedModule | null> {
   try {
+    // Security: Validate the path is within the hotfix directory
+    const profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
+    const hotfixBaseDir = PathUtils.join(profileDir, "noraneko-hotfixes");
+    const normalizedPath = PathUtils.normalize(patchedPath);
+    
+    // Ensure the path doesn't escape the hotfix directory (path traversal protection)
+    if (!normalizedPath.startsWith(hotfixBaseDir)) {
+      console.error(`[noraneko] Security: Patched module path is outside hotfix directory: ${patchedPath}`);
+      return null;
+    }
+
     // Convert file path to file:// URL for loading
-    const fileUrl = `file://${patchedPath}`;
+    const fileUrl = `file://${normalizedPath}`;
     const moduleExports = ChromeUtils.importESModule(fileUrl);
 
     const metadata =

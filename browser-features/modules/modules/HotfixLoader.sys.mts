@@ -21,7 +21,7 @@ import type {
   InstalledHotfix,
   SignerIdentity,
 } from "../common/hotfix-types.ts";
-import { HotfixStatus, VerificationStatus } from "../common/hotfix-types.ts";
+import { HotfixStatus } from "../common/hotfix-types.ts";
 import {
   HotfixSignatureVerifier,
   hotfixSignatureVerifier,
@@ -427,7 +427,10 @@ export class HotfixLoader {
     const { NoranekoConstants } = ChromeUtils.importESModule(
       "resource://noraneko/modules/NoranekoConstants.sys.mjs",
     );
-    const currentVersion = NoranekoConstants.version2 || "0.0.0";
+    // Handle null, undefined, and falsy values explicitly
+    const currentVersion = (NoranekoConstants?.version2 != null && NoranekoConstants.version2 !== "") 
+      ? String(NoranekoConstants.version2) 
+      : "0.0.0";
 
     return manifests.filter((manifest) => {
       // Check version compatibility
