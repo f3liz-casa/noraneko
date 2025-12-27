@@ -12,8 +12,10 @@
 
 import { assertEquals, assertNotEquals } from "@jsr/std__assert";
 import {
+  DEFAULT_AUTO_UPDATE_CONFIG,
   DEFAULT_TRUSTED_SIGNER_CONFIG,
   HotfixStatus,
+  UpdateChannel,
   VerificationStatus,
   type HotfixManifest,
   type SignerIdentity,
@@ -218,4 +220,46 @@ Deno.test("VersionComparison: should compare versions correctly", () => {
   assertEquals(compareVersions("1.1.0", "1.0.0"), 1);
   assertEquals(compareVersions("1.0.1", "1.0.0"), 1);
   assertEquals(compareVersions("1.0", "1.0.0"), 0);
+});
+
+// Tests for UpdateChannel
+
+Deno.test("UpdateChannel: should have correct channel values", () => {
+  assertEquals(UpdateChannel.NIGHTLY, "nightly");
+  assertEquals(UpdateChannel.BETA, "beta");
+  assertEquals(UpdateChannel.RELEASE, "release");
+  assertEquals(UpdateChannel.DEFAULT, "default");
+});
+
+// Tests for HotfixAutoUpdateConfig
+
+Deno.test("HotfixAutoUpdateConfig: should have default configuration", () => {
+  assertEquals(DEFAULT_AUTO_UPDATE_CONFIG.enabled, true);
+  assertEquals(DEFAULT_AUTO_UPDATE_CONFIG.checkInterval, 24 * 60 * 60 * 1000); // 24 hours
+  assertNotEquals(DEFAULT_AUTO_UPDATE_CONFIG.lastCheckTime, undefined);
+});
+
+Deno.test("HotfixAutoUpdateConfig: default check interval should be 24 hours", () => {
+  const expectedInterval = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+  assertEquals(DEFAULT_AUTO_UPDATE_CONFIG.checkInterval, expectedInterval);
+});
+
+// Tests for Channel Filtering
+
+Deno.test("HotfixManifest: should support targetChannels field", () => {
+  const manifest = createMockManifest({
+    targetChannels: [UpdateChannel.NIGHTLY, UpdateChannel.BETA],
+  });
+  
+  assertNotEquals(manifest.targetChannels, undefined);
+  assertEquals(manifest.targetChannels?.length, 2);
+  assertEquals(manifest.targetChannels?.includes(UpdateChannel.NIGHTLY), true);
+  assertEquals(manifest.targetChannels?.includes(UpdateChannel.BETA), true);
+});
+
+Deno.test("HotfixManifest: should apply to all channels when targetChannels is not specified", () => {
+  const manifest = createMockManifest();
+  
+  // When targetChannels is not specified, hotfix should apply to all channels
+  assertEquals(manifest.targetChannels, undefined);
 });
