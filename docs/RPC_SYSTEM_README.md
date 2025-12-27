@@ -142,7 +142,6 @@ The following modules use the EventDispatcher system:
 
 ### Type Definitions
 - `browser-features/chrome/common/event-dispatcher-interfaces.ts` - Type helpers
-- `browser-features/chrome/common/event-dispatcher-types.ts` - Type utilities
 - `browser-features/chrome/common/features-event-dispatcher.d.ts` - Global type declarations
 
 ### Tests
