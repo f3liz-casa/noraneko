@@ -25,7 +25,7 @@ Noraneko is a Firefox-based browser (testbed for Floorp 12) that extends Firefox
 │  │  └────────┬────────┘ └────────┬────────┘ └─────────────────┘      │ │
 │  └───────────│────────────────────│─────────────────────────────────────┘ │
 │              │                    │                                      │
-│              │    Event Dispatcher / RPC                                │
+│              │    Event Dispatcher                                       │
 │              ▼                    ▼                                      │
 │  ┌────────────────────────────────────────────────────────────────────┐ │
 │  │                         bridge/                                     │ │
@@ -34,7 +34,7 @@ Noraneko is a Firefox-based browser (testbed for Floorp 12) that extends Firefox
 │  │  │ (Entry Point)   │ │ (Feature Loader)│ │ (Module Loader) │      │ │
 │  │  │                 │ │                 │ │                 │      │ │
 │  │  │ • Boot Scripts  │ │ • Module Init   │ │ • Constants     │      │ │
-│  │  │ • Early Init    │ │ • RPC Registry  │ │ • System Mods   │      │ │
+│  │  │ • Early Init    │ │ • EventDispatch │ │ • System Mods   │      │ │
 │  │  │                 │ │ • Event System  │ │                 │      │ │
 │  │  └─────────────────┘ └─────────────────┘ └─────────────────┘      │ │
 │  └────────────────────────────────────────────────────────────────────┘ │
@@ -174,7 +174,7 @@ noraneko/
 
 **Key Components:**
 - **Module Loader** - Loads modules based on preferences
-- **RPC Registry** - Inter-module communication (birpc)
+- **EventDispatcher Registry** - Inter-module communication with Either error handling
 - **Event Dispatcher** - Event routing between modules
 - **Dependency Manager** - Handles module dependencies
 
@@ -210,30 +210,55 @@ See [BUILD_SYSTEM.md](./BUILD_SYSTEM.md) for detailed documentation.
 
 ## Module Communication
 
-Noraneko uses an **RPC-based system** for inter-module communication:
+Noraneko uses an **EventDispatcher-based system** for inter-module communication:
 
 ```typescript
-// Module A exposes methods
-_metadata() {
-  return {
-    moduleName: "my-module",
-    rpcMethods: {
-      getData: () => this.getData(),
-    },
-  };
+// Module A exposes methods with @eventMethod decorator
+import { component, eventMethod } from "#features-chrome/utils/base";
+
+@component({
+  moduleName: "my-module",
+  hot: import.meta.hot,
+})
+export default class MyModule {
+  @eventMethod
+  getData(): string {
+    return this.data;
+  }
 }
 
-// Module B calls methods
-import { getSoftModuleProxy } from "#bridge-loader-features/loader/modules-hooks.ts";
+// Module B calls methods via this.events
+import { component } from "#features-chrome/utils/base";
+import type { EventDispatcherDependencies } from "../event-dispatcher-interfaces.ts";
+import * as E from "fp-ts/Either";
+import { pipe } from "fp-ts/function";
 
-const proxy = getSoftModuleProxy<MyModuleRPC>("my-module");
-const data = await proxy.getData();
+@component({
+  moduleName: "other-module",
+  softDependencies: ["my-module"],
+  hot: import.meta.hot,
+})
+export default class OtherModule {
+  protected events!: EventDispatcherDependencies<["my-module"]>;
+
+  async init() {
+    const result = await this.events["my-module"].getData();
+    pipe(
+      result,
+      E.fold(
+        (error) => console.error("Failed:", error),
+        (data) => console.log("Got data:", data)
+      )
+    );
+  }
+}
 ```
 
 **Benefits:**
 - No direct imports between modules
 - Graceful handling of missing modules
 - Clear API boundaries
+- Type-safe error handling with Either
 
 See [RPC_SYSTEM_README.md](./RPC_SYSTEM_README.md) for details.
 
@@ -289,10 +314,10 @@ Noraneko integrates with Firefox through:
 | UI Framework | Solid.js |
 | XUL Binding | solid-xul |
 | Type System | TypeScript |
-| RPC | birpc |
+| Inter-module Communication | EventDispatcher with fp-ts Either |
 | Styling | CSS, Tailwind CSS |
 | Runtime | Firefox/Gecko |
-| Package Manager | pnpm (Node), Deno |
+| Package Manager | Deno |
 
 ## Key Concepts
 
@@ -303,7 +328,7 @@ Noraneko uses Firefox's artifact build system - a prebuilt binary is downloaded 
 Firefox uses `chrome.manifest` files to register content at chrome:// URLs. Noraneko creates its own manifest during build.
 
 ### Hot Module Replacement (HMR)
-During development, Vite provides HMR for instant updates without browser restart. The `@noraComponent` decorator enables HMR for module classes.
+During development, Vite provides HMR for instant updates without browser restart. The `@component` decorator enables HMR for module classes.
 
 ### Soft Dependencies
 Modules can declare soft dependencies that are optional. If a soft dependency isn't loaded, the module continues to work with degraded functionality.
@@ -311,6 +336,6 @@ Modules can declare soft dependencies that are optional. If a soft dependency is
 ## Further Reading
 
 - [BUILD_SYSTEM.md](./BUILD_SYSTEM.md) - Detailed build system documentation
-- [RPC_SYSTEM_README.md](./RPC_SYSTEM_README.md) - Inter-module RPC system
-- [RPC_MIGRATION_GUIDE.md](./RPC_MIGRATION_GUIDE.md) - Migrating to RPC
+- [RPC_SYSTEM_README.md](./RPC_SYSTEM_README.md) - Inter-module EventDispatcher system
+- [RPC_MIGRATION_GUIDE.md](./RPC_MIGRATION_GUIDE.md) - Migration guide for EventDispatcher
 - [SHARED_CODE_STRUCTURE.md](./SHARED_CODE_STRUCTURE.md) - Shared code organization

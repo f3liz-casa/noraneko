@@ -8,15 +8,13 @@ When build, placed on noraneko/content
 
 This component handles almost all of Noraneko's core code.
 
-If you are to make feature modifying preferences, or other internal html, go to
-`root/apps/main/about/`.
-
 ## Directory Structure
 
 common/
 
 - main codes
 - supports hot reload
+- **common/tmp/** - Non-migrated modules from 0.2.0 migration (not loaded as features)
 
 static/
 
@@ -35,3 +33,8 @@ utils/
 example/
 
 - as test and template for basic codes
+
+experiment/
+
+- Experimental/temporary code not ready for production
+- Contains prototypes and work-in-progress features
