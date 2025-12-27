@@ -70,12 +70,12 @@ export class HotfixLoader {
       // Try to get the update channel from AppConstants
       const { AppConstants } = ChromeUtils.importESModule(
         "resource://gre/modules/AppConstants.sys.mjs",
-      );
-      
+      ) as { AppConstants: { MOZ_UPDATE_CHANNEL?: string } };
+
       // AppConstants.MOZ_UPDATE_CHANNEL contains the channel string
-      const channel = (AppConstants as any).MOZ_UPDATE_CHANNEL || "default";
-      const channelLower = channel.toLowerCase();
-      
+      const channel = AppConstants.MOZ_UPDATE_CHANNEL || "default";
+      const channelLower = String(channel).toLowerCase();
+
       if (channelLower.includes("nightly")) {
         return UpdateChannel.NIGHTLY;
       } else if (channelLower.includes("beta")) {
@@ -83,7 +83,7 @@ export class HotfixLoader {
       } else if (channelLower.includes("release")) {
         return UpdateChannel.RELEASE;
       }
-      
+
       return UpdateChannel.DEFAULT;
     } catch (error) {
       console.warn("[HotfixLoader] Failed to detect update channel:", error);
