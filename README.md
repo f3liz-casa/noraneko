@@ -55,7 +55,7 @@ For developers and contributors, see the following documentation:
 |----------|-------------|
 | [Architecture](docs/ARCHITECTURE.md) | High-level architecture overview |
 | [Build System](docs/BUILD_SYSTEM.md) | Build system and tooling documentation |
-| [RPC System](docs/RPC_SYSTEM_README.md) | Inter-module communication system |
+| [Event Dispatcher](docs/RPC_SYSTEM_README.md) | Inter-module communication system |
 | [Shared Code](docs/SHARED_CODE_STRUCTURE.md) | Shared code organization |
 | [Questions](docs/QUESTIONS.md) | Open questions for contributors |
 

@@ -28,7 +28,6 @@
     "tools/build/tasks/inject/wasm/nora-inject.js",
     "**/_dist/**/*",
     "libs/@types/gecko/**/*",
-    "libs/user-js-runner/**/*",
     "tools/build/tasks/inject/mixins/**/*",
     "chrome/**/*",
     "modules/**/*",

@@ -1,41 +1,48 @@
-# RPC-Based Module Communication System
+# EventDispatcher-Based Module Communication System
 
 ## What Changed
 
-This update replaces direct module dependencies (imports, `Services.obs`, global variables) with an RPC (Remote Procedure Call) based communication system using birpc.
+This system replaces direct module dependencies (imports, `Services.obs`, global variables) with an EventDispatcher-based communication system using fp-ts Either for error handling.
 
 ## Key Benefits
 
 1. **Loose Coupling:** Modules no longer directly import each other
 2. **Graceful Degradation:** Modules continue to work even if dependencies are missing
-3. **No Circular Dependencies:** RPC prevents circular dependency issues
+3. **No Circular Dependencies:** EventDispatcher prevents circular dependency issues
 4. **Better Testability:** Modules can be tested in isolation
 5. **Cleaner Architecture:** Clear separation between modules
+6. **Type-Safe Error Handling:** Either pattern for explicit error handling
 
 ## Architecture Overview
 
-### RPC Registry (`bridge/loader-features/loader/rpc-registry.ts`)
+### EventDispatcher Registry (`bridge/loader-features/loader/event-dispatcher-registry.ts`)
 
 The central registry that:
-- Manages all module RPC interfaces
+- Manages all module event interfaces
 - Routes calls between modules
 - Handles missing/unloaded modules gracefully
-- Supports timeouts and error handling
+- Wraps all methods with Either for error safety
 
-### Module Metadata
+### Module Configuration
 
-Each module defines its RPC interface in `_metadata()`:
+Each module is configured via the `@component` decorator:
 
 ```typescript
-_metadata() {
-  return {
-    moduleName: "my-module",
-    dependencies: [],        // Hard dependencies
-    softDependencies: [],    // Optional dependencies
-    rpcMethods: {            // Methods callable by other modules
-      myMethod: (arg) => this.myMethod(arg),
-    },
-  };
+import { component, eventMethod } from "#features-chrome/utils/base";
+
+@component({
+  moduleName: "my-module",
+  dependencies: [],        // Hard dependencies
+  softDependencies: [],    // Optional dependencies
+  hot: import.meta.hot,
+})
+export default class MyModule {
+  protected events!: EventDispatcherDependencies<[...]>;
+
+  @eventMethod
+  myMethod(arg: string): string {
+    return `Hello ${arg}`;
+  }
 }
 ```
 
@@ -43,54 +50,71 @@ _metadata() {
 
 The loader (`bridge/loader-features/loader/index.ts`):
 1. Loads all enabled modules
-2. Registers RPC methods before initialization
+2. Registers event methods after initialization
 3. Initializes modules in dependency order
 4. Handles module failures gracefully
 
-## How to Use RPC
+## How to Use EventDispatcher
 
-### Calling RPC Methods
+### Calling Event Methods
 
 ```typescript
-import {
-  callModuleRPC,      // Throws if module not found
-  tryCallModuleRPC,   // Returns undefined if module not found
-  getModuleProxy,     // Proxy that throws on error
-  getSoftModuleProxy, // Proxy that returns undefined on error
-} from "#bridge-loader-features/loader/modules-hooks.ts";
+import { component } from "#features-chrome/utils/base";
+import type { EventDispatcherDependencies } from "../event-dispatcher-interfaces.ts";
+import * as E from "fp-ts/Either";
+import { pipe } from "fp-ts/function";
 
-// Option 1: Direct call
-const result = await callModuleRPC("target-module", "getData");
+@component({
+  moduleName: "caller-module",
+  softDependencies: ["target-module"],
+  hot: import.meta.hot,
+})
+export default class CallerModule {
+  protected events!: EventDispatcherDependencies<["target-module"]>;
 
-// Option 2: Soft call (recommended for soft dependencies)
-const result = await tryCallModuleRPC("target-module", "getData");
+  async init() {
+    const result = await this.events["target-module"].getData();
 
-// Option 3: Proxy (type-safe)
-interface TargetModuleRPC {
-  getData(): Promise<string>;
+    pipe(
+      result,
+      E.fold(
+        (error) => console.error("Failed:", error),
+        (data) => console.log("Got data:", data)
+      )
+    );
+  }
 }
-const proxy = getSoftModuleProxy<TargetModuleRPC>("target-module");
-const result = await proxy.getData();
 ```
 
-### Exposing RPC Methods
+### Exposing Event Methods
 
 ```typescript
-export default class MyModule extends NoraComponentBase {
+import { component, eventMethod } from "#features-chrome/utils/base";
+
+@component({
+  moduleName: "my-module",
+  hot: import.meta.hot,
+})
+export default class MyModule {
   private myData = "test";
 
-  private getData(): string {
+  @eventMethod
+  getData(): string {
     return this.myData;
   }
 
-  _metadata() {
-    return {
-      moduleName: "my-module",
-      dependencies: [],
-      softDependencies: [],
-      rpcMethods: {
-        getData: () => this.getData(),
-      },
+  @eventMethod
+  setData(value: string): void {
+    this.myData = value;
+  }
+}
+
+// Register interface globally
+declare global {
+  interface FeatureModuleEventMethods {
+    "my-module": {
+      getData(): string;
+      setData(value: string): void;
     };
   }
 }
@@ -98,47 +122,41 @@ export default class MyModule extends NoraComponentBase {
 
 ## Migrated Modules
 
-The following modules have been updated to use RPC:
-
-- **sidebar-addon-panel** (`browser-features/chrome/common/sidebar-addon-panel/`)
-  - Now uses RPC to communicate with sidebar module
-  - Uses custom DOM events instead of Services.obs for UI updates
-  - Gracefully handles missing sidebar module
+The following modules use the EventDispatcher system:
 
 - **sidebar** (`browser-features/chrome/common/sidebar/`)
-  - Exposes RPC methods for icon registration
-  - Uses RPC to communicate with sidebar-addon-panel
-  - Uses custom DOM events instead of Services.obs
+  - Exposes event methods for icon registration
+  - Uses `@eventMethod` decorator for exposed methods
+  - Provides type-safe interface via declaration merging
 
-## Files Added/Modified
+- **sidebar-addon-panel** (`browser-features/chrome/common/sidebar-addon-panel/`)
+  - Uses `this.events` to communicate with sidebar module
+  - Uses Either pattern for error handling
+  - Gracefully handles missing sidebar module
 
-### New Files
-- `bridge/loader-features/loader/rpc-registry.ts` - RPC registry implementation
-- `browser-features/chrome/example/rpc-communication-demo.ts` - Example usage
-- `browser-features/chrome/test/unit/rpc-registry.test.ts` - Unit tests
-- `docs/RPC_MIGRATION_GUIDE.md` - Comprehensive migration guide
+## Key Files
 
-### Modified Files
-- `bridge/loader-features/loader/index.ts` - Integrated RPC registration
-- `bridge/loader-features/loader/modules-hooks.ts` - Added RPC exports
-- `bridge/loader-features/deno.json` - Added birpc dependency
-- `browser-features/chrome/deno.json` - Added birpc dependency
-- `browser-features/chrome/common/sidebar-addon-panel/index.ts` - RPC version
-- `browser-features/chrome/common/sidebar/index.ts` - RPC version
+### Implementation
+- `bridge/loader-features/loader/event-dispatcher-registry.ts` - EventDispatcher registry
+- `browser-features/chrome/utils/base.ts` - `@component` and `@eventMethod` decorators
 
-### Backup Files
-- `browser-features/chrome/common/sidebar-addon-panel/index-old.ts.bak` - Original
-- `browser-features/chrome/common/sidebar/index-old.ts.bak` - Original
+### Type Definitions
+- `browser-features/chrome/common/event-dispatcher-interfaces.ts` - Type helpers
+- `browser-features/chrome/common/event-dispatcher-types.ts` - Type utilities
+- `browser-features/chrome/common/features-event-dispatcher.d.ts` - Global type declarations
+
+### Tests
+- `browser-features/chrome/test/unit/event-dispatcher-registry.test.ts` - Unit tests
 
 ## Migration Path for Other Modules
 
-To migrate a module to use RPC:
+To migrate a module to use EventDispatcher:
 
 1. Read the migration guide: `docs/RPC_MIGRATION_GUIDE.md`
-2. Define RPC methods in `_metadata().rpcMethods`
-3. Replace direct imports with `getSoftModuleProxy` or `getModuleProxy`
-4. Replace `Services.obs` with RPC calls or custom DOM events
-5. Add error handling for missing dependencies
+2. Add `@eventMethod` decorator to methods you want to expose
+3. Declare interface in `FeatureModuleEventMethods`
+4. Use `this.events` to call methods on other modules
+5. Handle Either results with `E.fold`
 6. Test the module works independently
 
 ## Services.obs Usage Note
@@ -148,38 +166,29 @@ To migrate a module to use RPC:
 - **Non-module communication** (e.g., browser lifecycle events) - This is fine
 
 `Services.obs` should NOT be used for:
-- **Module-to-module communication** - Use RPC instead
-- **Passing data between modules** - Use RPC instead
+- **Module-to-module communication** - Use EventDispatcher instead
+- **Passing data between modules** - Use EventDispatcher instead
 
 ## Testing
 
 Run tests with:
 ```bash
-deno test browser-features/chrome/test/unit/rpc-registry.test.ts
+deno test browser-features/chrome/test/unit/event-dispatcher-registry.test.ts
 ```
-
-Note: Some tests may show type errors from gecko types - this is expected and doesn't affect functionality.
 
 ## Backwards Compatibility
 
-The RPC system is backwards compatible:
-- Modules without `rpcMethods` still work
+The EventDispatcher system is backwards compatible:
+- Modules without `@eventMethod` methods still work
 - Existing metadata format is preserved
-- Old modules can coexist with new RPC-based modules
-
-## Future Work
-
-- Migrate remaining modules to use RPC
-- Remove all inter-module `Services.obs` usage
-- Add performance monitoring for RPC calls
-- Create development tools for RPC debugging
+- Old modules can coexist with new EventDispatcher-based modules
 
 ## Documentation
 
 - **Migration Guide:** `docs/RPC_MIGRATION_GUIDE.md`
-- **Examples:** `browser-features/chrome/example/rpc-communication-demo.ts`
-- **Tests:** `browser-features/chrome/test/unit/rpc-registry.test.ts`
-- **Implementation:** `bridge/loader-features/loader/rpc-registry.ts`
+- **Examples:** `browser-features/chrome/common/sidebar/index.ts`
+- **Tests:** `browser-features/chrome/test/unit/event-dispatcher-registry.test.ts`
+- **Implementation:** `bridge/loader-features/loader/event-dispatcher-registry.ts`
 
 ## Questions?
 

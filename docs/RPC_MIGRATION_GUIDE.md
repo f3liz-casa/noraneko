@@ -1,49 +1,43 @@
-# Module RPC Communication System - Migration Guide
+# Module EventDispatcher Communication System - Migration Guide
 
 ## Overview
 
-This guide explains how to migrate modules from using direct dependencies (imports, `Services.obs`, global variables) to using the RPC (Remote Procedure Call) registry for inter-module communication.
+This guide explains how to migrate modules from using direct dependencies (imports, `Services.obs`, global variables) to using the EventDispatcher registry for inter-module communication.
 
-## NEW: Type-Safe this.rpc Pattern (Recommended)
+## Type-Safe this.events Pattern (Current)
 
-The recommended way to use RPC is via the type-safe `this.rpc` pattern in NoraComponentBase:
+The recommended way to use EventDispatcher is via the type-safe `this.events` pattern:
 
 ```typescript
-import { noraComponent, NoraComponentBase } from "#features-chrome/utils/base";
-import type { RPCDependencies } from "../rpc-interfaces.ts";
+import { component } from "#features-chrome/utils/base";
+import type { EventDispatcherDependencies } from "../event-dispatcher-interfaces.ts";
 
-@noraComponent(import.meta.hot)
-export default class MyModule extends NoraComponentBase {
-  // Declare type-safe RPC access to dependencies
-  protected rpc!: RPCDependencies<["sidebar", "other-module"]>;
+@component({
+  moduleName: "my-module",
+  softDependencies: ["sidebar", "other-module"],
+  hot: import.meta.hot,
+})
+export default class MyModule {
+  // Type-safe EventDispatcher access to dependencies
+  protected events!: EventDispatcherDependencies<["sidebar", "other-module"]>;
 
   init() {
-    // Call RPC methods with full IDE autocomplete support!
-    await this.rpc.sidebar.registerSidebarIcon({...});
+    // Call event methods with full IDE autocomplete support!
+    await this.events.sidebar.registerSidebarIcon({...});
     
-    // Returns undefined if module not loaded (soft dependency)
-    const result = await this.rpc["other-module"].getData();
-  }
-
-  _metadata() {
-    return {
-      moduleName: "my-module",
-      dependencies: [],
-      softDependencies: ["sidebar", "other-module"],
-      rpcMethods: {
-        myMethod: (arg: string) => this.myMethod(arg),
-      },
-    };
+    // Returns Either<Error, T | undefined> for soft dependencies
+    const result = await this.events["other-module"].getData();
   }
 }
 ```
 
 **Benefits:**
-- ✅ Clean syntax: `this.rpc.sidebar.method()`
+- ✅ Clean syntax: `this.events.sidebar.method()`
 - ✅ IDE autocomplete works automatically
 - ✅ Type-safe based on module interfaces
 - ✅ No manual proxy creation needed
 - ✅ Consistent pattern across all modules
+- ✅ Either-based error handling
 
 ## Why Migrate?
 
@@ -55,7 +49,7 @@ export default class MyModule extends NoraComponentBase {
 - Hard to test modules in isolation
 
 **After (Benefits):**
-- Modules communicate via RPC without direct imports
+- Modules communicate via EventDispatcher without direct imports
 - Graceful degradation when dependencies are missing
 - No circular dependencies
 - Easy to test modules independently
@@ -63,57 +57,57 @@ export default class MyModule extends NoraComponentBase {
 
 ## Key Concepts
 
-### 1. RPC Registry
+### 1. EventDispatcher Registry
 
-The RPC registry is a centralized system that:
+The EventDispatcher registry is a centralized system that:
 - Manages module communication
-- Routes RPC calls between modules
+- Routes event calls between modules
 - Handles missing/unloaded modules gracefully
 - Supports both hard and soft dependencies
 
-### 2. Module Metadata
+### 2. Module Configuration
 
-Each module defines its RPC interface in the `_metadata()` method:
+Each module is configured via the `@component` decorator:
 
 ```typescript
-_metadata() {
-  return {
-    moduleName: "my-module",
-    dependencies: [],           // Hard dependencies (must be loaded)
-    softDependencies: [],       // Soft dependencies (optional)
-    rpcMethods: {               // Methods other modules can call
-      myMethod: (arg: string) => this.myMethod(arg),
-    },
-  };
+@component({
+  moduleName: "my-module",
+  dependencies: [],           // Hard dependencies (must be loaded)
+  softDependencies: [],       // Soft dependencies (optional)
+  hot: import.meta.hot,
+})
+export default class MyModule {
+  protected events!: EventDispatcherDependencies<[...]>;
+  // ...
 }
 ```
 
-### 3. RPC Methods vs Regular Methods
+### 3. Event Methods vs Regular Methods
 
-**RPC Methods:** Exposed to other modules via `rpcMethods` in metadata
+**Event Methods:** Exposed to other modules via `@eventMethod` decorator
 **Regular Methods:** Private to the module, not accessible externally
 
 ## Migration Steps
 
-### Step 1: Add RPC Interface (if needed)
+### Step 1: Add Event Interface (if needed)
 
-First, if your dependency module doesn't have an RPC interface defined, add it to `common/rpc-interfaces.ts`:
+First, if your dependency module doesn't have an event interface defined, add it to its module file with declaration merging:
 
 ```typescript
-export interface MyModuleRPC {
-  doSomething(): Promise<void>;
-  getData(): Promise<string>;
+export interface MyModuleEventDispatcher {
+  doSomething(): void;
+  getData(): string;
 }
 
-// Add to ModuleRPCInterfaces mapping
-export interface ModuleRPCInterfaces {
-  "my-module": MyModuleRPC;
-  "sidebar": SidebarRPC;
-  // ... other modules
+// Register globally
+declare global {
+  interface FeatureModuleEventMethods {
+    "my-module": MyModuleEventDispatcher;
+  }
 }
 ```
 
-### Step 2: Use this.rpc Pattern (NEW - Recommended)
+### Step 2: Use this.events Pattern
 
 **Before:**
 ```typescript
@@ -129,24 +123,20 @@ class MyModule {
 
 **After:**
 ```typescript
-import { noraComponent, NoraComponentBase } from "#features-chrome/utils/base";
-import type { RPCDependencies } from "../rpc-interfaces.ts";
+import { component } from "#features-chrome/utils/base";
+import type { EventDispatcherDependencies } from "../event-dispatcher-interfaces.ts";
 
-@noraComponent(import.meta.hot)
-export default class MyModule extends NoraComponentBase {
-  protected rpc!: RPCDependencies<["other-module"]>;
+@component({
+  moduleName: "my-module",
+  softDependencies: ["other-module"],
+  hot: import.meta.hot,
+})
+export default class MyModule {
+  protected events!: EventDispatcherDependencies<["other-module"]>;
 
   init() {
-    // Clean, type-safe RPC call with IDE autocomplete!
-    await this.rpc["other-module"].doSomething();
-  }
-
-  _metadata() {
-    return {
-      moduleName: "my-module",
-      dependencies: [],
-      softDependencies: ["other-module"],
-    };
+    // Clean, type-safe EventDispatcher call with IDE autocomplete!
+    await this.events["other-module"].doSomething();
   }
 }
 ```
@@ -170,8 +160,8 @@ Services.obs.addObserver(observer, "my-custom-topic", false);
 
 **After:**
 ```typescript
-// Use RPC calls instead
-await this.rpc["target-module"].handleData("hello");
+// Use EventDispatcher calls instead
+await this.events["target-module"].handleData("hello");
 
 // Or for broadcasting events, use DOM custom events
 const event = new CustomEvent("my-custom-event", {
@@ -180,100 +170,98 @@ const event = new CustomEvent("my-custom-event", {
 document.dispatchEvent(event);
 ```
 
-### Step 4: Define RPC Methods in Metadata
+### Step 4: Define Event Methods with @eventMethod Decorator
 
-Add RPC methods to your module's metadata:
+Add event methods using the `@eventMethod` decorator:
 
 ```typescript
-_metadata() {
-  return {
-    moduleName: "my-module",
-    dependencies: [],
-    softDependencies: ["other-module"],
-    rpcMethods: {
-      // Expose methods that other modules can call
-      handleData: (data: string) => this.handleData(data),
-      getData: () => this.getData(),
-      performAction: (action: string) => this.performAction(action),
-    },
-  };
-}
+import { component, eventMethod } from "#features-chrome/utils/base";
 
-// Private methods (called via RPC)
-private handleData(data: string): void {
-  console.log("Handling data:", data);
-}
+@component({
+  moduleName: "my-module",
+  softDependencies: ["other-module"],
+  hot: import.meta.hot,
+})
+export default class MyModule {
+  protected events!: EventDispatcherDependencies<["other-module"]>;
 
-private getData(): string {
-  return this.internalData;
-}
+  // Event methods exposed to other modules
+  @eventMethod
+  handleData(data: string): void {
+    console.log("Handling data:", data);
+  }
 
-private async performAction(action: string): Promise<string> {
-  // Perform action
-  return `Completed: ${action}`;
+  @eventMethod
+  getData(): string {
+    return this.internalData;
+  }
+
+  @eventMethod
+  async performAction(action: string): Promise<string> {
+    // Perform action
+    return `Completed: ${action}`;
+  }
+
+  // Regular private methods (NOT exposed to other modules)
+  private internalData = "test";
 }
 ```
 
-### Step 4: Call RPC Methods
+### Step 5: Call Event Methods
 
-There are several ways to call RPC methods:
+Use `this.events` to call methods on other modules:
 
-#### Option 1: Direct Call (throws on error)
 ```typescript
-import { callModuleRPC } from "#bridge-loader-features/loader/modules-hooks.ts";
+import { component } from "#features-chrome/utils/base";
+import type { EventDispatcherDependencies } from "../event-dispatcher-interfaces.ts";
+import * as E from "fp-ts/Either";
+import { pipe } from "fp-ts/function";
 
-const result = await callModuleRPC<string>("target-module", "getData");
-```
+@component({
+  moduleName: "caller-module",
+  softDependencies: ["target-module"],
+  hot: import.meta.hot,
+})
+export default class CallerModule {
+  protected events!: EventDispatcherDependencies<["target-module"]>;
 
-#### Option 2: Soft Call (returns undefined on error)
-```typescript
-import { tryCallModuleRPC } from "#bridge-loader-features/loader/modules-hooks.ts";
+  async init() {
+    // Call event method - returns Either<Error, T | undefined>
+    const result = await this.events["target-module"].getData();
 
-const result = await tryCallModuleRPC<string>("target-module", "getData");
-if (result) {
-  console.log("Got result:", result);
-} else {
-  console.log("Module not available, continuing without it");
+    // Handle the Either result
+    pipe(
+      result,
+      E.fold(
+        (error) => console.error("Failed:", error),
+        (data) => {
+          if (data === undefined) {
+            console.log("Module not available");
+          } else {
+            console.log("Got data:", data);
+          }
+        }
+      )
+    );
+  }
 }
-```
-
-#### Option 3: Proxy (cleaner syntax)
-```typescript
-import { getModuleProxy } from "#bridge-loader-features/loader/modules-hooks.ts";
-
-interface TargetModuleRPC {
-  getData(): Promise<string>;
-  performAction(action: string): Promise<string>;
-}
-
-const proxy = getModuleProxy<TargetModuleRPC>("target-module");
-const result = await proxy.getData();
-```
-
-#### Option 4: Soft Proxy (best for soft dependencies)
-```typescript
-import { getSoftModuleProxy } from "#bridge-loader-features/loader/modules-hooks.ts";
-
-const proxy = getSoftModuleProxy<TargetModuleRPC>("target-module");
-const result = await proxy.getData(); // Returns undefined if module not loaded
 ```
 
 ## Best Practices
 
-1. **Use Soft Dependencies:** For optional features, use `softDependencies` and `getSoftModuleProxy`
-2. **Define Clear Interfaces:** Create TypeScript interfaces for RPC methods
-3. **Handle Missing Modules:** Always check if RPC calls succeed before proceeding
-4. **Avoid Services.obs:** Use RPC for module communication, custom events for broadcasting
-5. **Keep RPC Methods Simple:** RPC methods should be straightforward and well-documented
+1. **Use Soft Dependencies:** For optional features, use `softDependencies`
+2. **Define Clear Interfaces:** Create TypeScript interfaces for event methods
+3. **Handle Either Results:** Always handle both success and error cases with `E.fold`
+4. **Avoid Services.obs:** Use EventDispatcher for module communication, custom events for broadcasting
+5. **Keep Event Methods Simple:** Event methods should be straightforward and well-documented
 6. **Don't Mix Patterns:** Don't use both old and new patterns in the same module
 
 ## Examples
 
 See the following files for complete examples:
-- `browser-features/chrome/example/rpc-communication-demo.ts` - Complete examples
-- `browser-features/chrome/common/sidebar-addon-panel/index-rpc.ts` - Real-world example
-- `browser-features/chrome/common/sidebar/index-rpc.ts` - Real-world example
-- `browser-features/chrome/test/unit/rpc-registry.test.ts` - Test examples
+- `browser-features/chrome/common/sidebar-addon-panel/index.ts` - Real-world example
+- `browser-features/chrome/common/sidebar/index.ts` - Real-world example
+- `browser-features/chrome/test/unit/event-dispatcher-registry.test.ts` - Test examples
 
 ## Migration Checklist
 
@@ -281,11 +269,11 @@ See the following files for complete examples:
 - [ ] Identify all `Services.obs.addObserver` calls
 - [ ] Identify all direct module imports
 - [ ] Identify all global variable usage for module communication
-- [ ] Define RPC interfaces for all modules
-- [ ] Implement `rpcMethods` in `_metadata()`
-- [ ] Replace direct calls with RPC calls
-- [ ] Replace Services.obs with RPC or custom events
-- [ ] Add soft dependency handling
+- [ ] Define event interfaces for all modules
+- [ ] Add `@eventMethod` decorator to exposed methods
+- [ ] Replace direct calls with `this.events` calls
+- [ ] Replace Services.obs with EventDispatcher or custom events
+- [ ] Add soft dependency handling with Either
 - [ ] Test modules work independently
 - [ ] Test modules work when dependencies are missing
 - [ ] Update documentation
