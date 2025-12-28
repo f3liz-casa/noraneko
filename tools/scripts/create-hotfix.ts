@@ -160,6 +160,9 @@ async function gatherHotfixConfig(): Promise<HotfixConfig> {
   };
 }
 
+// Directories to exclude from recursive search
+const EXCLUDED_DIRS = [".git", "node_modules", ".deno", "_dist", "dist"];
+
 /**
  * Recursively search for a file in a directory
  */
@@ -175,7 +178,7 @@ async function findFileRecursive(
         return fullPath;
       }
       
-      if (entry.isDirectory && !entry.name.startsWith(".") && entry.name !== "node_modules") {
+      if (entry.isDirectory && !EXCLUDED_DIRS.includes(entry.name) && !entry.name.startsWith(".")) {
         const found = await findFileRecursive(fullPath, fileName);
         if (found) {
           return found;
@@ -227,7 +230,6 @@ async function copyModuleFiles(
         join(repoRoot, "browser-features", "chrome", "utils"),
         join(repoRoot, "browser-features", "chrome", "common"),
         join(repoRoot, "browser-features", "chrome", "experiment"),
-        join(repoRoot, "browser-features", "chrome"),
       ];
       
       for (const searchDir of chromeSearchDirs) {
@@ -242,6 +244,19 @@ async function copyModuleFiles(
             }
           }
           if (sourceFile) break;
+        }
+      }
+      
+      // If still not found, try the chrome root directory for top-level files
+      if (!sourceFile) {
+        const chromeRoot = join(repoRoot, "browser-features", "chrome");
+        const extensions = [".ts", ".tsx", ".mts"];
+        for (const ext of extensions) {
+          const topLevelFile = join(chromeRoot, `${moduleName}${ext}`);
+          if (await exists(topLevelFile)) {
+            sourceFile = topLevelFile;
+            break;
+          }
         }
       }
     }
