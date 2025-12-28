@@ -161,6 +161,34 @@ async function gatherHotfixConfig(): Promise<HotfixConfig> {
 }
 
 /**
+ * Recursively search for a file in a directory
+ */
+async function findFileRecursive(
+  dir: string,
+  fileName: string,
+): Promise<string | null> {
+  try {
+    for await (const entry of Deno.readDir(dir)) {
+      const fullPath = join(dir, entry.name);
+      
+      if (entry.isFile && entry.name === fileName) {
+        return fullPath;
+      }
+      
+      if (entry.isDirectory && !entry.name.startsWith(".") && entry.name !== "node_modules") {
+        const found = await findFileRecursive(fullPath, fileName);
+        if (found) {
+          return found;
+        }
+      }
+    }
+  } catch {
+    // Directory might not exist or not accessible
+  }
+  return null;
+}
+
+/**
  * Copy module files to hotfixes/source/patches/
  */
 async function copyModuleFiles(
@@ -177,11 +205,14 @@ async function copyModuleFiles(
     const possiblePaths = [
       join(repoRoot, "browser-features", "modules", "modules", `${moduleName}.sys.mts`),
       join(repoRoot, "browser-features", "modules", "actors", `${moduleName}.sys.mts`),
+      join(repoRoot, "bridge", "loader-features", "loader", `${moduleName}.ts`),
       join(repoRoot, "bridge", "loader-features", `${moduleName}.ts`),
       join(repoRoot, "bridge", "loader-modules", `${moduleName}.ts`),
     ];
 
     let sourceFile: string | null = null;
+    
+    // First try exact paths
     for (const path of possiblePaths) {
       if (await exists(path)) {
         sourceFile = path;
@@ -189,20 +220,49 @@ async function copyModuleFiles(
       }
     }
 
+    // If not found, search in browser-features/chrome subdirectories
+    if (!sourceFile) {
+      const chromeSearchDirs = [
+        join(repoRoot, "browser-features", "chrome", "static"),
+        join(repoRoot, "browser-features", "chrome", "utils"),
+        join(repoRoot, "browser-features", "chrome", "common"),
+        join(repoRoot, "browser-features", "chrome", "experiment"),
+        join(repoRoot, "browser-features", "chrome"),
+      ];
+      
+      for (const searchDir of chromeSearchDirs) {
+        if (await exists(searchDir)) {
+          // Search for .ts, .tsx, or .mts files recursively
+          const extensions = [".ts", ".tsx", ".mts"];
+          for (const ext of extensions) {
+            const foundFile = await findFileRecursive(searchDir, `${moduleName}${ext}`);
+            if (foundFile) {
+              sourceFile = foundFile;
+              break;
+            }
+          }
+          if (sourceFile) break;
+        }
+      }
+    }
+
     if (!sourceFile) {
       console.error(`❌ Module file not found for: ${moduleName}`);
       console.error(`   Searched in: ${possiblePaths.join(", ")}`);
+      console.error(`   Also searched browser-features/chrome subdirectories`);
       throw new Error(`Module file not found: ${moduleName}`);
     }
 
     // Determine target file extension
-    // .sys.mts files become .sys.mjs, .mts files become .mjs, .ts files become .js
+    // .sys.mts files become .sys.mjs, .mts files become .mjs, .ts/.tsx files become .js/.jsx
     let targetExt: string;
     
     if (sourceFile.endsWith(".sys.mts")) {
       targetExt = ".sys.mjs";
     } else if (sourceFile.endsWith(".mts")) {
       targetExt = ".mjs";
+    } else if (sourceFile.endsWith(".tsx")) {
+      targetExt = ".jsx";
     } else if (sourceFile.endsWith(".ts")) {
       targetExt = ".js";
     } else {

@@ -31,9 +31,16 @@ deno task hotfix:create
 
 The tool will:
 1. Prompt you for hotfix details (ID, version, description, modules)
-2. Copy module files to `hotfixes/source/patches/`
-3. Calculate SHA-256 hashes for patch files
-4. Generate a template manifest and README with instructions
+2. Auto-detect module files from multiple locations:
+   - `browser-features/modules/modules/` (system modules)
+   - `browser-features/modules/actors/` (actor modules)
+   - `browser-features/chrome/` (UI components, utilities, static features)
+   - `bridge/loader-features/loader/` (loader features)
+3. Copy module files to `hotfixes/source/patches/`
+4. Calculate SHA-256 hashes for patch files
+5. Generate a template manifest and README with instructions
+
+The tool supports various file types including `.ts`, `.tsx`, `.mts`, and `.sys.mts` files.
 
 You can also use non-interactive mode:
 
