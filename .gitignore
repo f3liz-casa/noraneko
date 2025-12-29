@@ -15,3 +15,9 @@ target/
 logs/
 .serena/
 vendor/
+
+# Hotfix source files (except .gitkeep)
+hotfixes/source/*
+!hotfixes/source/patches/
+hotfixes/source/patches/*
+!hotfixes/source/patches/.gitkeep

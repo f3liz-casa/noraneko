@@ -12,6 +12,9 @@
  * - Verification is based on OIDC identity (GitHub Actions)
  * - All signatures are recorded in Rekor transparency log
  * - Only official repository workflows can sign valid hotfixes
+ *
+ * This implementation uses @freedomofpress/sigstore-browser for robust
+ * Sigstore verification with TUF-based trusted root management.
  */
 
 import type {
@@ -26,18 +29,48 @@ import {
   VerificationStatus,
 } from "../common/hotfix-types.ts";
 
-// Rekor transparency log public instance
-const REKOR_PUBLIC_URL = "https://rekor.sigstore.dev";
+// Import SigstoreVerifier from @freedomofpress/sigstore-browser
+// This will be processed by tsdown and bundled appropriately
+import { SigstoreVerifier } from "@freedomofpress/sigstore-browser";
+
+// Lazy-loaded verifier instance
+let verifierInstance: SigstoreVerifier | null = null;
 
 /**
  * HotfixSignatureVerifier provides cryptographic verification of hotfix signatures
- * using Sigstore's keyless signing infrastructure.
+ * using Sigstore's keyless signing infrastructure via @freedomofpress/sigstore-browser.
  */
 export class HotfixSignatureVerifier {
   private trustedConfig: TrustedSignerConfig;
 
   constructor(config?: TrustedSignerConfig) {
     this.trustedConfig = config ?? DEFAULT_TRUSTED_SIGNER_CONFIG;
+  }
+
+  /**
+   * Lazy load and initialize the sigstore-browser verifier
+   */
+  private async getVerifier(): Promise<SigstoreVerifier> {
+    if (verifierInstance) {
+      return verifierInstance;
+    }
+
+    try {
+      verifierInstance = new SigstoreVerifier({
+        tlogThreshold: 1, // Require at least one transparency log entry
+        ctlogThreshold: 1, // Require at least one SCT
+        tsaThreshold: 0, // TSA timestamps are optional
+      });
+
+      // Load the Sigstore trusted root via TUF for secure updates
+      await verifierInstance.loadSigstoreRootWithTUF();
+
+      console.log("[HotfixVerifier] Sigstore verifier initialized successfully");
+      return verifierInstance;
+    } catch (error) {
+      console.error("[HotfixVerifier] Failed to initialize sigstore verifier:", error);
+      throw new Error("Failed to initialize Sigstore verifier");
+    }
   }
 
   /**
@@ -70,30 +103,58 @@ export class HotfixSignatureVerifier {
         return identityResult;
       }
 
-      // Step 3: Verify the Rekor transparency log entry
-      const rekorResult = await this.verifyRekorEntry(
-        manifest.sigstoreBundle.rekorLogId,
-        manifestContent,
-      );
-      if (!rekorResult.isValid) {
-        return rekorResult;
-      }
+      // Step 3: Use @freedomofpress/sigstore-browser for full verification
+      try {
+        const verifier = await this.getVerifier();
+        const manifestBytes = new TextEncoder().encode(manifestContent);
 
-      // Step 4: Verify the signature against the manifest content
-      const signatureResult = await this.verifySignature(
-        bundle,
-        manifestContent,
-      );
-      if (!signatureResult.isValid) {
-        return signatureResult;
-      }
+        // Extract identity from the certificate extensions
+        // The library will verify the certificate chain, transparency logs, and signature
+        await verifier.verifyArtifact(
+          manifest.sigstoreBundle.signerIdentity.subject,
+          manifest.sigstoreBundle.signerIdentity.issuer,
+          bundle,
+          manifestBytes,
+        );
 
-      // All checks passed
-      return {
-        isValid: true,
-        status: VerificationStatus.VALID,
-        verifiedIdentity: manifest.sigstoreBundle.signerIdentity,
-      };
+        // All checks passed
+        return {
+          isValid: true,
+          status: VerificationStatus.VALID,
+          verifiedIdentity: manifest.sigstoreBundle.signerIdentity,
+        };
+      } catch (verificationError: any) {
+        console.error("[HotfixVerifier] Sigstore verification failed:", verificationError);
+        
+        // Map verification errors to our status codes
+        const errorMessage = verificationError.message || "Verification failed";
+        
+        if (errorMessage.includes("certificate")) {
+          return {
+            isValid: false,
+            status: VerificationStatus.INVALID_BUNDLE,
+            errorMessage: `Certificate verification failed: ${errorMessage}`,
+          };
+        } else if (errorMessage.includes("signature")) {
+          return {
+            isValid: false,
+            status: VerificationStatus.SIGNATURE_MISMATCH,
+            errorMessage: `Signature verification failed: ${errorMessage}`,
+          };
+        } else if (errorMessage.includes("transparency") || errorMessage.includes("rekor")) {
+          return {
+            isValid: false,
+            status: VerificationStatus.REKOR_VERIFICATION_FAILED,
+            errorMessage: `Transparency log verification failed: ${errorMessage}`,
+          };
+        } else {
+          return {
+            isValid: false,
+            status: VerificationStatus.UNKNOWN_ERROR,
+            errorMessage,
+          };
+        }
+      }
     } catch (error) {
       console.error("[HotfixVerifier] Verification error:", error);
       return {
@@ -165,294 +226,6 @@ export class HotfixSignatureVerifier {
   }
 
   /**
-   * Verify the Rekor transparency log entry
-   */
-  private async verifyRekorEntry(
-    rekorLogId: string,
-    _expectedContent: string,
-  ): Promise<VerificationResult> {
-    try {
-      // Fetch the Rekor entry to verify it exists and matches
-      const response = await fetch(
-        `${REKOR_PUBLIC_URL}/api/v1/log/entries/${rekorLogId}`,
-      );
-
-      if (!response.ok) {
-        return {
-          isValid: false,
-          status: VerificationStatus.REKOR_VERIFICATION_FAILED,
-          errorMessage: `Rekor entry not found: ${rekorLogId}`,
-        };
-      }
-
-      const entry = await response.json();
-
-      // Verify the entry exists and has valid structure
-      if (!entry || typeof entry !== "object") {
-        return {
-          isValid: false,
-          status: VerificationStatus.REKOR_VERIFICATION_FAILED,
-          errorMessage: "Invalid Rekor entry structure",
-        };
-      }
-
-      // Entry exists in transparency log
-      return {
-        isValid: true,
-        status: VerificationStatus.VALID,
-      };
-    } catch (error) {
-      console.error("[HotfixVerifier] Rekor verification error:", error);
-      return {
-        isValid: false,
-        status: VerificationStatus.NETWORK_ERROR,
-        errorMessage: "Failed to verify Rekor transparency log entry",
-      };
-    }
-  }
-
-  /**
-   * Verify the cryptographic signature
-   */
-  private async verifySignature(
-    bundle: Record<string, unknown>,
-    content: string,
-  ): Promise<VerificationResult> {
-    try {
-      // Extract signature and certificate from bundle
-      const verificationMaterial = bundle.verificationMaterial as Record<
-        string,
-        unknown
-      >;
-      const messageSignature = bundle.messageSignature as Record<
-        string,
-        unknown
-      >;
-
-      if (!verificationMaterial || !messageSignature) {
-        return {
-          isValid: false,
-          status: VerificationStatus.INVALID_BUNDLE,
-          errorMessage: "Missing verification material or signature in bundle",
-        };
-      }
-
-      // Extract certificate chain
-      const certificate = verificationMaterial.certificate as Record<
-        string,
-        unknown
-      >;
-      if (!certificate) {
-        return {
-          isValid: false,
-          status: VerificationStatus.INVALID_BUNDLE,
-          errorMessage: "Missing certificate in verification material",
-        };
-      }
-
-      // Extract signature
-      const signatureBase64 = messageSignature.signature as string;
-      if (!signatureBase64) {
-        return {
-          isValid: false,
-          status: VerificationStatus.INVALID_BUNDLE,
-          errorMessage: "Missing signature in message signature",
-        };
-      }
-
-      // Use Web Crypto API to verify the signature
-      const certPem = certificate.rawBytes as string;
-      const signatureBytes = this.base64ToArrayBuffer(signatureBase64);
-      const contentBytes = new TextEncoder().encode(content);
-
-      // Import the public key from certificate
-      const publicKey = await this.extractPublicKeyFromCert(certPem);
-      if (!publicKey) {
-        return {
-          isValid: false,
-          status: VerificationStatus.INVALID_BUNDLE,
-          errorMessage: "Failed to extract public key from certificate",
-        };
-      }
-
-      // Verify signature using ECDSA with SHA-256
-      const isValid = await crypto.subtle.verify(
-        { name: "ECDSA", hash: "SHA-256" },
-        publicKey,
-        signatureBytes,
-        contentBytes,
-      );
-
-      if (!isValid) {
-        return {
-          isValid: false,
-          status: VerificationStatus.SIGNATURE_MISMATCH,
-          errorMessage: "Signature verification failed",
-        };
-      }
-
-      return {
-        isValid: true,
-        status: VerificationStatus.VALID,
-      };
-    } catch (error) {
-      console.error("[HotfixVerifier] Signature verification error:", error);
-      return {
-        isValid: false,
-        status: VerificationStatus.UNKNOWN_ERROR,
-        errorMessage:
-          error instanceof Error
-            ? error.message
-            : "Signature verification failed",
-      };
-    }
-  }
-
-  /**
-   * Extract public key from a base64-encoded certificate
-   */
-  private async extractPublicKeyFromCert(
-    certBase64: string,
-  ): Promise<CryptoKey | null> {
-    try {
-      // Decode the certificate
-      const certBytes = this.base64ToArrayBuffer(certBase64);
-
-      // For Sigstore certificates, we need to parse X.509 and extract the SPKI
-      // This is a simplified implementation - in production, use a proper X.509 parser
-      const certView = new Uint8Array(certBytes);
-
-      // Extract SubjectPublicKeyInfo from X.509 certificate
-      // Sigstore uses ECDSA P-256 keys
-      const spki = this.extractSPKIFromX509(certView);
-      if (!spki) {
-        return null;
-      }
-
-      // Import the public key
-      return await crypto.subtle.importKey(
-        "spki",
-        spki,
-        { name: "ECDSA", namedCurve: "P-256" },
-        true,
-        ["verify"],
-      );
-    } catch (error) {
-      console.error("[HotfixVerifier] Failed to extract public key:", error);
-      return null;
-    }
-  }
-
-  /**
-   * Extract SubjectPublicKeyInfo from X.509 certificate DER encoding
-   * 
-   * SECURITY NOTE: This is a simplified ASN.1 parser optimized for Sigstore certificates.
-   * 
-   * Limitations:
-   * - Only supports ECDSA P-256 certificates (which is what Sigstore/Fulcio uses)
-   * - Does not perform full certificate chain validation
-   * - Relies on the Rekor transparency log and OIDC identity for trust
-   * 
-   * This implementation is acceptable because:
-   * 1. The primary trust anchor is the Rekor transparency log entry verification
-   * 2. The OIDC identity verification ensures the certificate came from GitHub Actions
-   * 3. Sigstore certificates are short-lived (10 minutes) and use a known structure
-   * 4. Full validation is performed by verifying the Rekor entry exists
-   * 
-   * For a production system with broader certificate support, consider using
-   * a full X.509 parsing library (e.g., pkijs or asn1.js).
-   */
-  private extractSPKIFromX509(certDer: Uint8Array): ArrayBuffer | null {
-    try {
-      // X.509 Certificate structure (simplified):
-      // SEQUENCE {
-      //   tbsCertificate SEQUENCE {
-      //     version [0] EXPLICIT INTEGER DEFAULT v1
-      //     serialNumber INTEGER
-      //     signature AlgorithmIdentifier
-      //     issuer Name
-      //     validity Validity
-      //     subject Name
-      //     subjectPublicKeyInfo SubjectPublicKeyInfo  <-- We want this
-      //     ...
-      //   }
-      //   ...
-      // }
-
-      // This is a basic implementation - for production, use a proper ASN.1 parser
-      // The SPKI typically starts around offset 200-400 in a standard X.509 cert
-
-      // Look for the ECDSA OID marker: 1.2.840.10045.2.1 (06 07 2A 86 48 CE 3D 02 01)
-      const ecdsaOid = [0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01];
-
-      let spkiStart = -1;
-      for (let i = 0; i < certDer.length - ecdsaOid.length; i++) {
-        let found = true;
-        for (let j = 0; j < ecdsaOid.length; j++) {
-          if (certDer[i + j] !== ecdsaOid[j]) {
-            found = false;
-            break;
-          }
-        }
-        if (found) {
-          // Found the ECDSA OID, now find the containing SEQUENCE
-          // Walk back to find the SPKI SEQUENCE header
-          for (let k = i - 1; k >= Math.max(0, i - 10); k--) {
-            if (certDer[k] === 0x30) {
-              // SEQUENCE tag
-              spkiStart = k;
-              break;
-            }
-          }
-          break;
-        }
-      }
-
-      if (spkiStart === -1) {
-        return null;
-      }
-
-      // Parse the SEQUENCE length
-      let lenByte = certDer[spkiStart + 1];
-      let spkiLen: number;
-      let dataStart: number;
-
-      if (lenByte < 0x80) {
-        spkiLen = lenByte;
-        dataStart = spkiStart + 2;
-      } else if (lenByte === 0x81) {
-        spkiLen = certDer[spkiStart + 2];
-        dataStart = spkiStart + 3;
-      } else if (lenByte === 0x82) {
-        spkiLen = (certDer[spkiStart + 2] << 8) | certDer[spkiStart + 3];
-        dataStart = spkiStart + 4;
-      } else {
-        return null;
-      }
-
-      // Extract the SPKI bytes including the SEQUENCE header
-      const totalLen =
-        dataStart - spkiStart + spkiLen;
-      return certDer.slice(spkiStart, spkiStart + totalLen).buffer;
-    } catch (error) {
-      console.error("[HotfixVerifier] Failed to extract SPKI:", error);
-      return null;
-    }
-  }
-
-  /**
-   * Convert base64 string to ArrayBuffer
-   */
-  private base64ToArrayBuffer(base64: string): ArrayBuffer {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
-  }
-
-  /**
    * Simple glob pattern matching
    */
   private matchGlobPattern(pattern: string, value: string): boolean {
@@ -467,7 +240,7 @@ export class HotfixSignatureVerifier {
   }
 
   /**
-   * Compute SHA-256 hash of content for verification
+   * Compute SHA-256 hash of content for integrity verification
    */
   async computeHash(content: string): Promise<string> {
     const encoder = new TextEncoder();

@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@deno/vite-plugin": "^1.0.5",
+    "@freedomofpress/sigstore-browser": "^0.1.11",
     "@swc/core": "^1.14.0",
     "@tailwindcss/vite": "^4.1.16",
     "i18next": "^25.6.0",
