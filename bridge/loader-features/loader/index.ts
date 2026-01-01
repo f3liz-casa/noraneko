@@ -8,7 +8,8 @@ import {
   _registerModuleLoadState,
   _rejectOtherLoadStates,
 } from "./modules-hooks.ts";
-import { registerModuleEventDispatcher } from "./event-dispatcher-registry.ts";
+import { registerModuleEventDispatcher, unregisterModuleEventDispatcher } from "./event-dispatcher-registry.ts";
+import { moduleRegistry, registerModule } from "./module-registry.ts";
 
 console.log("[noraneko] Initializing scripts...");
 
@@ -17,6 +18,8 @@ const PREF_HOTFIX_DISABLED_MODULES = "noraneko.hotfix.disabled_modules";
 
 export const loader = {
   load: initScripts,
+  hotswap: hotswapModules,
+  getModuleRegistry: () => moduleRegistry,
 };
 
 export async function initScripts() {
@@ -281,6 +284,16 @@ async function initializeModules(modules: LoadedModule[]) {
         instance = new module.default();
       }
 
+      // Register module with the registry for hotswapping support
+      if (instance) {
+        registerModule(
+          module.metadata.moduleName,
+          instance,
+          module.metadata,
+          false // not a hotfix module
+        );
+      }
+
       // Register EventDispatcher methods after initialization
       if (instance && typeof instance.eventMethods === "function") {
         try {
@@ -381,3 +394,105 @@ function sortModulesByDependencies(modules: LoadedModule[]): LoadedModule[] {
 
   return sorted;
 }
+
+/**
+ * Hotswap modules with new versions from hotfix directory
+ * 
+ * This function:
+ * 1. Cleans up all currently loaded modules (calls cleanup() on each)
+ * 2. Unregisters all modules from the EventDispatcher
+ * 3. Loads new module versions from the hotfix directory
+ * 4. Re-initializes all modules
+ * 
+ * @param hotfixId - The ID of the hotfix to apply (optional, loads from preferences if not provided)
+ * @returns Promise<boolean> - true if hotswap was successful
+ */
+async function hotswapModules(hotfixId?: string): Promise<boolean> {
+  console.log("[noraneko] Starting module hotswap...");
+  
+  try {
+    // Notify registry that hotswap is starting
+    moduleRegistry.notifyHotswapStart();
+    
+    // Step 1: Run cleanup on all modules
+    await moduleRegistry.cleanupAllModules();
+    console.log("[noraneko] All modules cleaned up");
+    
+    // Step 2: Get enabled features from preferences
+    const enabled_features = JSON.parse(
+      Services.prefs.getStringPref("noraneko.features.enabled", "{}"),
+    ) as typeof MODULES_KEYS;
+    
+    // Step 3: Reload modules (will load hotfix versions if available)
+    const modules = await loadEnabledModules(enabled_features);
+    
+    // Step 4: Re-initialize modules
+    await initializeModulesForHotswap(modules);
+    
+    console.log("[noraneko] Module hotswap complete");
+    moduleRegistry.notifyHotswapComplete(true);
+    return true;
+  } catch (error) {
+    console.error("[noraneko] Module hotswap failed:", error);
+    moduleRegistry.notifyHotswapComplete(false);
+    return false;
+  }
+}
+
+/**
+ * Initialize modules during hotswap (skips session store wait since already initialized)
+ */
+async function initializeModulesForHotswap(modules: LoadedModule[]) {
+  // Validate dependencies
+  validateDependencies(modules);
+
+  // Sort modules by dependencies
+  const sortedModules = sortModulesByDependencies(modules);
+
+  // Initialize each module (skip initBeforeSessionStoreInit during hotswap)
+  for (const module of sortedModules) {
+    try {
+      console.log("[noraneko] Hotswap init: " + module.name);
+
+      // Create instance (decorator auto-runs init via constructor)
+      let instance: any;
+      if (module?.default) {
+        instance = new module.default();
+      }
+
+      // Register module with the registry
+      if (instance) {
+        registerModule(
+          module.metadata.moduleName,
+          instance,
+          module.metadata,
+          isModuleDisabledByHotfix(module.name) // is hotfix module if original is disabled
+        );
+      }
+
+      // Register EventDispatcher methods after initialization
+      if (instance && typeof instance.eventMethods === "function") {
+        try {
+          const eventMethods = instance.eventMethods();
+          registerModuleEventDispatcher(module.metadata.moduleName, eventMethods);
+          console.debug(
+            `[noraneko] Registered EventDispatcher methods for module ${module.metadata.moduleName}`,
+          );
+        } catch (e) {
+          console.error(
+            `[noraneko] Failed to register EventDispatcher methods for module ${module.metadata.moduleName}:`,
+            e,
+          );
+        }
+      }
+    } catch (e) {
+      console.error(`[noraneko] Failed to hotswap init module ${module.name}:`, e);
+    }
+  }
+
+  console.log("[noraneko] Hotswap initialization complete");
+}
+
+// Re-export module registry functions for external use
+export { moduleRegistry, registerModule, cleanupModule, cleanupAllModules } from "./module-registry.ts";
+export type { HotswapEvent } from "./module-registry.ts";

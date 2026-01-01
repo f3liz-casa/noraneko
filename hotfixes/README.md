@@ -136,6 +136,67 @@ noraneko.hotfix.disabled_modules = "[]"
 noraneko.hotfix.installed = "[]"
 ```
 
+## Hot-Swapping Modules
+
+The hotfix system supports runtime hot-swapping of modules without requiring a browser restart. This is particularly useful during development and for quick fixes.
+
+### How Hot-Swapping Works
+
+1. **Cleanup Phase**: All currently loaded modules have their `cleanup()` method called
+2. **Unregistration**: Modules are unregistered from the EventDispatcher registry
+3. **Reload**: New module versions are loaded from the hotfix directory
+4. **Re-initialization**: Modules are re-initialized with the new code
+
+### Component Cleanup Requirements
+
+All components using the `@component` decorator **must** implement a `cleanup()` method:
+
+```typescript
+import { component, HotswappableComponent } from "#features-chrome/utils/base.ts";
+
+@component({
+  moduleName: "my-feature",
+  hot: import.meta.hot,
+})
+export default class MyFeature implements HotswappableComponent {
+  private intervalId: number | null = null;
+  
+  init() {
+    this.intervalId = setInterval(() => {}, 1000);
+  }
+  
+  cleanup() {
+    // Required for hot-swapping support
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    // Remove any DOM elements
+    document.getElementById("my-element")?.remove();
+  }
+}
+```
+
+The cleanup method should:
+- Remove all event listeners
+- Clear all intervals/timeouts
+- Remove any DOM elements created by the component
+- Unregister from any external registries
+
+### Programmatic Hot-Swap
+
+You can trigger a hot-swap programmatically:
+
+```typescript
+import { loader } from "chrome://noraneko-startup/content/features-chrome/core.js";
+
+// Hot-swap all modules with new versions from the hotfix directory
+await loader.hotswap(hotfixId);
+
+// Access the module registry
+const registry = loader.getModuleRegistry();
+```
+
 ## Technical Details
 
 ### Preferences

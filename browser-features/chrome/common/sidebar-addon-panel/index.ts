@@ -43,8 +43,11 @@ import iconNotes from "./icons/notes.svg?url";
 export default class SidebarAddonPanel {
   // Type-safe EventDispatcher access - Either handles both available and missing modules
   protected events!: EventDispatcherDependencies<["sidebar"]>;
+  protected logger!: ConsoleInstance;
 
   private ctx: CPanelSidebar | null = null;
+  private panelSidebarElem: PanelSidebarElem | null = null;
+  private sidebarContextMenuElem: SidebarContextMenuElem | null = null;
 
   init(): void {
     // Run data migration first
@@ -53,8 +56,8 @@ export default class SidebarAddonPanel {
     // Initialize UI components
     this.ctx = new CPanelSidebar();
     WebsitePanelWindowChild.getInstance();
-    new PanelSidebarElem(this.ctx);
-    new SidebarContextMenuElem(this.ctx);
+    this.panelSidebarElem = new PanelSidebarElem(this.ctx);
+    this.sidebarContextMenuElem = new SidebarContextMenuElem(this.ctx);
     PanelSidebarAddModal.getInstance();
     PanelSidebarFloating.getInstance();
 
@@ -63,8 +66,27 @@ export default class SidebarAddonPanel {
 
     // Set up cleanup
     onCleanup(() => {
-      this.ctx = null;
+      this.cleanup();
     });
+  }
+
+  /**
+   * Cleanup method for hotswapping support.
+   * Removes all UI components and clears all state.
+   */
+  cleanup(): void {
+    this.logger?.debug("Cleaning up sidebar-addon-panel module");
+    
+    // Clear references to UI components
+    this.ctx = null;
+    this.panelSidebarElem = null;
+    this.sidebarContextMenuElem = null;
+    
+    // Remove DOM elements created by this module
+    document?.getElementById("panel-sidebar-box")?.remove();
+    document?.getElementById("sidebar-context-menu")?.remove();
+    document?.getElementById("panel-sidebar-add-modal")?.remove();
+    document?.getElementById("panel-sidebar-floating")?.remove();
   }
 
   // Register icons for each panel in the dock bar

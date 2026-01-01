@@ -74,6 +74,8 @@ export default class Sidebar implements SidebarEventDispatcher {
   private selectionChangeCallbacks: Set<(panelId: string) => void> = new Set();
   private getIcons!: () => SidebarIconRegistration[];
   private setIcons!: (icons: SidebarIconRegistration[]) => void;
+  private dockBarElement: Element | null = null;
+  private stylesElement: Element | null = null;
 
   init(): void {
     console.log("init sidebar!");
@@ -87,10 +89,37 @@ export default class Sidebar implements SidebarEventDispatcher {
     this.renderDockBar();
 
     onCleanup(() => {
-      this.registeredIcons.clear();
-      this.dataUpdateCallbacks.clear();
-      this.selectionChangeCallbacks.clear();
+      this.cleanup();
     });
+  }
+
+  /**
+   * Cleanup method for hotswapping support.
+   * Removes all DOM elements and clears all state.
+   */
+  cleanup(): void {
+    this.logger?.debug("Cleaning up sidebar module");
+    
+    // Clear all registered data
+    this.registeredIcons.clear();
+    this.dataUpdateCallbacks.clear();
+    this.selectionChangeCallbacks.clear();
+    
+    // Remove DOM elements
+    if (this.dockBarElement) {
+      this.dockBarElement.remove();
+      this.dockBarElement = null;
+    }
+    
+    // Remove styles
+    if (this.stylesElement) {
+      this.stylesElement.remove();
+      this.stylesElement = null;
+    }
+    
+    // Also try to remove by ID (in case references were lost)
+    document?.getElementById("sidebar-dock-bar")?.remove();
+    document?.getElementById("sidebar-dock-bar-styles")?.remove();
   }
 
   private renderDockBar(): void {
