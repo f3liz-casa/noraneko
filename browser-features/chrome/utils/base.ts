@@ -114,26 +114,27 @@ export function defineModule(
   lifecycle: ModuleLifecycle,
 ) {
   const allDeps = [...(config.dependencies ?? []), ...(config.softDependencies ?? [])];
+  const moduleName = config.name;
   
-  // Create the module object that will be instantiated by the loader
-  return class {
+  // Create the module class with a proper name for debugging
+  const ModuleClass = class {
     private ctx: ModuleContext;
     
     constructor() {
       // Create context
       this.ctx = {
-        log: console.createInstance({ prefix: `nora@${kebabCase(config.name)}` }),
+        log: console.createInstance({ prefix: `nora@${kebabCase(moduleName)}` }),
         events: createDependencyEventDispatchers(allDeps),
-        name: config.name,
+        name: moduleName,
       };
       
       // Store for cleanup
-      _moduleContexts.set(config.name, this.ctx);
-      _hotContexts.set(config.name, config.hot);
+      _moduleContexts.set(moduleName, this.ctx);
+      _hotContexts.set(moduleName, config.hot);
       
       // Set up HMR root
       createRootHMR((disposer) => {
-        _moduleDisposers.set(config.name, disposer);
+        _moduleDisposers.set(moduleName, disposer);
         
         // Call init
         if (lifecycle.init) {
@@ -142,9 +143,9 @@ export function defineModule(
         
         // Register cleanup on HMR dispose
         onCleanup(() => {
-          _hotContexts.delete(config.name);
-          _moduleContexts.delete(config.name);
-          _moduleDisposers.delete(config.name);
+          _hotContexts.delete(moduleName);
+          _moduleContexts.delete(moduleName);
+          _moduleDisposers.delete(moduleName);
         });
       }, config.hot);
     }
@@ -152,7 +153,7 @@ export function defineModule(
     /** Metadata for loader */
     static _metadata(): ModuleMetadata {
       return {
-        moduleName: config.name,
+        moduleName,
         dependencies: config.dependencies ?? [],
         softDependencies: config.softDependencies ?? [],
       };
@@ -178,6 +179,11 @@ export function defineModule(
       return {};
     }
   };
+  
+  // Set display name for debugging
+  Object.defineProperty(ModuleClass, "name", { value: `Module_${moduleName}` });
+  
+  return ModuleClass;
 }
 
 // ============================================================================

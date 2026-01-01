@@ -32,6 +32,9 @@ const state = {
   ctx: null as CPanelSidebar | null,
   panelSidebarElem: null as PanelSidebarElem | null,
   sidebarContextMenuElem: null as SidebarContextMenuElem | null,
+  // Store bound callbacks for proper unregistration
+  dataUpdateCallback: null as ((data: any) => void) | null,
+  selectionChangeCallback: null as ((panelId: string) => void) | null,
 };
 
 // ============================================================================
@@ -89,13 +92,12 @@ const registerExampleSidebarIcons = async (ctx: ModuleContext): Promise<void> =>
     ),
   );
 
-  // Register callbacks for data updates and selection changes
-  await ctx.events.sidebar.registerDataUpdateCallback((data: any) => 
-    onPanelDataUpdate(ctx, data)
-  );
-  await ctx.events.sidebar.registerSelectionChangeCallback((panelId: string) => 
-    onPanelSelectionChange(ctx, panelId)
-  );
+  // Register callbacks and store references for cleanup
+  state.dataUpdateCallback = (data: any) => onPanelDataUpdate(ctx, data);
+  state.selectionChangeCallback = (panelId: string) => onPanelSelectionChange(ctx, panelId);
+  
+  await ctx.events.sidebar.registerDataUpdateCallback(state.dataUpdateCallback);
+  await ctx.events.sidebar.registerSelectionChangeCallback(state.selectionChangeCallback);
 
   ctx.log.debug("Callbacks registered with sidebar");
 };
@@ -127,8 +129,18 @@ export default defineModule({
     registerExampleSidebarIcons(ctx);
   },
 
-  cleanup(ctx) {
+  async cleanup(ctx) {
     ctx.log.debug("Cleaning up sidebar-addon-panel module");
+    
+    // Unregister callbacks to prevent memory leaks
+    if (state.dataUpdateCallback) {
+      await ctx.events.sidebar.unregisterDataUpdateCallback(state.dataUpdateCallback);
+      state.dataUpdateCallback = null;
+    }
+    if (state.selectionChangeCallback) {
+      await ctx.events.sidebar.unregisterSelectionChangeCallback(state.selectionChangeCallback);
+      state.selectionChangeCallback = null;
+    }
     
     // Clear references to UI components
     state.ctx = null;
