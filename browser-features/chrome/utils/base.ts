@@ -1,88 +1,210 @@
 // SPDX-License-Identifier: MPL-2.0
 
+/**
+ * Module Definition - Data-Oriented Programming Style
+ * 
+ * Julia/Kotlin-like patterns:
+ * - Plain data structures for module definitions
+ * - Pure functions for lifecycle management
+ * - No decorators, no class inheritance magic
+ */
+
 import { ViteHotContext } from "vite/types/hot";
 import { kebabCase } from "es-toolkit/string";
 import { createRootHMR } from "@nora/solid-xul";
 import { onCleanup } from "solid-js";
 import { createDependencyEventDispatchers } from "#bridge-loader-features/loader/modules-hooks.ts";
 
-const _hotContexts = new Map<string, ViteHotContext | undefined>();
-const _metadata = new Map<string, ComponentMetadata>();
-const _eventMethods = new Map<string, Set<string | symbol>>();
-const _moduleInstances = new Map<string, any>();
-const _moduleCleanupFns = new Map<string, () => void | Promise<void>>();
-const _rootDisposers = new Map<string, () => void>();
+// ============================================================================
+// Types - Module Definition
+// ============================================================================
 
-interface ComponentMetadata {
+/** Module configuration */
+export interface ModuleConfig {
+  name: string;
+  dependencies?: string[];
+  softDependencies?: string[];
+  hot?: ViteHotContext;
+}
+
+/** Module metadata (exported for loader) */
+export interface ModuleMetadata {
   moduleName: string;
   dependencies: string[];
   softDependencies: string[];
 }
 
+/** Module state passed to lifecycle functions */
+export interface ModuleContext {
+  /** Logger with module prefix */
+  log: ConsoleInstance;
+  /** Event dispatchers for dependencies */
+  events: Record<string, any>;
+  /** Module name */
+  name: string;
+}
+
+/** Module lifecycle functions */
+export interface ModuleLifecycle {
+  /** Called when module is initialized */
+  init?: (ctx: ModuleContext) => void | Promise<void>;
+  /** Called before SessionStore is initialized */
+  initBeforeSessionStoreInit?: (ctx: ModuleContext) => void | Promise<void>;
+  /** Called when module is being cleaned up (required for hotswap) */
+  cleanup: (ctx: ModuleContext) => void | Promise<void>;
+  /** Event methods exposed to other modules */
+  eventMethods?: (ctx: ModuleContext) => Record<string, (...args: any[]) => any>;
+}
+
+// ============================================================================
+// Module State - Data
+// ============================================================================
+
+/** Active module contexts for cleanup */
+const _moduleContexts: Map<string, ModuleContext> = new Map();
+
+/** Module disposers for HMR */
+const _moduleDisposers: Map<string, () => void> = new Map();
+
+/** Hot contexts for HMR */
+const _hotContexts: Map<string, ViteHotContext | undefined> = new Map();
+
+// ============================================================================
+// Public API - Module Definition Functions
+// ============================================================================
+
 /**
- * Interface that all components must implement for hotswapping support
+ * Define a module with DOP-style lifecycle functions
+ * 
+ * @example
+ * ```typescript
+ * // sidebar/index.ts
+ * import { defineModule } from "#features-chrome/utils/base.ts";
+ * 
+ * const state = {
+ *   icons: new Map<string, SidebarIcon>(),
+ *   dockBarElement: null as Element | null,
+ * };
+ * 
+ * export default defineModule({
+ *   name: "sidebar",
+ *   hot: import.meta.hot,
+ * }, {
+ *   init(ctx) {
+ *     ctx.log.debug("Sidebar initializing...");
+ *     renderDockBar(state);
+ *   },
+ *   
+ *   cleanup(ctx) {
+ *     state.icons.clear();
+ *     state.dockBarElement?.remove();
+ *   },
+ *   
+ *   eventMethods(ctx) {
+ *     return {
+ *       registerIcon: (icon) => state.icons.set(icon.name, icon),
+ *       getIcons: () => Array.from(state.icons.values()),
+ *     };
+ *   },
+ * });
+ * ```
  */
-export interface HotswappableComponent {
-  /**
-   * Initialize the component. Called when the component is first loaded.
-   */
-  init?(): void | Promise<void>;
+export function defineModule(
+  config: ModuleConfig,
+  lifecycle: ModuleLifecycle,
+) {
+  const allDeps = [...(config.dependencies ?? []), ...(config.softDependencies ?? [])];
+  const moduleName = config.name;
   
-  /**
-   * Cleanup the component. Called before the component is unloaded during hotswap.
-   * This method MUST clean up all resources:
-   * - Remove event listeners
-   * - Clear intervals/timeouts
-   * - Remove DOM elements
-   * - Unregister from any registries
-   */
-  cleanup(): void | Promise<void>;
+  // Create the module class with a proper name for debugging
+  const ModuleClass = class {
+    private ctx: ModuleContext;
+    
+    constructor() {
+      // Create context
+      this.ctx = {
+        log: console.createInstance({ prefix: `nora@${kebabCase(moduleName)}` }),
+        events: createDependencyEventDispatchers(allDeps),
+        name: moduleName,
+      };
+      
+      // Store for cleanup
+      _moduleContexts.set(moduleName, this.ctx);
+      _hotContexts.set(moduleName, config.hot);
+      
+      // Set up HMR root
+      createRootHMR((disposer) => {
+        _moduleDisposers.set(moduleName, disposer);
+        
+        // Call init
+        if (lifecycle.init) {
+          lifecycle.init(this.ctx);
+        }
+        
+        // Register cleanup on HMR dispose
+        onCleanup(() => {
+          _hotContexts.delete(moduleName);
+          _moduleContexts.delete(moduleName);
+          _moduleDisposers.delete(moduleName);
+        });
+      }, config.hot);
+    }
+    
+    /** Metadata for loader */
+    static _metadata(): ModuleMetadata {
+      return {
+        moduleName,
+        dependencies: config.dependencies ?? [],
+        softDependencies: config.softDependencies ?? [],
+      };
+    }
+    
+    /** Cleanup function for hotswap */
+    cleanup(): void | Promise<void> {
+      return lifecycle.cleanup(this.ctx);
+    }
+    
+    /** Init before session store */
+    initBeforeSessionStoreInit(): void | Promise<void> {
+      if (lifecycle.initBeforeSessionStoreInit) {
+        return lifecycle.initBeforeSessionStoreInit(this.ctx);
+      }
+    }
+    
+    /** Event methods for other modules */
+    eventMethods(): Record<string, (...args: any[]) => any> {
+      if (lifecycle.eventMethods) {
+        return lifecycle.eventMethods(this.ctx);
+      }
+      return {};
+    }
+  };
+  
+  // Set display name for debugging
+  Object.defineProperty(ModuleClass, "name", { value: `Module_${moduleName}` });
+  
+  return ModuleClass;
 }
 
+// ============================================================================
+// Public API - Module Utilities
+// ============================================================================
+
 /**
- * Get all registered module instances
+ * Get a module's context (for testing/debugging)
  */
-export function getModuleInstances(): Map<string, any> {
-  return new Map(_moduleInstances);
+export function getModuleContext(moduleName: string): ModuleContext | undefined {
+  return _moduleContexts.get(moduleName);
 }
 
 /**
- * Get a specific module instance by name
- */
-export function getModuleInstance(moduleName: string): any | undefined {
-  return _moduleInstances.get(moduleName);
-}
-
-/**
- * Run cleanup on all modules and clear registries
- * This is used during hotswapping to safely unload all modules
+ * Run cleanup on all modules
  */
 export async function cleanupAllModules(): Promise<void> {
   console.log("[noraneko] Running cleanup on all modules...");
   
-  const cleanupPromises: Promise<void>[] = [];
-  
-  for (const [moduleName, instance] of _moduleInstances) {
-    try {
-      if (instance && typeof instance.cleanup === "function") {
-        console.debug(`[noraneko] Cleaning up module: ${moduleName}`);
-        const result = instance.cleanup();
-        if (result instanceof Promise) {
-          cleanupPromises.push(result.catch((e) => {
-            console.error(`[noraneko] Error during cleanup of ${moduleName}:`, e);
-          }));
-        }
-      }
-    } catch (e) {
-      console.error(`[noraneko] Error during cleanup of ${moduleName}:`, e);
-    }
-  }
-  
-  // Wait for all cleanup promises to resolve
-  await Promise.all(cleanupPromises);
-  
-  // Dispose all root contexts
-  for (const [moduleName, disposer] of _rootDisposers) {
+  // Dispose all HMR roots
+  for (const [moduleName, disposer] of _moduleDisposers) {
     try {
       console.debug(`[noraneko] Disposing root for module: ${moduleName}`);
       disposer();
@@ -91,10 +213,9 @@ export async function cleanupAllModules(): Promise<void> {
     }
   }
   
-  // Clear all registries
-  _moduleInstances.clear();
-  _moduleCleanupFns.clear();
-  _rootDisposers.clear();
+  // Clear state
+  _moduleContexts.clear();
+  _moduleDisposers.clear();
   
   console.log("[noraneko] All modules cleaned up");
 }
@@ -103,19 +224,8 @@ export async function cleanupAllModules(): Promise<void> {
  * Run cleanup on a specific module
  */
 export async function cleanupModule(moduleName: string): Promise<void> {
-  const instance = _moduleInstances.get(moduleName);
-  
-  if (instance && typeof instance.cleanup === "function") {
-    console.debug(`[noraneko] Cleaning up module: ${moduleName}`);
-    try {
-      await instance.cleanup();
-    } catch (e) {
-      console.error(`[noraneko] Error during cleanup of ${moduleName}:`, e);
-    }
-  }
-  
-  // Dispose root context if exists
-  const disposer = _rootDisposers.get(moduleName);
+  // Dispose HMR root
+  const disposer = _moduleDisposers.get(moduleName);
   if (disposer) {
     try {
       disposer();
@@ -124,159 +234,16 @@ export async function cleanupModule(moduleName: string): Promise<void> {
     }
   }
   
-  _moduleInstances.delete(moduleName);
-  _moduleCleanupFns.delete(moduleName);
-  _rootDisposers.delete(moduleName);
+  // Clear from state
+  _moduleContexts.delete(moduleName);
+  _moduleDisposers.delete(moduleName);
+  _hotContexts.delete(moduleName);
 }
 
 /**
- * Check if a module has a cleanup function
+ * Check if a module has cleanup
  */
 export function hasCleanup(moduleName: string): boolean {
-  const instance = _moduleInstances.get(moduleName);
-  return instance && typeof instance.cleanup === "function";
+  return _moduleContexts.has(moduleName);
 }
 
-/**
- * Mark method as event-exposed for EventDispatcher
- */
-export function eventMethod(_: Function, context: ClassMethodDecoratorContext) {
-  context.addInitializer(function () {
-    const className = context.static ? this.name : this.constructor.name;
-
-    if (!className) {
-      console.error(
-        "EventMethod: Could not determine class name for decorator on method:",
-        context.name,
-      );
-      return;
-    }
-    console.log(className);
-
-    if (!_eventMethods.has(className)) _eventMethods.set(className, new Set());
-    _eventMethods.get(className)!.add(context.name);
-  });
-}
-
-/**
- * Define component with auto-injection
- * 
- * IMPORTANT: Components MUST implement a `cleanup()` method for hotswapping support.
- * The cleanup method should:
- * - Remove all event listeners
- * - Clear all intervals/timeouts
- * - Remove any DOM elements created by the component
- * - Unregister from any external registries
- * 
- * @example
- * ```typescript
- * @component({
- *   moduleName: "my-feature",
- *   hot: import.meta.hot,
- * })
- * export default class MyFeature implements HotswappableComponent {
- *   private intervalId: number | null = null;
- *   
- *   init() {
- *     this.intervalId = setInterval(() => {}, 1000);
- *   }
- *   
- *   cleanup() {
- *     if (this.intervalId) {
- *       clearInterval(this.intervalId);
- *       this.intervalId = null;
- *     }
- *   }
- * }
- * ```
- */
-export function component(config: {
-  moduleName: string;
-  dependencies?: string[];
-  softDependencies?: string[];
-  hot?: ViteHotContext;
-}) {
-  return <T extends { new (...args: any[]): {} }>(
-    target: T,
-    context: ClassDecoratorContext,
-  ) => {
-    const name = context.name as string;
-    if (_hotContexts.has(name)) throw new Error(`Duplicate component: ${name}`);
-
-    _hotContexts.set(name, config.hot);
-    _metadata.set(name, {
-      moduleName: config.moduleName,
-      dependencies: config.dependencies || [],
-      softDependencies: config.softDependencies || [],
-    });
-
-    // Validate that target has cleanup method at class level
-    const proto = target.prototype;
-    if (typeof proto.cleanup !== "function") {
-      console.warn(
-        `[noraneko] Component "${config.moduleName}" does not implement cleanup() method. ` +
-        `This is required for hotswapping support. Add a cleanup() method to the class.`
-      );
-    }
-
-    return class extends target {
-      protected logger = console.createInstance({
-        prefix: `nora@${kebabCase(name)}`,
-      });
-      protected events = createDependencyEventDispatchers([
-        ..._metadata.get(name)!.dependencies,
-        ..._metadata.get(name)!.softDependencies,
-      ]);
-
-      constructor(...args: any[]) {
-        super(...args);
-        console.log("construct on decorator");
-        
-        // Register this instance for hotswapping
-        _moduleInstances.set(config.moduleName, this);
-        
-        createRootHMR((disposer) => {
-          // Store the disposer for manual cleanup during hotswap
-          _rootDisposers.set(config.moduleName, disposer);
-          
-          if ("init" in this && typeof this.init === "function") this.init();
-          
-          onCleanup(() => {
-            _hotContexts.delete(name);
-            _moduleInstances.delete(config.moduleName);
-            _rootDisposers.delete(config.moduleName);
-          });
-        }, _hotContexts.get(name));
-      }
-
-      static _metadata() {
-        return _metadata.get(name)!;
-      }
-
-      eventMethods() {
-        const methods = _eventMethods.get(name);
-        if (!methods) return {};
-        return Object.fromEntries(
-          Array.from(methods).map((m) => [m, (this as any)[m].bind(this)]),
-        );
-      }
-      
-      /**
-       * Default cleanup implementation if not provided by the class.
-       * Override this method in your component class to provide proper cleanup.
-       */
-      cleanup(): void | Promise<void> {
-        // Check if parent class has cleanup
-        const parentCleanup = Object.getPrototypeOf(Object.getPrototypeOf(this))?.cleanup;
-        if (typeof parentCleanup === "function" && parentCleanup !== this.cleanup) {
-          return parentCleanup.call(this);
-        }
-        // Default: log warning that cleanup is not implemented
-        console.warn(
-          `[noraneko] Component "${config.moduleName}" cleanup() called but not implemented. ` +
-          `Override cleanup() in your component class for proper resource cleanup.`
-        );
-      }
-    } as T;
-  };
-}

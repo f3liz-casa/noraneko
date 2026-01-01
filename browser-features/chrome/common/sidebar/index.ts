@@ -4,36 +4,26 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Sidebar Module
+ * Sidebar Module - Data-Oriented Programming Style
  *
- * This module provides an independent dock bar that can be used to register icons.
- * It exposes a registration API via EventDispatcher that other modules can use.
- *
- * Key Features:
- * - Renders a vertical dock bar with icons
- * - Provides event methods for icon registration
- * - Manages icon click callbacks
- * - Does not depend on other feature modules
- *
- * Architecture:
- * - This module is independent and can be used by any other module
- * - Other modules (like sidebar-addon-panel) use EventDispatcher to register icons
- * - When icons are clicked, registered callbacks are invoked
+ * Provides an independent dock bar with icon registration API.
+ * Other modules can register icons via EventDispatcher.
  */
 
-import { component, eventMethod } from "#features-chrome/utils/base.ts";
-import { createSignal, onCleanup } from "solid-js";
+import { defineModule, type ModuleContext } from "#features-chrome/utils/base.ts";
+import { createSignal } from "solid-js";
 
 import {
-  panelSidebarConfig,
-  panelSidebarData,
-  selectedPanelId,
   setPanelSidebarConfig,
   setPanelSidebarData,
   setSelectedPanelId,
 } from "./core/data.ts";
 
 import { _renderDockbar, _renderStyle } from "./renderDockbar.tsx";
+
+// ============================================================================
+// Types
+// ============================================================================
 
 export interface SidebarIconRegistration {
   name: string;
@@ -42,7 +32,6 @@ export interface SidebarIconRegistration {
   callback: () => void | Promise<void>;
 }
 
-// 1. Define EventDispatcher interface
 export interface SidebarEventDispatcher {
   notifyDataChanged(data: any): void;
   notifyConfigChanged(config: any): void;
@@ -50,211 +39,181 @@ export interface SidebarEventDispatcher {
   registerSidebarIcon(options: SidebarIconRegistration): void;
   onClicked(iconName: string): Promise<void>;
   registerDataUpdateCallback(callback: (data: any) => void): void;
-  registerSelectionChangeCallback(
-    callback: (panelId: string) => void,
-  ): void;
+  registerSelectionChangeCallback(callback: (panelId: string) => void): void;
   unregisterDataUpdateCallback(callback: (data: any) => void): void;
-  unregisterSelectionChangeCallback(
-    callback: (panelId: string) => void,
-  ): void;
+  unregisterSelectionChangeCallback(callback: (panelId: string) => void): void;
   getRegisteredIcons(): SidebarIconRegistration[];
 }
 
-// 2. Implement with decorator
-@component({
-  moduleName: "sidebar",
-  hot: import.meta.hot,
-})
-export default class Sidebar implements SidebarEventDispatcher {
-  protected logger!: ConsoleInstance;
-  protected events!: any;
+// ============================================================================
+// Module State - Data
+// ============================================================================
 
-  private registeredIcons: Map<string, SidebarIconRegistration> = new Map();
-  private dataUpdateCallbacks: Set<(data: any) => void> = new Set();
-  private selectionChangeCallbacks: Set<(panelId: string) => void> = new Set();
-  private getIcons!: () => SidebarIconRegistration[];
-  private setIcons!: (icons: SidebarIconRegistration[]) => void;
-  private dockBarElement: Element | null = null;
-  private stylesElement: Element | null = null;
+const state = {
+  registeredIcons: new Map<string, SidebarIconRegistration>(),
+  dataUpdateCallbacks: new Set<(data: any) => void>(),
+  selectionChangeCallbacks: new Set<(panelId: string) => void>(),
+  getIcons: null as (() => SidebarIconRegistration[]) | null,
+  setIcons: null as ((icons: SidebarIconRegistration[]) => void) | null,
+};
 
-  init(): void {
-    console.log("init sidebar!");
-    console.log(this.eventMethods());
-    // Create signal for icons
-    const [getIcons, setIcons] = createSignal<SidebarIconRegistration[]>([]);
-    this.getIcons = getIcons;
-    this.setIcons = setIcons;
+// ============================================================================
+// Internal Functions
+// ============================================================================
 
-    // Render the dock bar UI
-    this.renderDockBar();
-
-    onCleanup(() => {
-      this.cleanup();
-    });
+const renderDockBar = (ctx: ModuleContext): void => {
+  if (!document) {
+    ctx.log.error("Document is not available, cannot render dock bar");
+    return;
   }
 
-  /**
-   * Cleanup method for hotswapping support.
-   * Removes all DOM elements and clears all state.
-   */
-  cleanup(): void {
-    this.logger?.debug("Cleaning up sidebar module");
-    
-    // Clear all registered data
-    this.registeredIcons.clear();
-    this.dataUpdateCallbacks.clear();
-    this.selectionChangeCallbacks.clear();
-    
-    // Remove DOM elements
-    if (this.dockBarElement) {
-      this.dockBarElement.remove();
-      this.dockBarElement = null;
-    }
-    
-    // Remove styles
-    if (this.stylesElement) {
-      this.stylesElement.remove();
-      this.stylesElement = null;
-    }
-    
-    // Also try to remove by ID (in case references were lost)
-    document?.getElementById("sidebar-dock-bar")?.remove();
-    document?.getElementById("sidebar-dock-bar-styles")?.remove();
+  // Inject styles only once
+  if (!document.getElementById("sidebar-dock-bar-styles")) {
+    _renderStyle();
   }
 
-  private renderDockBar(): void {
-    // Validate document is available
-    if (!document) {
-      this.logger.error("Document is not available, cannot render dock bar");
-      return;
-    }
+  // Render dock bar component
+  const parentElem = document.getElementById("browser");
+  const beforeElem = document.getElementById("panel-sidebar-box") ||
+    document.getElementById("tabbrowser-tabbox");
 
-    // Inject styles only once
-    if (!document.getElementById("sidebar-dock-bar-styles")) {
-      _renderStyle();
-    }
-
-    // Render dock bar component
-    const parentElem = document.getElementById("browser");
-    const beforeElem = document.getElementById("panel-sidebar-box") ||
-      document.getElementById("tabbrowser-tabbox");
-
-    if (parentElem && beforeElem) {
-      _renderDockbar(
-        parentElem,
-        beforeElem,
-        this.getIcons,
-        this.onClicked.bind(this),
-      );
-    } else {
-      this.logger.error(
-        "Could not find parent or marker element for dock bar. " +
-          `parentElem: ${!!parentElem}, beforeElem: ${!!beforeElem}`,
-      );
-    }
+  if (parentElem && beforeElem) {
+    _renderDockbar(
+      parentElem,
+      beforeElem,
+      state.getIcons!,
+      (iconName) => onClicked(ctx, iconName),
+    );
+  } else {
+    ctx.log.error(
+      `Could not find parent or marker element. parentElem: ${!!parentElem}, beforeElem: ${!!beforeElem}`,
+    );
   }
+};
 
-  // Public event methods for registration (exposed to other modules)
-  @eventMethod
+const onClicked = async (ctx: ModuleContext, iconName: string): Promise<void> => {
+  const iconRegistration = state.registeredIcons.get(iconName);
+  if (iconRegistration?.callback) {
+    try {
+      await iconRegistration.callback();
+      ctx.log.debug(`Icon ${iconName} callback executed`);
+    } catch (error) {
+      ctx.log.error(`Error executing callback for icon ${iconName}:`, error);
+    }
+  } else {
+    ctx.log.warn(`No callback registered for icon ${iconName}`);
+  }
+};
+
+// ============================================================================
+// Event Methods - Exposed to other modules
+// ============================================================================
+
+const createEventMethods = (ctx: ModuleContext): SidebarEventDispatcher => ({
   registerSidebarIcon(options: SidebarIconRegistration): void {
-    this.registeredIcons.set(options.name, options);
-    // Update the signal to trigger UI update
-    this.setIcons(Array.from(this.registeredIcons.values()));
-    this.logger.debug(`Registered icon ${options.name} with callback`);
-  }
+    state.registeredIcons.set(options.name, options);
+    state.setIcons?.(Array.from(state.registeredIcons.values()));
+    ctx.log.debug(`Registered icon ${options.name}`);
+  },
 
-  @eventMethod
   async onClicked(iconName: string): Promise<void> {
-    const iconRegistration = this.registeredIcons.get(iconName);
-    if (iconRegistration?.callback) {
-      try {
-        await iconRegistration.callback();
-        this.logger.debug(`Icon ${iconName} callback executed`);
-      } catch (error) {
-        this.logger.error(
-          `Error executing callback for icon ${iconName}:`,
-          error,
-        );
-      }
-    } else {
-      this.logger.warn(`No callback registered for icon ${iconName}`);
-    }
-  }
+    return onClicked(ctx, iconName);
+  },
 
-  @eventMethod
-  registerDataUpdateCallback(
-    callback: (data: any) => void,
-  ): void {
-    this.dataUpdateCallbacks.add(callback);
-    this.logger.debug("Registered data update callback");
-  }
+  registerDataUpdateCallback(callback: (data: any) => void): void {
+    state.dataUpdateCallbacks.add(callback);
+    ctx.log.debug("Registered data update callback");
+  },
 
-  @eventMethod
-  registerSelectionChangeCallback(
-    callback: (panelId: string) => void,
-  ): void {
-    this.selectionChangeCallbacks.add(callback);
-    this.logger.debug("Registered selection change callback");
-  }
+  registerSelectionChangeCallback(callback: (panelId: string) => void): void {
+    state.selectionChangeCallbacks.add(callback);
+    ctx.log.debug("Registered selection change callback");
+  },
 
-  @eventMethod
-  unregisterDataUpdateCallback(
-    callback: (data: any) => void,
-  ): void {
-    this.dataUpdateCallbacks.delete(callback);
-  }
+  unregisterDataUpdateCallback(callback: (data: any) => void): void {
+    state.dataUpdateCallbacks.delete(callback);
+  },
 
-  @eventMethod
-  unregisterSelectionChangeCallback(
-    callback: (panelId: string) => void,
-  ): void {
-    this.selectionChangeCallbacks.delete(callback);
-  }
+  unregisterSelectionChangeCallback(callback: (panelId: string) => void): void {
+    state.selectionChangeCallbacks.delete(callback);
+  },
 
-  // Public event methods (exposed to other modules)
-  @eventMethod
   notifyDataChanged(data: any): void {
     setPanelSidebarData(data);
-
-    for (const callback of this.dataUpdateCallbacks) {
+    for (const callback of state.dataUpdateCallbacks) {
       try {
         callback(data);
       } catch (error) {
-        this.logger.error("Error in data update callback:", error);
+        ctx.log.error("Error in data update callback:", error);
       }
     }
-  }
+  },
 
-  @eventMethod
   notifyConfigChanged(config: any): void {
     setPanelSidebarConfig(config);
-  }
+  },
 
-  @eventMethod
   selectPanel(panelId: string): void {
     setSelectedPanelId(panelId);
-
-    for (const callback of this.selectionChangeCallbacks) {
+    for (const callback of state.selectionChangeCallbacks) {
       try {
         callback(panelId);
       } catch (error) {
-        this.logger.error("Error in selection change callback:", error);
+        ctx.log.error("Error in selection change callback:", error);
       }
     }
-  }
+  },
 
-  // Public event method to get registered icons
-  @eventMethod
   getRegisteredIcons(): SidebarIconRegistration[] {
-    return Array.from(this.registeredIcons.values());
-  }
-}
+    return Array.from(state.registeredIcons.values());
+  },
+});
 
-// 3. Register globally
+// ============================================================================
+// Module Definition
+// ============================================================================
+
+export default defineModule({
+  name: "sidebar",
+  hot: import.meta.hot,
+}, {
+  init(ctx) {
+    ctx.log.debug("Sidebar initializing...");
+    
+    // Create signal for icons
+    const [getIcons, setIcons] = createSignal<SidebarIconRegistration[]>([]);
+    state.getIcons = getIcons;
+    state.setIcons = setIcons;
+
+    // Render the dock bar UI
+    renderDockBar(ctx);
+  },
+
+  cleanup(ctx) {
+    ctx.log.debug("Cleaning up sidebar module");
+    
+    // Clear all registered data
+    state.registeredIcons.clear();
+    state.dataUpdateCallbacks.clear();
+    state.selectionChangeCallbacks.clear();
+    state.getIcons = null;
+    state.setIcons = null;
+    
+    // Remove DOM elements
+    document?.getElementById("sidebar-dock-bar")?.remove();
+    document?.getElementById("sidebar-dock-bar-styles")?.remove();
+  },
+
+  eventMethods(ctx) {
+    return createEventMethods(ctx);
+  },
+});
+
+// ============================================================================
+// Type Declarations
+// ============================================================================
+
 declare global {
-  interface FeatureModuleRegistry {
-    Sidebar: typeof Sidebar;
-  }
   interface FeatureModuleEventMethods {
     sidebar: SidebarEventDispatcher;
   }

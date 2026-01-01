@@ -1,5 +1,3 @@
-import { loader } from "#bridge-loader-features/loader/index.ts";
+import { initScripts } from "#bridge-loader-features/loader/index.ts";
 
-export default async function initScripts() {
-  await loader.load();
-}
+export default initScripts;

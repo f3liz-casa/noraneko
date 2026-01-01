@@ -1,97 +1,159 @@
 // SPDX-License-Identifier: MPL-2.0
 
-const _mapPromiseModuleState = new Map<
-  string,
-  [Promise<void>, () => void, (reason: any) => void]
->();
+/**
+ * Module Hooks - Data-Oriented Programming Style
+ * 
+ * Julia/Kotlin-like functional patterns:
+ * - Module-level state (data) + pure functions
+ * - Deferred promises for module load coordination
+ * - No classes, just data and functions
+ */
 
-function createPromise(): [Promise<void>, () => void, (reason: any) => void] {
-  let rs: (() => void) | null = null;
-  let rj: ((reason: any) => void) | null = null;
-  const p = new Promise<void>((resolve, reject) => {
-    rs = resolve;
-    rj = reject;
+// ============================================================================
+// Types - Deferred Promise with settlement tracking
+// ============================================================================
+
+interface DeferredState {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (reason: any) => void;
+  settled: boolean;
+}
+
+// ============================================================================
+// Module State - Data (Julia-like module-level state)
+// ============================================================================
+
+/** Map of module name -> deferred state for load tracking */
+const _moduleLoadStates: Map<string, DeferredState> = new Map();
+
+/** Flag: has initialization completed (for rejecting late module requests) */
+let _initCompleted = false;
+
+// ============================================================================
+// Internal Functions - Helpers
+// ============================================================================
+
+/**
+ * Create a deferred promise with settlement tracking
+ */
+const createDeferred = (): DeferredState => {
+  let resolve: (() => void) | null = null;
+  let reject: ((reason: any) => void) | null = null;
+  const state: DeferredState = {
+    promise: null as any,
+    resolve: null as any,
+    reject: null as any,
+    settled: false,
+  };
+  
+  state.promise = new Promise<void>((rs, rj) => {
+    resolve = () => { state.settled = true; rs(); };
+    reject = (reason) => { state.settled = true; rj(reason); };
   });
-  return [p, rs!, rj!];
-}
+  
+  state.resolve = resolve!;
+  state.reject = reject!;
+  
+  return state;
+};
 
-interface TModuleLib {
-  onModuleLoaded: (module: string) => Promise<void>;
-  _registerModuleLoadState: (module: string, isLoaded: boolean) => void;
-}
+/**
+ * Get or create deferred state for a module
+ */
+const getOrCreateDeferred = (module: string): DeferredState => {
+  if (!_moduleLoadStates.has(module)) {
+    _moduleLoadStates.set(module, createDeferred());
+  }
+  return _moduleLoadStates.get(module)!;
+};
 
-class ModuleLib implements TModuleLib {
-  static _instance: ModuleLib | null = null;
-  static getInstance() {
-    if (!this._instance) {
-      this._instance = new ModuleLib();
-    }
-    return this._instance;
-  }
-  onModuleLoaded(module: string): Promise<void> {
-    if (_mapPromiseModuleState.has(module)) {
-      return _mapPromiseModuleState.get(module)![0];
-    } else if (this.rejected) {
-      return Promise.reject(new Error("Module Not Found"));
-    }
+// ============================================================================
+// Public API - Module Load Hooks
+// ============================================================================
 
-    const pms = createPromise();
-    _mapPromiseModuleState.set(module, pms);
-    return pms[0];
-  }
-  _registerModuleLoadState(module: string, isLoaded: boolean) {
-    if (!_mapPromiseModuleState.has(module)) {
-      const pms = createPromise();
-      _mapPromiseModuleState.set(module, pms);
-    }
-    if (isLoaded) {
-      _mapPromiseModuleState.get(module)![1]();
-    } else {
-      _mapPromiseModuleState.get(module)![2](
-        new Error(`Failed to load module : ${module}`),
-      );
-    }
-  }
-  async _rejectOtherLoadStates() {
-    for (const [_, pms] of _mapPromiseModuleState) {
-      const t = {};
-      if (t === (await Promise.race([pms[0], t]))) {
-        pms[2](new Error("Module Not Found"));
-      }
-    }
-    this.rejected = true;
-  }
-  private rejected = false;
-}
-
+/**
+ * Wait for a module to be loaded
+ * Returns a promise that resolves when the module loads
+ */
 export function onModuleLoaded(module: string): Promise<void> {
-  return ModuleLib.getInstance().onModuleLoaded(module);
+  // If init is complete and module doesn't exist, reject immediately
+  if (_initCompleted && !_moduleLoadStates.has(module)) {
+    return Promise.reject(new Error("Module Not Found"));
+  }
+  
+  return getOrCreateDeferred(module).promise;
 }
 
-export function _registerModuleLoadState(module: string, isLoaded: boolean) {
-  return ModuleLib.getInstance()._registerModuleLoadState(module, isLoaded);
+/**
+ * Register a module's load state (success or failure)
+ */
+export function _registerModuleLoadState(module: string, isLoaded: boolean): void {
+  const state = getOrCreateDeferred(module);
+  
+  if (isLoaded) {
+    state.resolve();
+  } else {
+    state.reject(new Error(`Module Not Found: ${module}`));
+  }
 }
 
-export function _rejectOtherLoadStates() {
-  return ModuleLib.getInstance()._rejectOtherLoadStates();
+/**
+ * Reject all pending module load promises that haven't resolved
+ * Called after all modules are initialized
+ */
+export function _rejectOtherLoadStates(): void {
+  // Efficiently check settlement state without creating new promises
+  for (const [moduleName, state] of _moduleLoadStates) {
+    if (!state.settled) {
+      state.reject(new Error(`Module Not Found: ${moduleName}`));
+    }
+  }
+  
+  _initCompleted = true;
 }
 
-// Re-export EventDispatcher registry functions for convenient access
+// ============================================================================
+// Re-exports - Convenient access from single module
+// ============================================================================
+
+// Re-export EventDispatcher registry functions
 export {
   registerModuleEventDispatcher,
   unregisterModuleEventDispatcher,
   isModuleRegistered,
   createDependencyEventDispatchers,
+  // New Result type utilities
+  type Result,
+  ok,
+  err,
+  isOk,
+  isErr,
+  unwrap,
+  unwrapOr,
+  mapResult,
+  toEither,
+  fromEither,
 } from "./event-dispatcher-registry.ts";
 
 // Re-export module registry functions for hotswapping support
 export {
-  moduleRegistry,
   registerModule,
   getModule,
+  getAllModules,
   hasModule,
   cleanupModule,
   cleanupAllModules,
   unregisterModule,
+  addHotswapListener,
+  removeHotswapListener,
+  notifyHotswapStart,
+  notifyHotswapComplete,
 } from "./module-registry.ts";
-export type { HotswapEvent } from "./module-registry.ts";
+
+export type { 
+  HotswapEvent, 
+  HotswapListener, 
+  ModuleInfo, 
+  ModuleMetadata 
+} from "./module-registry.ts";
