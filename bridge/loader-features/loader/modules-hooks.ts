@@ -83,3 +83,15 @@ export {
   isModuleRegistered,
   createDependencyEventDispatchers,
 } from "./event-dispatcher-registry.ts";
+
+// Re-export module registry functions for hotswapping support
+export {
+  moduleRegistry,
+  registerModule,
+  getModule,
+  hasModule,
+  cleanupModule,
+  cleanupAllModules,
+  unregisterModule,
+} from "./module-registry.ts";
+export type { HotswapEvent } from "./module-registry.ts";

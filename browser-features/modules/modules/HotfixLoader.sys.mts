@@ -593,6 +593,50 @@ IMPORTANT: It is strongly recommended to choose "Don't Apply" unless you trust t
   }
 
   /**
+   * Hot-swap modules with new versions from a hotfix
+   * This triggers the loader to cleanup all modules and reload them with hotfix versions
+   * 
+   * @param hotfixId - The ID of the hotfix to apply
+   * @returns Promise<boolean> - true if hotswap was successful
+   */
+  async hotswapModules(hotfixId: string): Promise<boolean> {
+    console.log(`[HotfixLoader] Starting hotswap for hotfix: ${hotfixId}`);
+    
+    try {
+      // First apply the hotfix (sets up preferences and verifies files)
+      const applied = await this.applyHotfix(hotfixId);
+      if (!applied) {
+        console.error(`[HotfixLoader] Failed to apply hotfix before hotswap: ${hotfixId}`);
+        return false;
+      }
+      
+      // Trigger the loader to hotswap modules
+      // This will cleanup all modules and reload them with the new versions
+      const { loader } = ChromeUtils.importESModule(
+        "chrome://noraneko-startup/content/features-chrome/core.js",
+      );
+      
+      if (loader && typeof loader.hotswap === "function") {
+        const success = await loader.hotswap(hotfixId);
+        if (success) {
+          console.log(`[HotfixLoader] Hotswap successful for hotfix: ${hotfixId}`);
+          return true;
+        } else {
+          console.error(`[HotfixLoader] Hotswap failed for hotfix: ${hotfixId}`);
+          return false;
+        }
+      } else {
+        console.warn("[HotfixLoader] Loader does not support hotswap, restart required");
+        this.notifyRestartRequired({ id: hotfixId } as HotfixManifest);
+        return false;
+      }
+    } catch (error) {
+      console.error("[HotfixLoader] Hotswap error:", error);
+      return false;
+    }
+  }
+
+  /**
    * Revert a hotfix (re-enable original modules)
    */
   async revertHotfix(hotfixId: string): Promise<boolean> {
