@@ -10,17 +10,22 @@
  */
 
 // ============================================================================
-// Types - Deferred Promise tuple [promise, resolve, reject]
+// Types - Deferred Promise with settlement tracking
 // ============================================================================
 
-type DeferredPromise = [Promise<void>, () => void, (reason: any) => void];
+interface DeferredState {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (reason: any) => void;
+  settled: boolean;
+}
 
 // ============================================================================
 // Module State - Data (Julia-like module-level state)
 // ============================================================================
 
-/** Map of module name -> deferred promise for load state */
-const _moduleLoadStates: Map<string, DeferredPromise> = new Map();
+/** Map of module name -> deferred state for load tracking */
+const _moduleLoadStates: Map<string, DeferredState> = new Map();
 
 /** Flag: has initialization completed (for rejecting late module requests) */
 let _initCompleted = false;
@@ -30,25 +35,33 @@ let _initCompleted = false;
 // ============================================================================
 
 /**
- * Create a deferred promise (Julia-like tuple pattern)
- * Returns [promise, resolve, reject]
+ * Create a deferred promise with settlement tracking
  */
-const createDeferred = (): DeferredPromise => {
+const createDeferred = (): DeferredState => {
   let resolve: (() => void) | null = null;
   let reject: ((reason: any) => void) | null = null;
+  const state: DeferredState = {
+    promise: null as any,
+    resolve: null as any,
+    reject: null as any,
+    settled: false,
+  };
   
-  const promise = new Promise<void>((rs, rj) => {
-    resolve = rs;
-    reject = rj;
+  state.promise = new Promise<void>((rs, rj) => {
+    resolve = () => { state.settled = true; rs(); };
+    reject = (reason) => { state.settled = true; rj(reason); };
   });
   
-  return [promise, resolve!, reject!];
+  state.resolve = resolve!;
+  state.reject = reject!;
+  
+  return state;
 };
 
 /**
- * Get or create deferred promise for a module
+ * Get or create deferred state for a module
  */
-const getOrCreateDeferred = (module: string): DeferredPromise => {
+const getOrCreateDeferred = (module: string): DeferredState => {
   if (!_moduleLoadStates.has(module)) {
     _moduleLoadStates.set(module, createDeferred());
   }
@@ -69,20 +82,19 @@ export function onModuleLoaded(module: string): Promise<void> {
     return Promise.reject(new Error("Module Not Found"));
   }
   
-  const [promise] = getOrCreateDeferred(module);
-  return promise;
+  return getOrCreateDeferred(module).promise;
 }
 
 /**
  * Register a module's load state (success or failure)
  */
 export function _registerModuleLoadState(module: string, isLoaded: boolean): void {
-  const [, resolve, reject] = getOrCreateDeferred(module);
+  const state = getOrCreateDeferred(module);
   
   if (isLoaded) {
-    resolve();
+    state.resolve();
   } else {
-    reject(new Error(`Failed to load module: ${module}`));
+    state.reject(new Error(`Module Not Found: ${module}`));
   }
 }
 
@@ -90,16 +102,11 @@ export function _registerModuleLoadState(module: string, isLoaded: boolean): voi
  * Reject all pending module load promises that haven't resolved
  * Called after all modules are initialized
  */
-export async function _rejectOtherLoadStates(): Promise<void> {
-  // Check each module's promise to see if it's still pending
-  for (const [, [promise, , reject]] of _moduleLoadStates) {
-    // Race with an empty object to check if promise is pending
-    const sentinel = {};
-    const result = await Promise.race([promise, Promise.resolve(sentinel)]);
-    
-    if (result === sentinel) {
-      // Promise is still pending, reject it
-      reject(new Error("Module Not Found"));
+export function _rejectOtherLoadStates(): void {
+  // Efficiently check settlement state without creating new promises
+  for (const [moduleName, state] of _moduleLoadStates) {
+    if (!state.settled) {
+      state.reject(new Error(`Module Not Found: ${moduleName}`));
     }
   }
   

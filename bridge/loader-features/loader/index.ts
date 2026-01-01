@@ -95,7 +95,7 @@ const initHotfixSystem = async (): Promise<void> => {
 
 /** Set up preferences for features */
 const setPrefFeatures = (allFeaturesKeys: typeof MODULES_KEYS): void => {
-  const prefs = Services.prefs.getDefaultBranch(null as unknown as string);
+  const prefs = Services.prefs.getDefaultBranch("");
   prefs.setStringPref("noraneko.features.all", JSON.stringify(allFeaturesKeys));
   Services.prefs.lockPref("noraneko.features.all");
   prefs.setStringPref("noraneko.features.enabled", JSON.stringify(allFeaturesKeys));
@@ -173,7 +173,7 @@ const loadSingleModule = async (
         default?: any;
       }),
     };
-    console.log(module);
+    console.debug(`[noraneko] Loaded module: ${moduleName}`);
     return module;
   } catch (e) {
     console.error(`[noraneko] Failed to load module ${moduleName}:`, e);
@@ -264,7 +264,7 @@ const registerModuleInstance = (module: LoadedModule, instance: any, isHotfix: b
   if (typeof instance.eventMethods === "function") {
     try {
       const eventMethods = instance.eventMethods();
-      console.log(module.metadata.moduleName, eventMethods);
+      console.debug(`[noraneko] Event methods for ${module.metadata.moduleName}:`, Object.keys(eventMethods));
       registerModuleEventDispatcher(module.metadata.moduleName, eventMethods);
       console.debug(`[noraneko] Registered EventDispatcher for ${module.metadata.moduleName}`);
     } catch (e) {
@@ -317,7 +317,7 @@ const initializeModules = async (modules: LoadedModule[]): Promise<void> => {
   }
 
   _registerModuleLoadState("__init_all__", true);
-  await _rejectOtherLoadStates();
+  _rejectOtherLoadStates();
 };
 
 /** Initialize modules during hotswap (no session store wait) */
