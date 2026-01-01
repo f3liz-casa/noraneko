@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 
+/**
+ * Module Loader - Data-Oriented Programming Style
+ * 
+ * Julia/Kotlin-like functional patterns:
+ * - Pure functions for core logic
+ * - Module-level data structures
+ * - Pipeline-style composition
+ */
+
 import { initI18NForBrowserChrome } from "#i18n/config-browser-chrome.ts";
 
 import { MODULES, MODULES_KEYS } from "./modules.ts";
@@ -8,89 +17,59 @@ import {
   _registerModuleLoadState,
   _rejectOtherLoadStates,
 } from "./modules-hooks.ts";
-import { registerModuleEventDispatcher, unregisterModuleEventDispatcher } from "./event-dispatcher-registry.ts";
-import { moduleRegistry, registerModule } from "./module-registry.ts";
+import { registerModuleEventDispatcher } from "./event-dispatcher-registry.ts";
+import { 
+  registerModule, 
+  cleanupAllModules,
+  notifyHotswapStart,
+  notifyHotswapComplete,
+  type ModuleMetadata,
+} from "./module-registry.ts";
 
 console.log("[noraneko] Initializing scripts...");
 
-// Hotfix system preference keys
+// ============================================================================
+// Types - Data Structures
+// ============================================================================
+
+/** Loaded module with exports and metadata */
+interface LoadedModule {
+  name: string;
+  metadata: ModuleMetadata;
+  init?: typeof Function;
+  initBeforeSessionStoreInit?: typeof Function;
+  default?: any;
+}
+
+// ============================================================================
+// Configuration - Constants
+// ============================================================================
+
 const PREF_HOTFIX_DISABLED_MODULES = "noraneko.hotfix.disabled_modules";
 
-export const loader = {
-  load: initScripts,
-  hotswap: hotswapModules,
-  getModuleRegistry: () => moduleRegistry,
-};
+// ============================================================================
+// Pure Functions - Helpers
+// ============================================================================
 
-export async function initScripts() {
-  // Import required modules and initialize i18n
-  ChromeUtils.importESModule("resource://noraneko/modules/BrowserGlue.sys.mjs");
-  const { NoranekoConstants } = ChromeUtils.importESModule(
-    "resource://noraneko/modules/NoranekoConstants.sys.mjs",
-  );
-  initI18NForBrowserChrome();
-  console.debug(
-    `[noraneko-buildid2]\nuuid: ${NoranekoConstants.buildID2}\ndate: ${new Date(
-      Number.parseInt(
-        NoranekoConstants.buildID2.slice(0, 13).replace("-", ""),
-        16,
-      ),
-    ).toISOString()}`,
-  );
+/** Create default metadata for a module */
+const defaultMetadata = (moduleName: string): ModuleMetadata => ({
+  moduleName,
+  dependencies: [],
+  softDependencies: [],
+});
 
-  // Initialize hotfix system
-  await initializeHotfixSystem();
-
-  setPrefFeatures(MODULES_KEYS);
-
-  // Get enabled features from preferences
-  const enabled_features = JSON.parse(
-    Services.prefs.getStringPref("noraneko.features.enabled", "{}"),
-  ) as typeof MODULES_KEYS;
-
-  // Load enabled modules (filtering out hotfix-disabled modules)
-  const modules = await loadEnabledModules(enabled_features);
-
-  // Initialize modules after session is ready
-  await initializeModules(modules);
-}
-
-/**
- * Initialize the hotfix system
- */
-async function initializeHotfixSystem(): Promise<void> {
+/** Check if a module is disabled by hotfix */
+const isModuleDisabledByHotfix = (moduleName: string): boolean => {
   try {
-    const { hotfixLoader } = ChromeUtils.importESModule(
-      "resource://noraneko/modules/HotfixLoader.sys.mjs",
-    );
-    await hotfixLoader.initialize();
-    console.log("[noraneko] Hotfix system initialized");
-  } catch (error) {
-    console.error("[noraneko] Failed to initialize hotfix system:", error);
-    // Continue without hotfix system - non-fatal error
-  }
-}
-
-/**
- * Check if a module is disabled by the hotfix system
- */
-function isModuleDisabledByHotfix(moduleName: string): boolean {
-  try {
-    const disabled = Services.prefs.getStringPref(
-      PREF_HOTFIX_DISABLED_MODULES,
-      "[]",
-    );
-    const disabledModules = JSON.parse(disabled) as string[];
-    return disabledModules.includes(moduleName);
+    const disabled = Services.prefs.getStringPref(PREF_HOTFIX_DISABLED_MODULES, "[]");
+    return (JSON.parse(disabled) as string[]).includes(moduleName);
   } catch {
     return false;
   }
-}
+};
 
-/**
- * Get the patched module path if available
- */
-function getPatchedModulePath(moduleName: string): string | null {
+/** Get patched module path from hotfix loader */
+const getPatchedModulePath = (moduleName: string): string | null => {
   try {
     const { hotfixLoader } = ChromeUtils.importESModule(
       "resource://noraneko/modules/HotfixLoader.sys.mjs",
@@ -99,254 +78,144 @@ function getPatchedModulePath(moduleName: string): string | null {
   } catch {
     return null;
   }
-}
+};
 
-async function setPrefFeatures(all_features_keys: typeof MODULES_KEYS) {
-  // Set up preferences for features
+/** Initialize the hotfix system */
+const initHotfixSystem = async (): Promise<void> => {
+  try {
+    const { hotfixLoader } = ChromeUtils.importESModule(
+      "resource://noraneko/modules/HotfixLoader.sys.mjs",
+    );
+    await hotfixLoader.initialize();
+    console.log("[noraneko] Hotfix system initialized");
+  } catch (error) {
+    console.error("[noraneko] Failed to initialize hotfix system:", error);
+  }
+};
+
+/** Set up preferences for features */
+const setPrefFeatures = (allFeaturesKeys: typeof MODULES_KEYS): void => {
   const prefs = Services.prefs.getDefaultBranch(null as unknown as string);
-  prefs.setStringPref(
-    "noraneko.features.all",
-    JSON.stringify(all_features_keys),
-  );
+  prefs.setStringPref("noraneko.features.all", JSON.stringify(allFeaturesKeys));
   Services.prefs.lockPref("noraneko.features.all");
+  prefs.setStringPref("noraneko.features.enabled", JSON.stringify(allFeaturesKeys));
+};
 
-  prefs.setStringPref(
-    "noraneko.features.enabled",
-    JSON.stringify(all_features_keys),
-  );
-}
-
-interface ModuleMetadata {
-  moduleName: string;
-  dependencies: string[];
-  softDependencies: string[];
-}
-
-interface LoadedModule {
-  name: string;
-  metadata: ModuleMetadata;
-  init?: typeof Function;
-  initBeforeSessionStoreInit?: typeof Function;
-  default?: any; // Module class constructor
-}
-
-async function loadEnabledModules(
-  enabled_features: typeof MODULES_KEYS,
-): Promise<LoadedModule[]> {
-  const modules: LoadedModule[] = [];
-
-  const loadModulePromises = Object.entries(MODULES).flatMap(
-    ([categoryKey, categoryValue]) =>
-      Object.keys(categoryValue).map(async (moduleName) => {
-        if (
-          categoryKey in enabled_features &&
-          enabled_features[
-            categoryKey as keyof typeof enabled_features
-          ].includes(moduleName)
-        ) {
-          // Check if module is disabled by hotfix
-          if (isModuleDisabledByHotfix(moduleName)) {
-            console.log(`[noraneko] Module ${moduleName} disabled by hotfix, loading patched version`);
-            const patchedPath = getPatchedModulePath(moduleName);
-            if (patchedPath) {
-              try {
-                // Load the patched module from the hotfix directory
-                const patchedModule = await loadPatchedModule(patchedPath, moduleName);
-                if (patchedModule) {
-                  modules.push(patchedModule);
-                  return;
-                }
-              } catch (e) {
-                console.error(`[noraneko] Failed to load patched module ${moduleName}:`, e);
-                // Fall through to load original module as fallback
-              }
-            }
-            // Skip the original module if no patched version available
-            console.warn(`[noraneko] No patched version found for disabled module ${moduleName}`);
-            return;
-          }
-
-          try {
-            const moduleExports = await categoryValue[moduleName]();
-            const metadata =
-              (moduleExports as any).default?._metadata?.() ||
-              ({
-                moduleName,
-                dependencies: [],
-                softDependencies: [],
-              } satisfies ModuleMetadata);
-
-            const module: LoadedModule = {
-              name: moduleName,
-              metadata,
-              ...(moduleExports as {
-                init?: typeof Function;
-                initBeforeSessionStoreInit?: typeof Function;
-                default?: any;
-              }),
-            };
-            console.log(module);
-            modules.push(module);
-          } catch (e) {
-            console.error(`[noraneko] Failed to load module ${moduleName}:`, e);
-          }
-        }
-      }),
-  );
-
-  await Promise.all(loadModulePromises);
-  return modules;
-}
-
-/**
- * Load a patched module from the hotfix directory
- * Security: Validates the path is within the expected hotfix directory
+/** 
+ * Load patched module with path traversal protection
+ * Security: Validates path is within hotfix directory
  */
-async function loadPatchedModule(
+const loadPatchedModule = async (
   patchedPath: string,
   moduleName: string,
-): Promise<LoadedModule | null> {
+): Promise<LoadedModule | null> => {
   try {
-    // Security: Validate the path is within the hotfix directory
     const profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
     const hotfixBaseDir = PathUtils.join(profileDir, "noraneko-hotfixes");
     const normalizedPath = PathUtils.normalize(patchedPath);
     
-    // Ensure the path doesn't escape the hotfix directory (path traversal protection)
+    // Security: Ensure path doesn't escape hotfix directory
     if (!normalizedPath.startsWith(hotfixBaseDir)) {
-      console.error(`[noraneko] Security: Patched module path is outside hotfix directory: ${patchedPath}`);
+      console.error(`[noraneko] Security: Path outside hotfix directory: ${patchedPath}`);
       return null;
     }
 
-    // Convert file path to file:// URL for loading
     const fileUrl = `file://${normalizedPath}`;
-    const moduleExports = ChromeUtils.importESModule(fileUrl);
-
-    const metadata =
-      (moduleExports as any).default?._metadata?.() ||
-      ({
-        moduleName,
-        dependencies: [],
-        softDependencies: [],
-      } satisfies ModuleMetadata);
+    const exports = ChromeUtils.importESModule(fileUrl);
+    const metadata = (exports as any).default?._metadata?.() ?? defaultMetadata(moduleName);
 
     return {
       name: moduleName,
       metadata,
-      ...(moduleExports as {
+      ...(exports as {
         init?: typeof Function;
         initBeforeSessionStoreInit?: typeof Function;
         default?: any;
       }),
     };
   } catch (error) {
-    console.error(`[noraneko] Failed to load patched module from ${patchedPath}:`, error);
+    console.error(`[noraneko] Failed to load patched module ${patchedPath}:`, error);
     return null;
   }
-}
+};
 
-async function initializeModules(modules: LoadedModule[]) {
-  // Validate dependencies
-  validateDependencies(modules);
-
-  // Sort modules by dependencies
-  const sortedModules = sortModulesByDependencies(modules);
-
-  // Run initBeforeSessionStoreInit for all modules
-  for (const module of sortedModules) {
-    try {
-      await module?.initBeforeSessionStoreInit?.();
-    } catch (e) {
-      console.error(
-        `[noraneko] Failed to initBeforeSessionStoreInit module ${module.name}:`,
-        e,
-      );
+/** Load a single module (regular or patched) */
+const loadSingleModule = async (
+  categoryValue: Record<string, () => Promise<unknown>>,
+  moduleName: string,
+): Promise<LoadedModule | null> => {
+  // Check if disabled by hotfix
+  if (isModuleDisabledByHotfix(moduleName)) {
+    console.log(`[noraneko] Module ${moduleName} disabled by hotfix`);
+    const patchedPath = getPatchedModulePath(moduleName);
+    
+    if (patchedPath) {
+      try {
+        return await loadPatchedModule(patchedPath, moduleName);
+      } catch (e) {
+        console.error(`[noraneko] Failed to load patched ${moduleName}:`, e);
+      }
     }
+    console.warn(`[noraneko] No patched version for disabled module ${moduleName}`);
+    return null;
   }
 
-  // Wait for SessionStore to be ready
-  // @ts-expect-error SessionStore type not defined
-  await SessionStore.promiseInitialized;
+  try {
+    const exports = await categoryValue[moduleName]();
+    const metadata = (exports as any).default?._metadata?.() ?? defaultMetadata(moduleName);
 
-  // Initialize each module and register EventDispatcher after init
-  for (const module of sortedModules) {
-    try {
-      console.log("init " + module.name);
-
-      // Wait for hard dependencies to load
-      for (const dep of module.metadata.dependencies) {
-        await onModuleLoaded(dep);
-      }
-
-      // Create instance (decorator auto-runs init via constructor)
-      let instance: any;
-      if (module?.default) {
-        instance = new module.default();
-      }
-
-      // Register module with the registry for hotswapping support
-      if (instance) {
-        registerModule(
-          module.metadata.moduleName,
-          instance,
-          module.metadata,
-          false // not a hotfix module
-        );
-      }
-
-      // Register EventDispatcher methods after initialization
-      if (instance && typeof instance.eventMethods === "function") {
-        try {
-          const eventMethods = instance.eventMethods();
-          console.log(module.metadata.moduleName);
-          console.log(eventMethods);
-          registerModuleEventDispatcher(module.metadata.moduleName, eventMethods);
-
-          console.debug(
-            `[noraneko] Registered EventDispatcher methods for module ${module.metadata.moduleName}`,
-          );
-        } catch (e) {
-          console.error(
-            `[noraneko] Failed to register EventDispatcher methods for module ${module.metadata.moduleName}:`,
-            e,
-          );
-        }
-      }
-
-      _registerModuleLoadState(module.name, true);
-    } catch (e) {
-      console.error(`[noraneko] Failed to init module ${module.name}:`, e);
-      _registerModuleLoadState(module.name, false);
-    }
+    const module: LoadedModule = {
+      name: moduleName,
+      metadata,
+      ...(exports as {
+        init?: typeof Function;
+        initBeforeSessionStoreInit?: typeof Function;
+        default?: any;
+      }),
+    };
+    console.log(module);
+    return module;
+  } catch (e) {
+    console.error(`[noraneko] Failed to load module ${moduleName}:`, e);
+    return null;
   }
+};
 
-  _registerModuleLoadState("__init_all__", true);
-  await _rejectOtherLoadStates();
-}
+/** Load all enabled modules */
+const loadEnabledModules = async (
+  enabledFeatures: typeof MODULES_KEYS,
+): Promise<LoadedModule[]> => {
+  const promises = Object.entries(MODULES).flatMap(([categoryKey, categoryValue]) =>
+    Object.keys(categoryValue)
+      .filter(moduleName => 
+        categoryKey in enabledFeatures &&
+        enabledFeatures[categoryKey as keyof typeof enabledFeatures].includes(moduleName)
+      )
+      .map(moduleName => loadSingleModule(categoryValue, moduleName))
+  );
 
-function validateDependencies(modules: LoadedModule[]): void {
-  const moduleNames = new Set(modules.map((m) => m.name));
+  const results = await Promise.all(promises);
+  return results.filter((m): m is LoadedModule => m !== null);
+};
+
+/** Validate module dependencies (no missing, no circular) */
+const validateDependencies = (modules: LoadedModule[]): void => {
+  const moduleNames = new Set(modules.map(m => m.name));
+  const moduleMap = new Map(modules.map(m => [m.name, m]));
   const visited = new Set<string>();
   const visiting = new Set<string>();
-  const moduleMap = new Map(modules.map((m) => [m.name, m]));
 
-  const checkCircular = (
-    name: string,
-    deps: string[],
-    path: string[] = [],
-  ): void => {
+  const checkCircular = (name: string, deps: string[], path: string[] = []): void => {
     if (visiting.has(name)) {
-      const cycle = [...path, name].join(" -> ");
-      throw new Error(`Circular dependency detected: ${cycle}`);
+      throw new Error(`Circular dependency: ${[...path, name].join(" -> ")}`);
     }
     if (visited.has(name)) return;
 
     visiting.add(name);
-    const newPath = [...path, name];
     for (const dep of deps) {
       const depModule = moduleMap.get(dep);
       if (depModule) {
-        checkCircular(dep, depModule.metadata.dependencies, newPath);
+        checkCircular(dep, depModule.metadata.dependencies, [...path, name]);
       }
     }
     visiting.delete(name);
@@ -357,142 +226,205 @@ function validateDependencies(modules: LoadedModule[]): void {
     // Check hard dependencies exist
     for (const dep of module.metadata.dependencies) {
       if (!moduleNames.has(dep)) {
-        throw new Error(
-          `Missing dependency: ${dep} required by ${module.name}`,
-        );
+        throw new Error(`Missing dependency: ${dep} required by ${module.name}`);
       }
     }
-
-    // Check for circular dependencies
     checkCircular(module.name, module.metadata.dependencies);
   }
-}
+};
 
-function sortModulesByDependencies(modules: LoadedModule[]): LoadedModule[] {
+/** Topological sort by dependencies */
+const sortByDependencies = (modules: LoadedModule[]): LoadedModule[] => {
   const sorted: LoadedModule[] = [];
   const processed = new Set<string>();
-  const moduleMap = new Map(modules.map((m) => [m.name, m]));
+  const moduleMap = new Map(modules.map(m => [m.name, m]));
 
   const process = (module: LoadedModule): void => {
     if (processed.has(module.name)) return;
 
-    // Process dependencies first
     for (const depName of module.metadata.dependencies) {
-      const depModule = moduleMap.get(depName);
-      if (depModule && !processed.has(depName)) {
-        process(depModule);
-      }
+      const dep = moduleMap.get(depName);
+      if (dep && !processed.has(depName)) process(dep);
     }
 
     sorted.push(module);
     processed.add(module.name);
   };
 
-  for (const module of modules) {
-    process(module);
+  modules.forEach(process);
+  return sorted;
+};
+
+/** Register module instance and event methods */
+const registerModuleInstance = (module: LoadedModule, instance: any, isHotfix: boolean): void => {
+  if (!instance) return;
+
+  registerModule(module.metadata.moduleName, instance, module.metadata, isHotfix);
+
+  if (typeof instance.eventMethods === "function") {
+    try {
+      const eventMethods = instance.eventMethods();
+      console.log(module.metadata.moduleName, eventMethods);
+      registerModuleEventDispatcher(module.metadata.moduleName, eventMethods);
+      console.debug(`[noraneko] Registered EventDispatcher for ${module.metadata.moduleName}`);
+    } catch (e) {
+      console.error(`[noraneko] Failed to register EventDispatcher for ${module.metadata.moduleName}:`, e);
+    }
+  }
+};
+
+/** Initialize a single module */
+const initModule = async (module: LoadedModule): Promise<void> => {
+  console.log("init " + module.name);
+
+  // Wait for hard dependencies
+  for (const dep of module.metadata.dependencies) {
+    await onModuleLoaded(dep);
   }
 
-  return sorted;
+  // Create instance (decorator auto-runs init via constructor)
+  const instance = module?.default ? new module.default() : null;
+  registerModuleInstance(module, instance, false);
+  _registerModuleLoadState(module.name, true);
+};
+
+/** Initialize all modules */
+const initializeModules = async (modules: LoadedModule[]): Promise<void> => {
+  validateDependencies(modules);
+  const sortedModules = sortByDependencies(modules);
+
+  // Run initBeforeSessionStoreInit
+  for (const module of sortedModules) {
+    try {
+      await module?.initBeforeSessionStoreInit?.();
+    } catch (e) {
+      console.error(`[noraneko] initBeforeSessionStoreInit failed for ${module.name}:`, e);
+    }
+  }
+
+  // Wait for SessionStore
+  // @ts-expect-error SessionStore type not defined
+  await SessionStore.promiseInitialized;
+
+  // Initialize each module
+  for (const module of sortedModules) {
+    try {
+      await initModule(module);
+    } catch (e) {
+      console.error(`[noraneko] Failed to init module ${module.name}:`, e);
+      _registerModuleLoadState(module.name, false);
+    }
+  }
+
+  _registerModuleLoadState("__init_all__", true);
+  await _rejectOtherLoadStates();
+};
+
+/** Initialize modules during hotswap (no session store wait) */
+const initializeModulesForHotswap = async (modules: LoadedModule[]): Promise<void> => {
+  validateDependencies(modules);
+  const sortedModules = sortByDependencies(modules);
+
+  for (const module of sortedModules) {
+    try {
+      console.log("[noraneko] Hotswap init: " + module.name);
+      const instance = module?.default ? new module.default() : null;
+      registerModuleInstance(module, instance, isModuleDisabledByHotfix(module.name));
+    } catch (e) {
+      console.error(`[noraneko] Hotswap init failed for ${module.name}:`, e);
+    }
+  }
+  console.log("[noraneko] Hotswap initialization complete");
+};
+
+// ============================================================================
+// Public API - Main Functions
+// ============================================================================
+
+/** Initialize all scripts (main entry point) */
+export async function initScripts(): Promise<void> {
+  // Import required modules and initialize i18n
+  ChromeUtils.importESModule("resource://noraneko/modules/BrowserGlue.sys.mjs");
+  const { NoranekoConstants } = ChromeUtils.importESModule(
+    "resource://noraneko/modules/NoranekoConstants.sys.mjs",
+  );
+  initI18NForBrowserChrome();
+  console.debug(
+    `[noraneko-buildid2]\nuuid: ${NoranekoConstants.buildID2}\ndate: ${new Date(
+      Number.parseInt(NoranekoConstants.buildID2.slice(0, 13).replace("-", ""), 16),
+    ).toISOString()}`,
+  );
+
+  await initHotfixSystem();
+  setPrefFeatures(MODULES_KEYS);
+
+  const enabledFeatures = JSON.parse(
+    Services.prefs.getStringPref("noraneko.features.enabled", "{}"),
+  ) as typeof MODULES_KEYS;
+
+  const modules = await loadEnabledModules(enabledFeatures);
+  await initializeModules(modules);
 }
 
-/**
- * Hotswap modules with new versions from hotfix directory
- * 
- * This function:
- * 1. Cleans up all currently loaded modules (calls cleanup() on each)
- * 2. Unregisters all modules from the EventDispatcher
- * 3. Loads new module versions from the hotfix directory
- * 4. Re-initializes all modules
- * 
- * @param hotfixId - The ID of the hotfix to apply (optional, loads from preferences if not provided)
- * @returns Promise<boolean> - true if hotswap was successful
- */
-async function hotswapModules(hotfixId?: string): Promise<boolean> {
+/** Hotswap modules with new versions */
+export async function hotswapModules(_hotfixId?: string): Promise<boolean> {
   console.log("[noraneko] Starting module hotswap...");
   
   try {
-    // Notify registry that hotswap is starting
-    moduleRegistry.notifyHotswapStart();
-    
-    // Step 1: Run cleanup on all modules
-    await moduleRegistry.cleanupAllModules();
+    notifyHotswapStart();
+    await cleanupAllModules();
     console.log("[noraneko] All modules cleaned up");
     
-    // Step 2: Get enabled features from preferences
-    const enabled_features = JSON.parse(
+    const enabledFeatures = JSON.parse(
       Services.prefs.getStringPref("noraneko.features.enabled", "{}"),
     ) as typeof MODULES_KEYS;
     
-    // Step 3: Reload modules (will load hotfix versions if available)
-    const modules = await loadEnabledModules(enabled_features);
-    
-    // Step 4: Re-initialize modules
+    const modules = await loadEnabledModules(enabledFeatures);
     await initializeModulesForHotswap(modules);
     
     console.log("[noraneko] Module hotswap complete");
-    moduleRegistry.notifyHotswapComplete(true);
+    notifyHotswapComplete(true);
     return true;
   } catch (error) {
     console.error("[noraneko] Module hotswap failed:", error);
-    moduleRegistry.notifyHotswapComplete(false);
+    notifyHotswapComplete(false);
     return false;
   }
 }
 
-/**
- * Initialize modules during hotswap (skips session store wait since already initialized)
- */
-async function initializeModulesForHotswap(modules: LoadedModule[]) {
-  // Validate dependencies
-  validateDependencies(modules);
+// ============================================================================
+// Exports - Public API
+// ============================================================================
 
-  // Sort modules by dependencies
-  const sortedModules = sortModulesByDependencies(modules);
+/** Loader object (legacy interface) */
+export const loader = {
+  load: initScripts,
+  hotswap: hotswapModules,
+  getModuleRegistry: () => ({
+    registerModule,
+    cleanupAllModules,
+    notifyHotswapStart,
+    notifyHotswapComplete,
+  }),
+};
 
-  // Initialize each module (skip initBeforeSessionStoreInit during hotswap)
-  for (const module of sortedModules) {
-    try {
-      console.log("[noraneko] Hotswap init: " + module.name);
+// Re-export for external use
+export { 
+  registerModule, 
+  cleanupModule, 
+  cleanupAllModules,
+  type ModuleMetadata,
+  type HotswapEvent,
+} from "./module-registry.ts";
 
-      // Create instance (decorator auto-runs init via constructor)
-      let instance: any;
-      if (module?.default) {
-        instance = new module.default();
-      }
-
-      // Register module with the registry
-      if (instance) {
-        registerModule(
-          module.metadata.moduleName,
-          instance,
-          module.metadata,
-          isModuleDisabledByHotfix(module.name) // is hotfix module if original is disabled
-        );
-      }
-
-      // Register EventDispatcher methods after initialization
-      if (instance && typeof instance.eventMethods === "function") {
-        try {
-          const eventMethods = instance.eventMethods();
-          registerModuleEventDispatcher(module.metadata.moduleName, eventMethods);
-          console.debug(
-            `[noraneko] Registered EventDispatcher methods for module ${module.metadata.moduleName}`,
-          );
-        } catch (e) {
-          console.error(
-            `[noraneko] Failed to register EventDispatcher methods for module ${module.metadata.moduleName}:`,
-            e,
-          );
-        }
-      }
-    } catch (e) {
-      console.error(`[noraneko] Failed to hotswap init module ${module.name}:`, e);
-    }
-  }
-
-  console.log("[noraneko] Hotswap initialization complete");
-}
-
-// Re-export module registry functions for external use
-export { moduleRegistry, registerModule, cleanupModule, cleanupAllModules } from "./module-registry.ts";
-export type { HotswapEvent } from "./module-registry.ts";
+// Re-export Result utilities from event-dispatcher-registry
+export {
+  type Result,
+  ok,
+  err,
+  isOk,
+  isErr,
+  unwrap,
+  unwrapOr,
+  mapResult,
+} from "./event-dispatcher-registry.ts";

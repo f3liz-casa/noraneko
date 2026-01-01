@@ -6,6 +6,17 @@ import {
   registerModuleEventDispatcher,
   unregisterModuleEventDispatcher,
   isModuleRegistered,
+  // New Result type utilities
+  ok,
+  err,
+  isOk,
+  isErr,
+  unwrap,
+  unwrapOr,
+  mapResult,
+  toEither,
+  fromEither,
+  type Result,
 } from "#bridge-loader-features/loader/event-dispatcher-registry.ts";
 import * as E from "fp-ts/lib/Either.js";
 
@@ -30,6 +41,101 @@ const moduleBFunctions = {
   ping: () => "pong",
   add: (a: number, b: number) => a + b,
 };
+
+// ============================================================================
+// Result Type Tests (New DOP-style utilities)
+// ============================================================================
+
+Deno.test("Result Type - ok creates success result", () => {
+  const result = ok(42);
+  assert(isOk(result), "Should be ok");
+  assertEquals(result[0], 42, "Value should be 42");
+  assertEquals(result[1], null, "Error should be null");
+});
+
+Deno.test("Result Type - err creates error result", () => {
+  const result = err<number>("Something went wrong");
+  assert(isErr(result), "Should be err");
+  assertEquals(result[0], null, "Value should be null");
+  assertEquals(result[1]?.message, "Something went wrong", "Error message should match");
+});
+
+Deno.test("Result Type - unwrap returns value on success", () => {
+  const result = ok("hello");
+  assertEquals(unwrap(result), "hello");
+});
+
+Deno.test("Result Type - unwrap throws on error", () => {
+  const result = err<string>("failed");
+  let threw = false;
+  try {
+    unwrap(result);
+  } catch (e) {
+    threw = true;
+    assertEquals((e as Error).message, "failed");
+  }
+  assert(threw, "Should have thrown");
+});
+
+Deno.test("Result Type - unwrapOr returns default on error", () => {
+  const result = err<number>("failed");
+  assertEquals(unwrapOr(result, 99), 99);
+});
+
+Deno.test("Result Type - unwrapOr returns value on success", () => {
+  const result = ok(42);
+  assertEquals(unwrapOr(result, 99), 42);
+});
+
+Deno.test("Result Type - mapResult transforms success value", () => {
+  const result = ok(5);
+  const mapped = mapResult(result, (x) => x * 2);
+  assert(isOk(mapped));
+  assertEquals(mapped[0], 10);
+});
+
+Deno.test("Result Type - mapResult preserves error", () => {
+  const result = err<number>("failed");
+  const mapped = mapResult(result, (x) => x * 2);
+  assert(isErr(mapped));
+  assertEquals(mapped[1]?.message, "failed");
+});
+
+Deno.test("Result Type - toEither converts ok to Right", () => {
+  const result = ok("value");
+  const either = toEither(result);
+  assert(E.isRight(either));
+  if (E.isRight(either)) {
+    assertEquals(either.right, "value");
+  }
+});
+
+Deno.test("Result Type - toEither converts err to Left", () => {
+  const result = err<string>("error");
+  const either = toEither(result);
+  assert(E.isLeft(either));
+  if (E.isLeft(either)) {
+    assertEquals(either.left.message, "error");
+  }
+});
+
+Deno.test("Result Type - fromEither converts Right to ok", () => {
+  const either = E.right("value");
+  const result = fromEither(either);
+  assert(isOk(result));
+  assertEquals(result[0], "value");
+});
+
+Deno.test("Result Type - fromEither converts Left to err", () => {
+  const either = E.left(new Error("error"));
+  const result = fromEither(either);
+  assert(isErr(result));
+  assertEquals(result[1]?.message, "error");
+});
+
+// ============================================================================
+// EventDispatcher Registry Tests (backward compatibility)
+// ============================================================================
 
 // Test 1: Module registration
 Deno.test("EventDispatcher Registry - Register and check module", () => {
