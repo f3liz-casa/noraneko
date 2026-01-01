@@ -48,7 +48,7 @@ export const mapResult = <T, U>(result: Result<T>, fn: (v: T) => U): Result<U> =
   isOk(result) ? ok(fn(result[0])) : [null, result[1]];
 
 // ============================================================================
-// fp-ts Either compatibility layer (for backward compatibility)
+// fp-ts Either interop (for existing code using fp-ts)
 // ============================================================================
 
 import * as E from "fp-ts/lib/Either.js";
@@ -170,17 +170,4 @@ export function createDependencyEventDispatchers<T extends Record<string, any>>(
   return eventsObject as T;
 }
 
-// ============================================================================
-// Backward Compatibility - Legacy API
-// ============================================================================
 
-/**
- * Legacy eventDispatcherRegistry object for backward compatibility
- * Wraps the pure functions in an object interface
- */
-export const eventDispatcherRegistry = {
-  registerModule: registerModuleEventDispatcher,
-  unregisterModule: unregisterModuleEventDispatcher,
-  isModuleRegistered,
-  getEventDispatcherInstance,
-} as const;

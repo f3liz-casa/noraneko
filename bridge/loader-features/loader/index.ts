@@ -396,23 +396,16 @@ export async function hotswapModules(_hotfixId?: string): Promise<boolean> {
 // Exports - Public API
 // ============================================================================
 
-/** Loader object (legacy interface) */
-export const loader = {
-  load: initScripts,
-  hotswap: hotswapModules,
-  getModuleRegistry: () => ({
-    registerModule,
-    cleanupAllModules,
-    notifyHotswapStart,
-    notifyHotswapComplete,
-  }),
-};
+// Main entry points
+export { initScripts, hotswapModules };
 
 // Re-export for external use
 export { 
   registerModule, 
   cleanupModule, 
   cleanupAllModules,
+  notifyHotswapStart,
+  notifyHotswapComplete,
   type ModuleMetadata,
   type HotswapEvent,
 } from "./module-registry.ts";

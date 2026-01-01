@@ -2,11 +2,11 @@
 
 import { assert, assertEquals } from "@jsr/std__assert";
 import {
-  eventDispatcherRegistry,
   registerModuleEventDispatcher,
   unregisterModuleEventDispatcher,
   isModuleRegistered,
-  // New Result type utilities
+  getEventDispatcherInstance,
+  // Result type utilities
   ok,
   err,
   isOk,
@@ -43,7 +43,7 @@ const moduleBFunctions = {
 };
 
 // ============================================================================
-// Result Type Tests (New DOP-style utilities)
+// Result Type Tests (DOP-style utilities)
 // ============================================================================
 
 Deno.test("Result Type - ok creates success result", () => {
@@ -134,21 +134,19 @@ Deno.test("Result Type - fromEither converts Left to err", () => {
 });
 
 // ============================================================================
-// EventDispatcher Registry Tests (backward compatibility)
+// EventDispatcher Registry Tests (DOP pure functions)
 // ============================================================================
 
-// Test 1: Module registration
-Deno.test("EventDispatcher Registry - Register and check module", () => {
+Deno.test("EventDispatcher - Register and check module", () => {
   registerModuleEventDispatcher("test-module-a", moduleAFunctions);
   assert(isModuleRegistered("test-module-a"), "Module should be registered");
   unregisterModuleEventDispatcher("test-module-a");
   assert(!isModuleRegistered("test-module-a"), "Module should be unregistered");
 });
 
-// Test 2: Get event dispatcher instance and call method
-Deno.test("EventDispatcher Registry - Get instance and call method", async () => {
+Deno.test("EventDispatcher - Get instance and call method", async () => {
   registerModuleEventDispatcher("test-module-a", moduleAFunctions);
-  const instance = eventDispatcherRegistry.getEventDispatcherInstance("test-module-a");
+  const instance = getEventDispatcherInstance("test-module-a");
   const result = await instance.getData();
   
   assert(E.isRight(result), "Should return Right");
@@ -159,10 +157,9 @@ Deno.test("EventDispatcher Registry - Get instance and call method", async () =>
   unregisterModuleEventDispatcher("test-module-a");
 });
 
-// Test 3: Call method with arguments
-Deno.test("EventDispatcher Registry - Call method with arguments", async () => {
+Deno.test("EventDispatcher - Call method with arguments", async () => {
   registerModuleEventDispatcher("test-module-b", moduleBFunctions);
-  const instance = eventDispatcherRegistry.getEventDispatcherInstance("test-module-b");
+  const instance = getEventDispatcherInstance("test-module-b");
   const result = await instance.add(5, 3);
   
   assert(E.isRight(result), "Should return Right");
@@ -173,10 +170,9 @@ Deno.test("EventDispatcher Registry - Call method with arguments", async () => {
   unregisterModuleEventDispatcher("test-module-b");
 });
 
-// Test 4: Call async method
-Deno.test("EventDispatcher Registry - Call async method", async () => {
+Deno.test("EventDispatcher - Call async method", async () => {
   registerModuleEventDispatcher("test-module-a", moduleAFunctions);
-  const instance = eventDispatcherRegistry.getEventDispatcherInstance("test-module-a");
+  const instance = getEventDispatcherInstance("test-module-a");
   const result = await instance.asyncMethod();
   
   assert(E.isRight(result), "Should return Right");
@@ -187,9 +183,8 @@ Deno.test("EventDispatcher Registry - Call async method", async () => {
   unregisterModuleEventDispatcher("test-module-a");
 });
 
-// Test 5: Get non-existent module (soft proxy)
-Deno.test("EventDispatcher Registry - Get non-existent module returns soft proxy", async () => {
-  const instance = eventDispatcherRegistry.getEventDispatcherInstance("non-existent-module");
+Deno.test("EventDispatcher - Get non-existent module returns soft proxy", async () => {
+  const instance = getEventDispatcherInstance("non-existent-module");
   const result = await instance.someMethod();
   
   assert(E.isRight(result), "Should return Right for missing module");
@@ -198,10 +193,9 @@ Deno.test("EventDispatcher Registry - Get non-existent module returns soft proxy
   }
 });
 
-// Test 6: Handle errors in event methods
-Deno.test("EventDispatcher Registry - Handle errors in event methods", async () => {
+Deno.test("EventDispatcher - Handle errors in event methods", async () => {
   registerModuleEventDispatcher("test-module-a", moduleAFunctions);
-  const instance = eventDispatcherRegistry.getEventDispatcherInstance("test-module-a");
+  const instance = getEventDispatcherInstance("test-module-a");
   const result = await instance.throwError();
   
   assert(E.isLeft(result), "Should return Left on error");
@@ -212,13 +206,12 @@ Deno.test("EventDispatcher Registry - Handle errors in event methods", async () 
   unregisterModuleEventDispatcher("test-module-a");
 });
 
-// Test 7: Multiple modules can be registered
-Deno.test("EventDispatcher Registry - Multiple modules", async () => {
+Deno.test("EventDispatcher - Multiple modules can be registered", async () => {
   registerModuleEventDispatcher("module-1", { method1: () => "result1" });
   registerModuleEventDispatcher("module-2", { method2: () => "result2" });
 
-  const instance1 = eventDispatcherRegistry.getEventDispatcherInstance("module-1");
-  const instance2 = eventDispatcherRegistry.getEventDispatcherInstance("module-2");
+  const instance1 = getEventDispatcherInstance("module-1");
+  const instance2 = getEventDispatcherInstance("module-2");
   
   const result1 = await instance1.method1();
   const result2 = await instance2.method2();
@@ -233,8 +226,7 @@ Deno.test("EventDispatcher Registry - Multiple modules", async () => {
   unregisterModuleEventDispatcher("module-2");
 });
 
-// Test 8: Module replacement warning
-Deno.test("EventDispatcher Registry - Module replacement shows warning", () => {
+Deno.test("EventDispatcher - Module replacement shows warning", () => {
   registerModuleEventDispatcher("test-module", { method: () => "v1" });
   // This should show a warning in console
   registerModuleEventDispatcher("test-module", { method: () => "v2" });

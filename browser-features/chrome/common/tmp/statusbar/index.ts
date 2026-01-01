@@ -4,56 +4,62 @@ import { render } from "@nora/solid-xul";
 import { ContextMenu } from "./context-menu";
 import { StatusBarElem } from "./statusbar";
 import { StatusBarManager } from "./statusbar-manager";
-import { component } from "#features-chrome/utils/base";
+import { defineModule, type ModuleContext } from "#features-chrome/utils/base";
 
-export let manager: StatusBarManager;
+// ============================================================================
+// Module State
+// ============================================================================
 
-@component({
-  moduleName: "statusbar",
-  dependencies: [],
-  softDependencies: [],
+let manager: StatusBarManager | null = null;
+
+export { manager };
+
+// ============================================================================
+// Internal Functions
+// ============================================================================
+
+const onPopupShowing = (event: Event): void => {
+  const target = event.target as Element;
+  if (target.id === "toolbar-context-menu") {
+    render(
+      ContextMenu,
+      document.getElementById("viewToolbarsMenuSeparator")!.parentElement,
+      {
+        marker: document.getElementById("viewToolbarsMenuSeparator")!,
+        hotCtx: import.meta.hot,
+      },
+    );
+  }
+};
+
+// ============================================================================
+// Module Definition
+// ============================================================================
+
+export default defineModule({
+  name: "statusbar",
   hot: import.meta.hot,
-})
-export default class StatusBar {
-  init() {
+}, {
+  init(ctx) {
+    ctx.log.debug("Initializing statusbar...");
+    
     manager = new StatusBarManager();
     render(StatusBarElem, document.body, {
       marker: document?.getElementById("customization-container"),
     });
-    //https://searchfox.org/mozilla-central/rev/4d851945737082fcfb12e9e7b08156f09237aa70/browser/base/content/main-popupset.js#321
+    
     const mainPopupSet = document.getElementById("mainPopupSet");
     mainPopupSet?.addEventListener("popupshowing", onPopupShowing);
 
     manager.init();
-  }
-  static _metadata() {
-    return {
-      moduleName: "statusbar",
-      dependencies: [],
-      softDependencies: [],
-      eventMethods: {},
-    } as const;
-  }
-}
+  },
 
-function onPopupShowing(event: Event) {
-  switch (event.target.id) {
-    case "toolbar-context-menu":
-      render(
-        ContextMenu,
-        document.getElementById("viewToolbarsMenuSeparator")!.parentElement,
-        {
-          marker: document.getElementById("viewToolbarsMenuSeparator")!,
-          hotCtx: import.meta.hot,
-        },
-      );
-  }
-
-  _metadata = () => {
-    return {
-      moduleName: "statusbar",
-      dependencies: [],
-      softDependencies: [],
-    };
-  };
-}
+  cleanup(ctx) {
+    ctx.log.debug("Cleaning up statusbar...");
+    
+    const mainPopupSet = document.getElementById("mainPopupSet");
+    mainPopupSet?.removeEventListener("popupshowing", onPopupShowing);
+    
+    manager = null;
+  },
+});

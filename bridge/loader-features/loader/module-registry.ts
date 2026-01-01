@@ -264,24 +264,4 @@ export function notifyHotswapComplete(success: boolean): void {
   });
 }
 
-// ============================================================================
-// Backward Compatibility - Legacy API
-// ============================================================================
 
-/**
- * Legacy moduleRegistry object for backward compatibility
- * Wraps the pure functions in an object interface
- */
-export const moduleRegistry = {
-  registerModule,
-  getModule,
-  getAllModules,
-  hasModule,
-  cleanupModule,
-  cleanupAllModules,
-  unregisterModule,
-  addHotswapListener,
-  removeHotswapListener,
-  notifyHotswapStart,
-  notifyHotswapComplete,
-} as const;

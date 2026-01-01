@@ -138,7 +138,6 @@ export {
 
 // Re-export module registry functions for hotswapping support
 export {
-  moduleRegistry,
   registerModule,
   getModule,
   getAllModules,
