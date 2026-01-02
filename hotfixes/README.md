@@ -2,6 +2,10 @@
 
 This directory contains the infrastructure for the Noraneko Hotfix System, which provides non-destructive module patching with Sigstore-based keyless signature verification.
 
+> **Note**: For regular module distribution, consider using the **Noraneko Module Archive (NMA)** format instead. NMA provides installation-directory based module distribution that's verified on every startup. See [docs/NMA_FORMAT.md](../docs/NMA_FORMAT.md) for details.
+>
+> The hotfix system is designed for **emergency patches** that need to be distributed to specific users without requiring a full update. For regular releases, use NMA.
+
 ## Overview
 
 The hotfix system implements a "Disable & Inject" pattern:

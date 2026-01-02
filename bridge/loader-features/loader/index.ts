@@ -34,6 +34,13 @@ import {
   logHashComparison,
   type HotswapRecommendation,
 } from "./hash-registry.ts";
+import {
+  initializeNMALoader,
+  isNMAActive,
+  hasNMAModule,
+  loadNMAModule,
+  getCurrentNMAManifest,
+} from "./nma-loader.ts";
 
 console.log("[noraneko] Initializing scripts...");
 
@@ -98,6 +105,25 @@ const initHotfixSystem = async (): Promise<void> => {
   }
 };
 
+/** Initialize the NMA (Noraneko Module Archive) system */
+const initNMASystem = async (): Promise<void> => {
+  try {
+    const success = await initializeNMALoader();
+    if (success) {
+      console.log("[noraneko] NMA system initialized successfully");
+      const manifest = getCurrentNMAManifest();
+      if (manifest) {
+        console.log(`[noraneko] NMA build: ${manifest.buildId}`);
+        console.log(`[noraneko] NMA version: ${manifest.noranekoVersion}`);
+      }
+    } else {
+      console.log("[noraneko] NMA not found, using built-in modules");
+    }
+  } catch (error) {
+    console.error("[noraneko] Failed to initialize NMA system:", error);
+  }
+};
+
 /** Set up preferences for features */
 const setPrefFeatures = (allFeaturesKeys: typeof MODULES_KEYS): void => {
   const prefs = Services.prefs.getDefaultBranch("");
@@ -144,12 +170,12 @@ const loadPatchedModule = async (
   }
 };
 
-/** Load a single module (regular or patched) */
+/** Load a single module (regular, NMA, or patched) */
 const loadSingleModule = async (
   categoryValue: Record<string, () => Promise<unknown>>,
   moduleName: string,
 ): Promise<LoadedModule | null> => {
-  // Check if disabled by hotfix
+  // Priority 1: Check if disabled by hotfix (hotfix takes precedence)
   if (isModuleDisabledByHotfix(moduleName)) {
     console.log(`[noraneko] Module ${moduleName} disabled by hotfix`);
     const patchedPath = await getPatchedModulePath(moduleName);
@@ -165,6 +191,30 @@ const loadSingleModule = async (
     return null;
   }
 
+  // Priority 2: Check if module exists in NMA (omni.ja-like archive)
+  if (isNMAActive() && hasNMAModule(moduleName)) {
+    try {
+      const exports = await loadNMAModule(moduleName);
+      if (exports) {
+        const metadata = (exports as any).default?._metadata?.() ?? defaultMetadata(moduleName);
+        const module: LoadedModule = {
+          name: moduleName,
+          metadata,
+          ...(exports as {
+            init?: typeof Function;
+            initBeforeSessionStoreInit?: typeof Function;
+            default?: any;
+          }),
+        };
+        console.debug(`[noraneko] Loaded module from NMA: ${moduleName}`);
+        return module;
+      }
+    } catch (e) {
+      console.warn(`[noraneko] Failed to load NMA module ${moduleName}, falling back:`, e);
+    }
+  }
+
+  // Priority 3: Load from built-in modules
   try {
     const exports = await categoryValue[moduleName]();
     const metadata = (exports as any).default?._metadata?.() ?? defaultMetadata(moduleName);
@@ -360,6 +410,11 @@ export async function initScripts(): Promise<void> {
     ).toISOString()}`,
   );
 
+  // Initialize NMA (Noraneko Module Archive) system first
+  // NMA provides omni.ja-like module distribution alongside installation
+  await initNMASystem();
+
+  // Initialize hotfix system (for profile-based patches)
   await initHotfixSystem();
   setPrefFeatures(MODULES_KEYS);
 
@@ -587,3 +642,48 @@ export {
   DEFAULT_TRUSTED_SIGNER_CONFIG,
   DEFAULT_AUTO_UPDATE_CONFIG,
 } from "./hotfix-types.ts";
+
+// Re-export NMA (Noraneko Module Archive) loader
+export {
+  initializeNMALoader,
+  nmaFileExists,
+  findNMAFile,
+  verifyNMA,
+  isNMAActive,
+  hasNMAModule,
+  getNMAModule,
+  loadNMAModule,
+  getNMAModuleUrl,
+  activateNMAModules,
+  getNMALoaderState,
+  getCurrentNMAManifest,
+  getLoadedNMAModules,
+  cleanupNMALoader,
+  onNMAEvent,
+  offNMAEvent,
+} from "./nma-loader.ts";
+
+// Re-export NMA verifier
+export {
+  verifyNMAManifest,
+  verifyNMAModuleHash,
+  isDevModeNMAAllowed,
+  validateNMAManifestStructure,
+  computeNMAHash,
+  setNMATrustedConfig,
+  getNMATrustedConfig,
+} from "./nma-verifier.ts";
+
+// Re-export NMA types
+export {
+  type NMAManifest,
+  type NMAModule,
+  type NMAAsset,
+  type NMAVerificationResult,
+  type NMALoaderState,
+  type NMATrustedConfig,
+  type NMALoaderEvents,
+  NMAVerificationStatus,
+  NMA_PATHS,
+  DEFAULT_NMA_TRUSTED_CONFIG,
+} from "./nma-types.ts";
