@@ -68,6 +68,12 @@ const getFallbackNMAFilePath = (): string => {
   return PathUtils.join(installDir, NMA_PATHS.NMA_FALLBACK_FILENAME);
 };
 
+/** Get legacy NMA file path (without .zip extension) */
+const getLegacyNMAFilePath = (): string => {
+  const installDir = getInstallDir();
+  return PathUtils.join(installDir, NMA_PATHS.NMA_LEGACY_FILENAME);
+};
+
 /** Get path to extracted modules directory */
 const getExtractedModulesDir = (): string => {
   const installDir = getInstallDir();
@@ -149,12 +155,17 @@ export const offNMAEvent = (
 export const nmaFileExists = async (): Promise<boolean> => {
   const primaryPath = getNMAFilePath();
   const fallbackPath = getFallbackNMAFilePath();
+  const legacyPath = getLegacyNMAFilePath();
 
   try {
     if (await IOUtils.exists(primaryPath)) {
       return true;
     }
     if (await IOUtils.exists(fallbackPath)) {
+      return true;
+    }
+    // Check legacy path for backwards compatibility
+    if (await IOUtils.exists(legacyPath)) {
       return true;
     }
     return false;
@@ -167,13 +178,23 @@ export const nmaFileExists = async (): Promise<boolean> => {
 export const findNMAFile = async (): Promise<string | null> => {
   const primaryPath = getNMAFilePath();
   const fallbackPath = getFallbackNMAFilePath();
+  const legacyPath = getLegacyNMAFilePath();
 
   try {
+    // Check primary path first (noraneko.nma.zip)
     if (await IOUtils.exists(primaryPath)) {
+      console.log(`[NMALoader] Found NMA at primary path: ${primaryPath}`);
       return primaryPath;
     }
+    // Check fallback path (noraneko-modules.nma.zip)
     if (await IOUtils.exists(fallbackPath)) {
+      console.log(`[NMALoader] Found NMA at fallback path: ${fallbackPath}`);
       return fallbackPath;
+    }
+    // Check legacy path for backwards compatibility (noraneko.nma)
+    if (await IOUtils.exists(legacyPath)) {
+      console.log(`[NMALoader] Found NMA at legacy path: ${legacyPath}`);
+      return legacyPath;
     }
     return null;
   } catch {

@@ -472,7 +472,7 @@ async function main(): Promise<void> {
     boolean: ["help", "sign"],
     alias: { h: "help", o: "output", s: "source", v: "version", c: "channel" },
     default: {
-      output: "noraneko.nma",
+      output: "noraneko.nma.zip",
       source: "browser-features/chrome/_dist",
       version: "0.0.0",
       channel: "nightly",
@@ -485,12 +485,13 @@ async function main(): Promise<void> {
 NMA Builder - Noraneko Module Archive
 
 Creates NMA packages from built Noraneko modules.
+NMA is the primary distribution format for browser-features/chrome modules.
 
 Usage:
   deno task nma:build [options]
 
 Options:
-  --output, -o <path>    Output NMA file path (default: noraneko.nma)
+  --output, -o <path>    Output NMA file path (default: noraneko.nma.zip)
   --source, -s <path>    Source directory with built modules
   --version, -v <ver>    Noraneko version (default: 0.0.0)
   --channel, -c <ch>     Update channel: nightly, beta, release (default: nightly)
@@ -503,7 +504,7 @@ Examples:
   deno task nma:build
 
   # Build with custom paths
-  deno task nma:build --source ./dist --output ./release/noraneko.nma
+  deno task nma:build --source ./dist --output ./release/noraneko.nma.zip
 
   # Build and sign for release
   deno task nma:build --channel release --sign

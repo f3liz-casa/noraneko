@@ -2,15 +2,21 @@
 
 ## Overview
 
-The Noraneko Module Archive (NMA) is an omni.ja-like format for distributing Noraneko modules. It provides a secure, verifiable way to distribute built JavaScript modules that can be hot-swapped without requiring a full browser rebuild.
+The Noraneko Module Archive (NMA) is the **primary distribution format** for `browser-features/chrome` modules. It provides a secure, verifiable way to distribute built JavaScript modules that can be hot-swapped without requiring a full browser rebuild.
+
+NMA is included alongside `omni.ja` in the default build and can be updated independently of the Mozilla build system, enabling lightweight updates.
 
 ## Key Features
 
-1. **Network Transferable**: ZIP-based archive format that can be distributed over HTTP/HTTPS
-2. **Sigstore Verification**: All archives are signed using Sigstore keyless signing and verified on startup
-3. **Hot-Swappable**: Modules can be loaded and swapped at runtime without browser restart
-4. **Installation-Directory Based**: NMA files are placed alongside `omni.ja` in the Firefox installation directory, not in the user profile
-5. **Built with Vite/tsdown**: Uses the same build toolchain as the rest of Noraneko
+1. **Primary Module Distribution**: NMA is the standard format for browser-features/chrome modules, included in all builds
+2. **ZIP-Based Format**: Uses `.nma.zip` extension to clearly indicate ZIP format
+3. **Sigstore Verification**: All archives are signed using Sigstore keyless signing and verified on startup
+4. **Hot-Swappable**: Modules can be loaded and swapped at runtime without browser restart
+5. **Installation-Directory Based**: NMA files are placed alongside `omni.ja` in the Firefox installation directory
+6. **Lightweight Updates**: Enables updates without Mozilla's update system or installer:
+   - **Windows**: Updated via [noraneko-winupdater](https://github.com/f3liz-dev/noraneko-winupdater)
+   - **Linux**: Included in deb, rpm, and other package formats
+   - **macOS**: Standard .app bundle updates
 
 ## Security Model
 
@@ -36,7 +42,7 @@ In debug builds or nightly channel, unsigned NMA files are allowed for developme
 ## File Structure
 
 ```
-noraneko.nma (ZIP archive)
+noraneko.nma.zip (ZIP archive)
 ├── manifest.json           # Archive manifest with metadata and signatures
 ├── modules/                # Built JavaScript modules
 │   ├── core.js
@@ -100,11 +106,13 @@ The `manifest.json` file contains:
 
 NMA files should be placed in the Firefox installation directory alongside `omni.ja`:
 
-**Linux**: `/usr/lib/noraneko/noraneko.nma`
-**macOS**: `/Applications/Noraneko.app/Contents/Resources/noraneko.nma`
-**Windows**: `C:\Program Files\Noraneko\noraneko.nma`
+**Linux**: `/usr/lib/noraneko/noraneko.nma.zip`
+**macOS**: `/Applications/Noraneko.app/Contents/Resources/noraneko.nma.zip`
+**Windows**: `C:\Program Files\Noraneko\noraneko.nma.zip`
 
 The NMA loader automatically detects and loads the archive on browser startup.
+
+For backwards compatibility, the loader also supports the legacy `.nma` extension.
 
 ## Building NMA
 
@@ -115,7 +123,7 @@ The NMA loader automatically detects and loads the archive on browser startup.
 deno task nma:build
 
 # Build with custom paths
-deno task nma:build --source ./dist --output ./release/noraneko.nma
+deno task nma:build --source ./dist --output ./release/noraneko.nma.zip
 
 # Build and sign for release
 deno task nma:build --channel release --sign
@@ -125,7 +133,7 @@ deno task nma:build --channel release --sign
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--output, -o` | Output NMA file path | `noraneko.nma` |
+| `--output, -o` | Output NMA file path | `noraneko.nma.zip` |
 | `--source, -s` | Source directory with built modules | `browser-features/chrome/_dist` |
 | `--version, -v` | Noraneko version | `0.0.0` |
 | `--channel, -c` | Update channel (nightly, beta, release) | `nightly` |
@@ -141,15 +149,14 @@ For Windows updates, the NMA format integrates with [noraneko-winupdater](https:
 3. The NMA is placed in the installation directory
 4. On next browser startup, the new modules are loaded
 
-This allows for lightweight updates without requiring a full installer rebuild.
+This allows for lightweight updates without requiring a full installer rebuild or `.mar` file generation.
 
 ## Module Loading Priority
 
 When loading modules, the loader follows this priority:
 
-1. **Hotfix modules** (profile-based patches, highest priority)
-2. **NMA modules** (installation-directory archive)
-3. **Built-in modules** (default, bundled with the browser)
+1. **NMA modules** (installation-directory archive, primary source)
+2. **Built-in modules** (default, fallback)
 
 ## API Reference
 

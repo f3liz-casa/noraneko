@@ -3,22 +3,27 @@
 /**
  * Noraneko Module Archive (NMA) Types
  *
- * NMA is an omni.ja-like format for distributing Noraneko modules.
+ * NMA is the primary distribution format for browser-features/chrome modules.
  * It provides:
- * 1. Network-transferable archive format (ZIP-based)
+ * 1. ZIP-based archive format with .nma.zip extension
  * 2. Sigstore-based signature verification
  * 3. Hot-swappable module loading alongside omni.ja
  * 4. Secure distribution from f3liz-dev/noraneko
  *
  * The NMA file is placed alongside omni.ja in the Firefox installation
  * directory (not in profile), making it part of the core installation.
+ * 
+ * NMA enables lightweight updates independent of Mozilla's build system:
+ * - Windows: Updated via noraneko-winupdater
+ * - Linux: Included in deb, rpm, etc.
+ * - macOS: Standard .app bundle updates
  */
 
 import type { SignerIdentity, SigstoreBundle, UpdateChannel } from "./hotfix-types.ts";
 
 /**
  * NMA file structure:
- * noraneko.nma (ZIP archive)
+ * noraneko.nma.zip (ZIP archive)
  * ├── manifest.json     - Archive manifest with metadata and signatures
  * ├── modules/          - Built JavaScript modules
  * │   ├── core.js
@@ -188,12 +193,20 @@ export const DEFAULT_NMA_TRUSTED_CONFIG: NMATrustedConfig = {
 
 /**
  * NMA file paths relative to Firefox installation
+ * 
+ * NMA is the primary distribution format for browser-features/chrome modules.
+ * It is included alongside omni.ja in the default build and updated by:
+ * - Windows: noraneko-winupdater
+ * - Linux: Package managers (deb, rpm, etc.)
+ * - macOS: Standard .app bundle updates
  */
 export const NMA_PATHS = {
-  /** Name of the NMA file */
-  NMA_FILENAME: "noraneko.nma",
+  /** Name of the NMA file (ZIP format with .nma.zip extension) */
+  NMA_FILENAME: "noraneko.nma.zip",
   /** Fallback name for the NMA file */
-  NMA_FALLBACK_FILENAME: "noraneko-modules.nma",
+  NMA_FALLBACK_FILENAME: "noraneko-modules.nma.zip",
+  /** Legacy filename without .zip extension (for backwards compatibility) */
+  NMA_LEGACY_FILENAME: "noraneko.nma",
   /** Directory containing extracted modules (for verification) */
   EXTRACTED_DIR: "noraneko-modules",
 } as const;

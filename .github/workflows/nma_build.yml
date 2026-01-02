@@ -87,7 +87,7 @@ jobs:
         run: |
           deno task nma:build \
             --source browser-features/chrome/_dist \
-            --output noraneko.nma \
+            --output noraneko.nma.zip \
             --version ${{ steps.version.outputs.version }} \
             --channel ${{ steps.version.outputs.channel }} \
             --commit ${{ github.sha }}
@@ -98,7 +98,7 @@ jobs:
           COSIGN_EXPERIMENTAL: 1
         run: |
           # Extract manifest from NMA
-          unzip -p noraneko.nma manifest.json > manifest-unsigned.json
+          unzip -p noraneko.nma.zip manifest.json > manifest-unsigned.json
           
           # Sign the manifest using keyless signing
           cosign sign-blob \
@@ -146,16 +146,16 @@ jobs:
         run: |
           # Create temp directory and extract NMA
           mkdir -p nma-temp
-          unzip -q noraneko.nma -d nma-temp
+          unzip -q noraneko.nma.zip -d nma-temp
           
           # Replace manifest with signed version
           cp manifest.json nma-temp/manifest.json
           cp signature-bundle.json nma-temp/signature-bundle.json
           
           # Rebuild the archive
-          rm noraneko.nma
+          rm noraneko.nma.zip
           cd nma-temp
-          zip -r -9 ../noraneko.nma .
+          zip -r -9 ../noraneko.nma.zip .
           cd ..
           
           # Cleanup
@@ -166,7 +166,7 @@ jobs:
           COSIGN_EXPERIMENTAL: 1
         run: |
           # Extract and verify
-          unzip -p noraneko.nma manifest.json > verify-manifest.json
+          unzip -p noraneko.nma.zip manifest.json > verify-manifest.json
           
           cosign verify-blob \
             --bundle signature-bundle.json \
@@ -180,7 +180,7 @@ jobs:
       - name: Compute NMA hash
         id: hash
         run: |
-          HASH=$(sha256sum noraneko.nma | cut -d' ' -f1)
+          HASH=$(sha256sum noraneko.nma.zip | cut -d' ' -f1)
           echo "hash=${HASH}" >> $GITHUB_OUTPUT
           echo "NMA hash: ${HASH}"
 
@@ -189,7 +189,7 @@ jobs:
         with:
           name: noraneko-nma-${{ steps.version.outputs.channel }}
           path: |
-            noraneko.nma
+            noraneko.nma.zip
             signature-bundle.json
             manifest.json
           compression-level: 0
@@ -208,6 +208,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📦 Distribution" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The NMA file can be placed in the Firefox installation directory alongside \`omni.ja\`." >> $GITHUB_STEP_SUMMARY
+          echo "The NMA file (\`noraneko.nma.zip\`) should be placed in the Firefox installation directory alongside \`omni.ja\`." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "For Windows updates, use [noraneko-winupdater](https://github.com/f3liz-dev/noraneko-winupdater) to download and verify the NMA." >> $GITHUB_STEP_SUMMARY
