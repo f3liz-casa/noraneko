@@ -253,78 +253,15 @@ jobs:
         run: |
           mv obj-*/dist/$INSTALLER_PATH ~/noraneko-installer/$OUTPUT_INSTALLER_NAME
 
-      - name: Download artifact of MAR tools (Actions)
-        if: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID != 'false' }}
-        uses: actions/download-artifact@v4
-        with:
-          pattern: "*dist-host"
-          run-id: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID }}
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}-runtime
-          path: obj-artifact-build-output/dist/host
-          merge-multiple: true
-
-      - name: Download artifact of MAR tools (GitHub Releases)
-        if: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID == 'false' }}
+      - name: Build NMA (Noraneko Module Archive)
         run: |
-          curl -L https://github.com/${{ github.repository }}-runtime/releases/latest/download/${{ inputs.platform }}-dist-host.zip -o ~/downloads/${{ inputs.platform }}-dist-host.zip
-          unzip ~/downloads/${{ inputs.platform }}-dist-host.zip -d ./obj-artifact-build-output/dist/host
-
-      - name: Download artifact of binary for getting build information (Actions)
-        if: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID != 'false' }}
-        uses: actions/download-artifact@v4
-        with:
-          pattern: "*application-ini"
-          run-id: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID }}
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}-runtime
-          path: ~/noraneko-dev
-          merge-multiple: true
-
-      - name: Download artifact of binary for getting build information (GiHub Releases)
-        if: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID == 'false' }}
-        run: |
-          curl -L https://github.com/${{ github.repository }}-runtime/releases/latest/download/${{ inputs.platform }}-application-ini.zip -o ~/downloads/${{ inputs.platform }}-application-ini.zip
-          unzip ~/downloads/${{ inputs.platform }}-application-ini.zip -d ~/noraneko-dev
-
-      - name: Create MAR package
-        env:
-          FORCE_COLOR: 3
-        run: |
-          #!/bin/bash
-          set -e
-          OBJ_PATH=$(echo ./obj-*)
-          MAR_DIR="$HOME/noraneko-mar"
-          PUBLISH_DIR="$HOME/noraneko-publish"
-          MAR_FILE="$MAR_DIR/noraneko-$OUTPUT_NAME-full.mar"
-          mkdir -p "$MAR_DIR" "$PUBLISH_DIR"
-          chmod +x "$OBJ_PATH/dist/host/bin/mar"
-          awk -F "=" '/^Version/ {print $2}' "$HOME/noraneko-dev/nora-application.ini" > "$MAR_DIR/version.txt"
-          awk -F "=" '/^BuildID/ {print $2}' "$HOME/noraneko-dev/nora-application.ini" > "$MAR_DIR/buildid.txt"
-          cp noraneko/static/gecko/config/version.txt "$MAR_DIR/noraneko_version.txt"
-          cp noraneko/_dist/buildid2 "$MAR_DIR/noraneko_buildid.txt"
-          VERSION=$(cat "$MAR_DIR/version.txt")
-          NORANEKO_VERSION=$(cat "$MAR_DIR/noraneko_version.txt")
-          echo "${NORANEKO_VERSION}@${VERSION}" > "$MAR_DIR/version_display.txt"
-          touch "$OBJ_PATH/dist/noraneko/precomplete"
-          MAR="$OBJ_PATH/dist/host/bin/mar" \
-          MOZ_PRODUCT_VERSION="$VERSION" \
-          MAR_CHANNEL_ID=alpha \
-          ./tools/update-packaging/make_full_update.sh "$MAR_FILE" "$OBJ_PATH/dist/noraneko"
-          shasum --algorithm 512 "$MAR_FILE" | cut -c 1-128 > "$MAR_DIR/mar_shasum.txt"
-          stat --format "%s" "$MAR_FILE" > "$MAR_DIR/mar_size.txt"
-          cat > "$PUBLISH_DIR/meta.json" << EOF
-          {
-            "version": "$(cat "$MAR_DIR/version.txt")",
-            "noraneko_version": "$(cat "$MAR_DIR/noraneko_version.txt")",
-            "noraneko_buildid": "$(cat "$MAR_DIR/noraneko_buildid.txt")",
-            "mar_size": "$(cat "$MAR_DIR/mar_size.txt")",
-            "mar_shasum": "$(cat "$MAR_DIR/mar_shasum.txt")",
-            "buildid": "$(cat "$MAR_DIR/buildid.txt")"
-          }
-          EOF
-          cp "$MAR_DIR"/*.mar "$PUBLISH_DIR/"
-          echo "MAR package created successfully!"
+          cd noraneko
+          deno task nma:build \
+            --source browser-features/chrome/_dist \
+            --output ~/noraneko-installer/noraneko.nma.zip \
+            --version $(cat static/gecko/config/version.txt || echo "0.0.0") \
+            --channel alpha \
+            --commit ${{ github.sha }}
 
       - name: Publish dist
         uses: actions/upload-artifact@v4
@@ -332,9 +269,3 @@ jobs:
           name: noraneko-${{ env.OUTPUT_NAME }}-installer
           path: ~/noraneko-installer/*
           compression-level: 9
-
-      - name: Publish MAR
-        uses: actions/upload-artifact@v4
-        with:
-          name: noraneko-${{ env.OUTPUT_NAME }}-mar-full
-          path: ~/noraneko-publish/*

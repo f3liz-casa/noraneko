@@ -1,24 +1,23 @@
 # SPDX-License-Identifier: MPL-2.0
 
-name: "(A) |α| Package and Publish Alpha"
+name: "(A) 🚀 Release Alpha"
 
 on:
   workflow_dispatch:
     inputs:
       runtime_windows_artifact_workflow_run_id:
-        description: "The workflow run ID for the Windows runtime artifact"
+        description: "The workflow run ID for the Windows runtime artifact (leave empty for latest release)"
         required: false
         type: string
       runtime_linux_artifact_workflow_run_id:
-        description: "The workflow run ID for the Linux runtime artifact"
+        description: "The workflow run ID for the Linux runtime artifact (leave empty for latest release)"
         required: false
         type: string
-      runtime_mac_artifact_workflow_run_id:
-        description: "The workflow run ID for the macOS runtime artifact"
-        required: false
-        type: string
+
 permissions:
   contents: write
+
+run-name: "🚀 Release Alpha"
 
 jobs:
   package-windows:
@@ -35,17 +34,9 @@ jobs:
       runtime_artifact_workflow_run_id: ${{ inputs.runtime_linux_artifact_workflow_run_id }}
     secrets: inherit
 
-  package-macos:
-    uses: ./.github/workflows/package.yml
-    with:
-      platform: macOS-x64
-      runtime_artifact_workflow_run_id: ${{ inputs.runtime_mac_artifact_workflow_run_id }}
-    secrets: inherit
-
-  publishs:
-    needs: [package-windows, package-linux, package-macos]
+  publish:
+    needs: [package-windows, package-linux]
     uses: ./.github/workflows/publish_alpha.yml
     with:
       win_runtime_artifact_workflow_call: ${{ github.run_id }}
       linux_runtime_artifact_workflow_call: ${{ github.run_id }}
-      mac_runtime_artifact_workflow_call: ${{ github.run_id }}
