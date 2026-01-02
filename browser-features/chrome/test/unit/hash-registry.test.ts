@@ -51,6 +51,10 @@ interface HotswapRecommendation {
 
 // ============================================================================
 // Test Helper Functions (matching hash-registry.ts logic)
+// Note: These functions are duplicated from hash-registry.ts because:
+// 1. The hash-registry.ts module uses Gecko-specific APIs (IOUtils, PathUtils, Services)
+//    that are not available in the Deno test environment
+// 2. These unit tests verify the core logic independently
 // ============================================================================
 
 async function computeHash(content: string): Promise<string> {
@@ -63,7 +67,7 @@ async function computeHash(content: string): Promise<string> {
 
 function extractModuleName(filePath: string): string {
   const parts = filePath.split("/");
-  const fileName = parts[parts.length - 1];
+  const fileName = parts[parts.length - 1] || filePath;
   return fileName
     .replace(/\.sys\.mjs$/, "")
     .replace(/\.sys\.mts$/, "")

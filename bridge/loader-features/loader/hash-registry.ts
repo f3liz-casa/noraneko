@@ -202,7 +202,9 @@ export async function computeHotfixHashState(
  * e.g., "patches/sidebar.sys.mjs" -> "sidebar"
  */
 export function extractModuleName(filePath: string): string {
-  const fileName = PathUtils.filename(filePath);
+  // Get the filename from the path (use string manipulation for cross-platform compatibility)
+  const parts = filePath.split("/");
+  const fileName = parts[parts.length - 1] || filePath;
   // Remove common extensions
   return fileName
     .replace(/\.sys\.mjs$/, "")
