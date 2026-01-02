@@ -16,7 +16,7 @@
  */
 
 import * as path from "@std/path";
-import { Logger, exists, runCommandChecked } from "./utils.ts";
+import { Logger, exists } from "./utils.ts";
 import type { NoraPackageManifest } from "./packager.ts";
 import type { SignatureBundle } from "./signer.ts";
 
@@ -124,6 +124,23 @@ async function verifyPackageHash(
 }
 
 /**
+ * Check if a command is available in PATH (cross-platform)
+ */
+function commandExists(command: string): boolean {
+  try {
+    const cmd = new Deno.Command(command, {
+      args: ["--version"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const result = cmd.outputSync();
+    return result.success || result.code === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Verify Sigstore signature using cosign
  */
 async function verifySigstore(
@@ -138,8 +155,7 @@ async function verifySigstore(
   error?: string;
 }> {
   // Check if cosign is available
-  const cosignCheck = runCommandChecked("which", ["cosign"]);
-  if (!cosignCheck.success) {
+  if (!commandExists("cosign")) {
     return {
       valid: false,
       certificateValid: false,
@@ -221,8 +237,7 @@ async function verifyGpg(
   trustedKeyIds?: string[],
 ): Promise<{ valid: boolean; keyId?: string; error?: string }> {
   // Check if gpg is available
-  const gpgCheck = runCommandChecked("which", ["gpg"]);
-  if (!gpgCheck.success) {
+  if (!commandExists("gpg")) {
     return { valid: false, error: "gpg not available" };
   }
 

@@ -97,12 +97,16 @@ jobs:
             --yes
 
           # Create signature bundle JSON
+          # Read certificate content and escape for JSON
+          CERT_CONTENT=$(cat "$MANIFEST_FILE.cert" | sed ':a;N;$!ba;s/\n/\\n/g' | sed 's/"/\\"/g')
+          SIG_CONTENT=$(cat "$MANIFEST_FILE.sig")
+
           cat > "${MANIFEST_FILE%.manifest.json}.nora.zip.signature.json" << EOF
           {
             "formatVersion": "1.0",
             "signatureType": "sigstore",
-            "signature": "$(cat "$MANIFEST_FILE.sig")",
-            "certificate": "$(cat "$MANIFEST_FILE.cert" | base64 -w0)",
+            "signature": "$SIG_CONTENT",
+            "certificate": "$CERT_CONTENT",
             "identity": {
               "issuer": "https://token.actions.githubusercontent.com",
               "subject": "https://github.com/${{ github.repository }}",

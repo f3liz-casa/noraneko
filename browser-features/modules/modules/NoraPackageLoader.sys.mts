@@ -342,10 +342,12 @@ export async function registerPackageContent(): Promise<boolean> {
   const packageDir = getPackageDir();
 
   // Create chrome.manifest content for the package
+  // Package structure: content/, startup/, skin/, resource/
   const manifestContent = [
-    `content noraneko-package ${PathUtils.join(packageDir, "content")}/content/ contentaccessible=yes`,
-    `skin noraneko-package classic/1.0 ${PathUtils.join(packageDir, "content")}/skin/`,
-    `resource noraneko-package ${PathUtils.join(packageDir, "content")}/resource/ contentaccessible=yes`,
+    `content noraneko-package ${PathUtils.join(packageDir, "content")}/ contentaccessible=yes`,
+    `content noraneko-package-startup ${PathUtils.join(packageDir, "startup")}/ contentaccessible=yes`,
+    `skin noraneko-package classic/1.0 ${PathUtils.join(packageDir, "skin")}/`,
+    `resource noraneko-package ${PathUtils.join(packageDir, "resource")}/ contentaccessible=yes`,
   ].join("\n");
 
   // Write manifest to profile

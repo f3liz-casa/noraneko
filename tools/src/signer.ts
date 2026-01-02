@@ -15,9 +15,7 @@
  * - Verifiable without heavy infrastructure
  */
 
-import * as path from "@std/path";
-import { PROJECT_ROOT } from "./defines.ts";
-import { Logger, exists, runCommandChecked } from "./utils.ts";
+import { Logger, exists } from "./utils.ts";
 import type { NoraPackageManifest } from "./packager.ts";
 
 const logger = new Logger("signer");
@@ -53,20 +51,35 @@ export interface SignatureBundle {
 }
 
 /**
+ * Check if a command is available in PATH (cross-platform)
+ */
+function commandExists(command: string): boolean {
+  try {
+    // Try to run the command with --version or --help to check if it exists
+    const cmd = new Deno.Command(command, {
+      args: ["--version"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const result = cmd.outputSync();
+    return result.success || result.code === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check if sigstore tools are available
  */
 function hasSigstoreTools(): boolean {
-  // Check for cosign (sigstore CLI)
-  const result = runCommandChecked("which", ["cosign"]);
-  return result.success;
+  return commandExists("cosign");
 }
 
 /**
  * Check if GPG is available
  */
 function hasGpg(): boolean {
-  const result = runCommandChecked("which", ["gpg"]);
-  return result.success;
+  return commandExists("gpg");
 }
 
 /**

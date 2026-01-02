@@ -148,8 +148,9 @@ async function createPackageZip(
 
   try {
     // Copy all source files to temp directory preserving structure
+    // The sourceDir already has the correct structure (content/, startup/, skin/, resource/)
     for await (const { relativePath, fullPath } of walkDir(sourceDir)) {
-      const destPath = path.join(tempDir, "content", relativePath);
+      const destPath = path.join(tempDir, relativePath);
       await Deno.mkdir(path.dirname(destPath), { recursive: true });
       await Deno.copyFile(fullPath, destPath);
     }
@@ -158,38 +159,46 @@ async function createPackageZip(
     const manifestPath = path.join(tempDir, "manifest.json");
     await Deno.writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
 
-    // Create zip using Deno's built-in compression (tar for now, or use external zip)
-    // For cross-platform compatibility, we'll use the zip command if available
-    // or fall back to a tar.gz format
+    // Create zip using Deno's built-in compression
+    // Try zip command first, then fall back to tar.gz
+    try {
+      const zipCmd = new Deno.Command("zip", {
+        args: ["-r", outputPath, "."],
+        cwd: tempDir,
+        stdout: "piped",
+        stderr: "piped",
+      });
 
-    const zipCmd = new Deno.Command("zip", {
-      args: ["-r", outputPath, "."],
-      cwd: tempDir,
-      stdout: "piped",
-      stderr: "piped",
-    });
+      const result = await zipCmd.output();
+      if (result.success) {
+        logger.info(`Package created at ${outputPath}`);
+        return;
+      }
+    } catch {
+      // zip command not available
+    }
 
-    const result = await zipCmd.output();
-    if (!result.success) {
-      // Fall back to tar if zip is not available
-      logger.warn("zip command failed, falling back to tar.gz format");
-      const tarOutput = outputPath.replace(/\.zip$/, ".tar.gz");
+    // Fall back to tar.gz if zip is not available
+    logger.warn("zip command not available, using tar.gz format");
+    const tarOutput = outputPath.replace(/\.zip$/, ".tar.gz");
+    try {
       const tarCmd = new Deno.Command("tar", {
         args: ["-czf", tarOutput, "-C", tempDir, "."],
         stdout: "piped",
         stderr: "piped",
       });
       const tarResult = await tarCmd.output();
-      if (!tarResult.success) {
-        throw new Error(
-          `Failed to create package archive: ${new TextDecoder().decode(tarResult.stderr)}`,
-        );
+      if (tarResult.success) {
+        logger.info(`Package created at ${tarOutput}`);
+        return;
       }
-      logger.info(`Package created at ${tarOutput}`);
-      return;
+    } catch {
+      // tar command not available
     }
 
-    logger.info(`Package created at ${outputPath}`);
+    throw new Error(
+      "Failed to create package archive: neither zip nor tar commands are available",
+    );
   } finally {
     // Cleanup temp directory
     await Deno.remove(tempDir, { recursive: true });
