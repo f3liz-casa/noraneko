@@ -1,4 +1,5 @@
-# Welcome to Noraneko Browser Repository
+# Noraneko Browser
+by NyanRus: [GitHub](https://github.com/nyanrus) | [Buy me a milk tea](https://buymeacoffee.com/nyanrus) 🧋
 
 <p align="center">
 <img src=".github/assets/readme/logo_with_wordmark_light.svg#gh-light-mode-only" width="400px" alt="Noraneko Logo and Workmark"></img>
