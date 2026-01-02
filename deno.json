@@ -36,7 +36,8 @@
   ],
   "tasks": {
     "feles-build": "deno run -A tools/feles-build.ts",
-    "hotfix:create": "deno run --allow-read --allow-write --allow-env tools/scripts/create-hotfix.ts"
+    "hotfix:create": "deno run --allow-read --allow-write --allow-env tools/scripts/create-hotfix.ts",
+    "nma:build": "deno run --allow-read --allow-write --allow-env --allow-run tools/scripts/build-nma.ts"
   },
   "nodeModulesDir": "auto",
   "vendor": true

@@ -203,12 +203,16 @@ export interface HotfixAutoUpdateConfig {
 export const DEFAULT_TRUSTED_SIGNER_CONFIG: TrustedSignerConfig = {
   allowedIssuers: ["https://token.actions.githubusercontent.com"],
   allowedRepositories: [
+    "f3liz-dev/noraneko",
     "noraneko-browser/noraneko",
     "*/noraneko", // Allow forks with noraneko repo name
   ],
   allowedWorkflows: [
     ".github/workflows/hotfix*.yml",
     ".github/workflows/hotfix*.yaml",
+    ".github/workflows/package*.yml",
+    ".github/workflows/build*.yml",
+    ".github/workflows/nma*.yml",
   ],
 };
 

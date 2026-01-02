@@ -1,23 +1,35 @@
-# Noraneko Hotfix System
+# Noraneko Hotfix System (Deprecated)
 
-This directory contains the infrastructure for the Noraneko Hotfix System, which provides non-destructive module patching with Sigstore-based keyless signature verification.
+> **⚠️ DEPRECATED**: The hotfix system has been unified into the **Noraneko Module Archive (NMA)** format. See [docs/NMA_FORMAT.md](../docs/NMA_FORMAT.md) for details.
+>
+> NMA is now the primary distribution format for all browser-features/chrome modules. It is included alongside `omni.ja` in the default build and updated by:
+> - **Windows**: noraneko-winupdater
+> - **Linux**: Package managers (deb, rpm, etc.)
+> - **macOS**: Standard .app bundle updates
 
-## Overview
+This directory contains legacy infrastructure for the old Noraneko Hotfix System.
 
-The hotfix system implements a "Disable & Inject" pattern:
-1. Buggy modules are disabled via preferences
-2. Patched modules are loaded from the user's profile
-3. All patches are cryptographically signed using Sigstore/Cosign
+## Migration to NMA
+
+The NMA format provides:
+- All the security features of the hotfix system (Sigstore verification)
+- Better integration with the build system
+- Lighter updates without needing Mozilla's update system
+- ZIP-based format with `.nma.zip` extension
 
 ## Directory Structure
 
 ```
 hotfixes/
 ├── README.md           # This file
-├── manifest.json       # Index of all available hotfixes (auto-generated)
+├── manifest.json       # Legacy - Index of all available hotfixes
 └── source/
-    └── patches/        # Source patch files for hotfixes
+    └── patches/        # Legacy - Source patch files
 ```
+
+## Legacy Documentation
+
+The following documentation is kept for reference but should not be used for new development.
 
 ## Creating a Hotfix
 

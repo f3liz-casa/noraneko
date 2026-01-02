@@ -34,6 +34,13 @@ import {
   logHashComparison,
   type HotswapRecommendation,
 } from "./hash-registry.ts";
+import {
+  initializeNMALoader,
+  isNMAActive,
+  hasNMAModule,
+  loadNMAModule,
+  getCurrentNMAManifest,
+} from "./nma-loader.ts";
 
 console.log("[noraneko] Initializing scripts...");
 
@@ -51,12 +58,6 @@ interface LoadedModule {
 }
 
 // ============================================================================
-// Configuration - Constants
-// ============================================================================
-
-const PREF_HOTFIX_DISABLED_MODULES = "noraneko.hotfix.disabled_modules";
-
-// ============================================================================
 // Pure Functions - Helpers
 // ============================================================================
 
@@ -67,34 +68,22 @@ const defaultMetadata = (moduleName: string): ModuleMetadata => ({
   softDependencies: [],
 });
 
-/** Check if a module is disabled by hotfix */
-const isModuleDisabledByHotfix = (moduleName: string): boolean => {
+/** Initialize the NMA (Noraneko Module Archive) system */
+const initNMASystem = async (): Promise<void> => {
   try {
-    const disabled = Services.prefs.getStringPref(PREF_HOTFIX_DISABLED_MODULES, "[]");
-    return (JSON.parse(disabled) as string[]).includes(moduleName);
-  } catch {
-    return false;
-  }
-};
-
-/** Get patched module path from hotfix loader */
-const getPatchedModulePath = async (moduleName: string): Promise<string | null> => {
-  try {
-    const { getPatchedModulePath: getPath } = await import("./hotfix-loader.ts");
-    return getPath(moduleName);
-  } catch {
-    return null;
-  }
-};
-
-/** Initialize the hotfix system */
-const initHotfixSystem = async (): Promise<void> => {
-  try {
-    const { initializeHotfixSystem } = await import("./hotfix-loader.ts");
-    await initializeHotfixSystem();
-    console.log("[noraneko] Hotfix system initialized");
+    const success = await initializeNMALoader();
+    if (success) {
+      console.log("[noraneko] NMA system initialized successfully");
+      const manifest = getCurrentNMAManifest();
+      if (manifest) {
+        console.log(`[noraneko] NMA build: ${manifest.buildId}`);
+        console.log(`[noraneko] NMA version: ${manifest.noranekoVersion}`);
+      }
+    } else {
+      console.log("[noraneko] NMA not found, using built-in modules");
+    }
   } catch (error) {
-    console.error("[noraneko] Failed to initialize hotfix system:", error);
+    console.error("[noraneko] Failed to initialize NMA system:", error);
   }
 };
 
@@ -106,65 +95,36 @@ const setPrefFeatures = (allFeaturesKeys: typeof MODULES_KEYS): void => {
   prefs.setStringPref("noraneko.features.enabled", JSON.stringify(allFeaturesKeys));
 };
 
-/** 
- * Load patched module with path traversal protection
- * Security: Validates path is within hotfix directory
- */
-const loadPatchedModule = async (
-  patchedPath: string,
-  moduleName: string,
-): Promise<LoadedModule | null> => {
-  try {
-    const profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
-    const hotfixBaseDir = PathUtils.join(profileDir, "noraneko-hotfixes");
-    const normalizedPath = PathUtils.normalize(patchedPath);
-    
-    // Security: Ensure path doesn't escape hotfix directory
-    if (!normalizedPath.startsWith(hotfixBaseDir)) {
-      console.error(`[noraneko] Security: Path outside hotfix directory: ${patchedPath}`);
-      return null;
-    }
-
-    const fileUrl = `file://${normalizedPath}`;
-    const exports = ChromeUtils.importESModule(fileUrl);
-    const metadata = (exports as any).default?._metadata?.() ?? defaultMetadata(moduleName);
-
-    return {
-      name: moduleName,
-      metadata,
-      ...(exports as {
-        init?: typeof Function;
-        initBeforeSessionStoreInit?: typeof Function;
-        default?: any;
-      }),
-    };
-  } catch (error) {
-    console.error(`[noraneko] Failed to load patched module ${patchedPath}:`, error);
-    return null;
-  }
-};
-
-/** Load a single module (regular or patched) */
+/** Load a single module (NMA or built-in) */
 const loadSingleModule = async (
   categoryValue: Record<string, () => Promise<unknown>>,
   moduleName: string,
 ): Promise<LoadedModule | null> => {
-  // Check if disabled by hotfix
-  if (isModuleDisabledByHotfix(moduleName)) {
-    console.log(`[noraneko] Module ${moduleName} disabled by hotfix`);
-    const patchedPath = await getPatchedModulePath(moduleName);
-    
-    if (patchedPath) {
-      try {
-        return await loadPatchedModule(patchedPath, moduleName);
-      } catch (e) {
-        console.error(`[noraneko] Failed to load patched ${moduleName}:`, e);
+  // Priority 1: Check if module exists in NMA (primary module source)
+  // NMA is the primary distribution format for browser-features/chrome modules
+  if (isNMAActive() && hasNMAModule(moduleName)) {
+    try {
+      const exports = await loadNMAModule(moduleName);
+      if (exports) {
+        const metadata = (exports as any).default?._metadata?.() ?? defaultMetadata(moduleName);
+        const module: LoadedModule = {
+          name: moduleName,
+          metadata,
+          ...(exports as {
+            init?: typeof Function;
+            initBeforeSessionStoreInit?: typeof Function;
+            default?: any;
+          }),
+        };
+        console.debug(`[noraneko] Loaded module from NMA: ${moduleName}`);
+        return module;
       }
+    } catch (e) {
+      console.warn(`[noraneko] Failed to load NMA module ${moduleName}, falling back:`, e);
     }
-    console.warn(`[noraneko] No patched version for disabled module ${moduleName}`);
-    return null;
   }
 
+  // Priority 2: Load from built-in modules (fallback)
   try {
     const exports = await categoryValue[moduleName]();
     const metadata = (exports as any).default?._metadata?.() ?? defaultMetadata(moduleName);
@@ -334,7 +294,8 @@ const initializeModulesForHotswap = async (modules: LoadedModule[]): Promise<voi
     try {
       console.log("[noraneko] Hotswap init: " + module.name);
       const instance = module?.default ? new module.default() : null;
-      registerModuleInstance(module, instance, isModuleDisabledByHotfix(module.name));
+      // NMA modules are always from the primary source, not hotfixes
+      registerModuleInstance(module, instance, false);
     } catch (e) {
       console.error(`[noraneko] Hotswap init failed for ${module.name}:`, e);
     }
@@ -360,7 +321,10 @@ export async function initScripts(): Promise<void> {
     ).toISOString()}`,
   );
 
-  await initHotfixSystem();
+  // Initialize NMA (Noraneko Module Archive) system first
+  // NMA provides omni.ja-like module distribution alongside installation
+  await initNMASystem();
+
   setPrefFeatures(MODULES_KEYS);
 
   const enabledFeatures = JSON.parse(
@@ -544,46 +508,58 @@ export {
   mapResult,
 } from "./event-dispatcher-registry.ts";
 
-// Re-export hotfix loader for external use
+// Re-export hotfix types (used for NMA Sigstore verification)
 export {
-  initializeHotfixSystem,
-  getInstalledHotfixes,
-  isModuleDisabled,
-  fetchAvailableHotfixes,
-  downloadHotfix,
-  installHotfix,
-  applyHotfix,
-  revertHotfix,
-  getPatchedModulePath,
-  validateUnlockCode,
-  requestUserConsent,
-  stopAutoUpdateChecking,
-  hotswapModules as hotfixHotswapModules,
-  getCurrentChannel,
-} from "./hotfix-loader.ts";
-
-// Re-export hotfix verifier
-export {
-  verifyManifest,
-  computeHash as computeSignatureHash,
-  setTrustedConfig,
-  getTrustedConfig,
-} from "./hotfix-verifier.ts";
-
-// Re-export hotfix types
-export {
-  type HotfixManifest,
-  type HotfixPatch,
   type SigstoreBundle,
   type SignerIdentity,
   type VerificationResult,
-  type HotfixConsentResult,
-  type InstalledHotfix,
   type TrustedSignerConfig,
-  type HotfixAutoUpdateConfig,
-  HotfixStatus,
   UpdateChannel,
   VerificationStatus,
   DEFAULT_TRUSTED_SIGNER_CONFIG,
-  DEFAULT_AUTO_UPDATE_CONFIG,
 } from "./hotfix-types.ts";
+
+// Re-export NMA (Noraneko Module Archive) loader
+export {
+  initializeNMALoader,
+  nmaFileExists,
+  findNMAFile,
+  verifyNMA,
+  isNMAActive,
+  hasNMAModule,
+  getNMAModule,
+  loadNMAModule,
+  getNMAModuleUrl,
+  activateNMAModules,
+  getNMALoaderState,
+  getCurrentNMAManifest,
+  getLoadedNMAModules,
+  cleanupNMALoader,
+  onNMAEvent,
+  offNMAEvent,
+} from "./nma-loader.ts";
+
+// Re-export NMA verifier
+export {
+  verifyNMAManifest,
+  verifyNMAModuleHash,
+  isDevModeNMAAllowed,
+  validateNMAManifestStructure,
+  computeNMAHash,
+  setNMATrustedConfig,
+  getNMATrustedConfig,
+} from "./nma-verifier.ts";
+
+// Re-export NMA types
+export {
+  type NMAManifest,
+  type NMAModule,
+  type NMAAsset,
+  type NMAVerificationResult,
+  type NMALoaderState,
+  type NMATrustedConfig,
+  type NMALoaderEvents,
+  NMAVerificationStatus,
+  NMA_PATHS,
+  DEFAULT_NMA_TRUSTED_CONFIG,
+} from "./nma-types.ts";
