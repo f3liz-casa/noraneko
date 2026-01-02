@@ -21,9 +21,26 @@ hotfixes/
 
 ## Creating a Hotfix
 
-### Option 1: Using the Hotfix Creator Tool (Recommended)
+### Option 1: Using the Vite Plugin (Recommended)
 
-Use the interactive CLI tool to quickly set up a hotfix:
+The hotfix system is integrated as a Vite plugin in `browser-features/chrome`. During development, you can create hotfixes via the dev server:
+
+```
+http://localhost:5181/__hotfix/create?id=fix-crash&version=1.0.0&modules=sidebar,tabs&description=Fix%20crash
+```
+
+Query parameters:
+- `id` (required): Hotfix ID (e.g., `fix-sidebar-crash`)
+- `modules` (required): Comma-separated module names
+- `version`: Semver version (default: `1.0.0`)
+- `description`: User-facing description
+- `minVersion`: Minimum Noraneko version (default: `0.0.0`)
+- `maxVersion`: Maximum Noraneko version (optional)
+- `targetChannels`: Comma-separated channels (e.g., `nightly,beta`)
+
+### Option 2: Using the CLI Tool
+
+Use the interactive CLI tool:
 
 ```bash
 deno task hotfix:create
@@ -42,7 +59,7 @@ The tool will:
 
 The tool supports various file types including `.ts`, `.tsx`, `.mts`, and `.sys.mts` files.
 
-You can also use non-interactive mode:
+Non-interactive mode:
 
 ```bash
 deno task hotfix:create --non-interactive \
@@ -52,7 +69,7 @@ deno task hotfix:create --non-interactive \
   --modules sidebar
 ```
 
-### Option 2: Manual Setup
+### Option 3: Manual Setup
 
 If you prefer to set up a hotfix manually:
 

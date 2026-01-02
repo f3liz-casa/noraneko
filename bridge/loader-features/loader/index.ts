@@ -78,12 +78,10 @@ const isModuleDisabledByHotfix = (moduleName: string): boolean => {
 };
 
 /** Get patched module path from hotfix loader */
-const getPatchedModulePath = (moduleName: string): string | null => {
+const getPatchedModulePath = async (moduleName: string): Promise<string | null> => {
   try {
-    const { hotfixLoader } = ChromeUtils.importESModule(
-      "resource://noraneko/modules/HotfixLoader.sys.mjs",
-    );
-    return hotfixLoader.getPatchedModulePath(moduleName);
+    const { getPatchedModulePath: getPath } = await import("./hotfix-loader.ts");
+    return getPath(moduleName);
   } catch {
     return null;
   }
@@ -92,10 +90,8 @@ const getPatchedModulePath = (moduleName: string): string | null => {
 /** Initialize the hotfix system */
 const initHotfixSystem = async (): Promise<void> => {
   try {
-    const { hotfixLoader } = ChromeUtils.importESModule(
-      "resource://noraneko/modules/HotfixLoader.sys.mjs",
-    );
-    await hotfixLoader.initialize();
+    const { initializeHotfixSystem } = await import("./hotfix-loader.ts");
+    await initializeHotfixSystem();
     console.log("[noraneko] Hotfix system initialized");
   } catch (error) {
     console.error("[noraneko] Failed to initialize hotfix system:", error);
@@ -156,7 +152,7 @@ const loadSingleModule = async (
   // Check if disabled by hotfix
   if (isModuleDisabledByHotfix(moduleName)) {
     console.log(`[noraneko] Module ${moduleName} disabled by hotfix`);
-    const patchedPath = getPatchedModulePath(moduleName);
+    const patchedPath = await getPatchedModulePath(moduleName);
     
     if (patchedPath) {
       try {
@@ -547,3 +543,47 @@ export {
   unwrapOr,
   mapResult,
 } from "./event-dispatcher-registry.ts";
+
+// Re-export hotfix loader for external use
+export {
+  initializeHotfixSystem,
+  getInstalledHotfixes,
+  isModuleDisabled,
+  fetchAvailableHotfixes,
+  downloadHotfix,
+  installHotfix,
+  applyHotfix,
+  revertHotfix,
+  getPatchedModulePath,
+  validateUnlockCode,
+  requestUserConsent,
+  stopAutoUpdateChecking,
+  hotswapModules as hotfixHotswapModules,
+  getCurrentChannel,
+} from "./hotfix-loader.ts";
+
+// Re-export hotfix verifier
+export {
+  verifyManifest,
+  computeHash as computeSignatureHash,
+  setTrustedConfig,
+  getTrustedConfig,
+} from "./hotfix-verifier.ts";
+
+// Re-export hotfix types
+export {
+  type HotfixManifest,
+  type HotfixPatch,
+  type SigstoreBundle,
+  type SignerIdentity,
+  type VerificationResult,
+  type HotfixConsentResult,
+  type InstalledHotfix,
+  type TrustedSignerConfig,
+  type HotfixAutoUpdateConfig,
+  HotfixStatus,
+  UpdateChannel,
+  VerificationStatus,
+  DEFAULT_TRUSTED_SIGNER_CONFIG,
+  DEFAULT_AUTO_UPDATE_CONFIG,
+} from "./hotfix-types.ts";
