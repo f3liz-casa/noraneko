@@ -1,0 +1,186 @@
+# SPDX-License-Identifier: MPL-2.0
+
+name: "(A) 📦 Create Package"
+
+on:
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: "Sign the package with Sigstore"
+        type: boolean
+        default: true
+      publish:
+        description: "Publish to GitHub Releases"
+        type: boolean
+        default: false
+
+  workflow_call:
+    inputs:
+      sign:
+        type: boolean
+        default: true
+      publish:
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write  # Required for Sigstore OIDC
+
+run-name: "📦 Create Package"
+
+jobs:
+  build-package:
+    runs-on: ubuntu-latest
+    outputs:
+      package_name: ${{ steps.package.outputs.package_name }}
+      version: ${{ steps.package.outputs.version }}
+      build_id: ${{ steps.package.outputs.build_id }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Install dependencies
+        run: deno install --allow-scripts
+
+      - name: Setup symlinks
+        run: deno task feles-build misc patch --action apply || true
+
+      - name: Build production assets
+        run: |
+          cd $GITHUB_WORKSPACE
+          deno task feles-build build --phase before-mach
+
+      - name: Create package
+        id: package
+        run: |
+          # Create the package
+          deno task feles-build package --output-dir $GITHUB_WORKSPACE/_dist/package
+
+          # Get package info
+          PACKAGE_FILE=$(ls $GITHUB_WORKSPACE/_dist/package/*.nora.zip 2>/dev/null || ls $GITHUB_WORKSPACE/_dist/package/*.nora.tar.gz 2>/dev/null | head -1)
+          PACKAGE_NAME=$(basename "$PACKAGE_FILE")
+          VERSION=$(cat package.json | jq -r '.version')
+          BUILD_ID=$(cat _dist/buildid2)
+
+          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "package_path=$PACKAGE_FILE" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+
+      - name: Install Sigstore cosign
+        if: ${{ inputs.sign }}
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign package with Sigstore
+        if: ${{ inputs.sign }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          MANIFEST_FILE=$(ls $GITHUB_WORKSPACE/_dist/package/*.manifest.json | head -1)
+
+          # Sign the manifest using keyless signing (GitHub OIDC)
+          cosign sign-blob "$MANIFEST_FILE" \
+            --output-signature "$MANIFEST_FILE.sig" \
+            --output-certificate "$MANIFEST_FILE.cert" \
+            --yes
+
+          # Create signature bundle JSON
+          cat > "${MANIFEST_FILE%.manifest.json}.nora.zip.signature.json" << EOF
+          {
+            "formatVersion": "1.0",
+            "signatureType": "sigstore",
+            "signature": "$(cat "$MANIFEST_FILE.sig")",
+            "certificate": "$(cat "$MANIFEST_FILE.cert" | base64 -w0)",
+            "identity": {
+              "issuer": "https://token.actions.githubusercontent.com",
+              "subject": "https://github.com/${{ github.repository }}",
+              "repository": "${{ github.repository }}"
+            },
+            "signedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+          echo "Package signed successfully"
+
+      - name: Verify signature
+        if: ${{ inputs.sign }}
+        run: |
+          MANIFEST_FILE=$(ls $GITHUB_WORKSPACE/_dist/package/*.manifest.json | head -1)
+
+          cosign verify-blob "$MANIFEST_FILE" \
+            --signature "$MANIFEST_FILE.sig" \
+            --certificate "$MANIFEST_FILE.cert" \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+          echo "Signature verified successfully"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: noraneko-package-${{ steps.package.outputs.version }}-${{ steps.package.outputs.build_id }}
+          path: |
+            ${{ github.workspace }}/_dist/package/*.nora.zip
+            ${{ github.workspace }}/_dist/package/*.nora.tar.gz
+            ${{ github.workspace }}/_dist/package/*.manifest.json
+            ${{ github.workspace }}/_dist/package/*.signature.json
+          compression-level: 0  # Already compressed
+
+  publish:
+    needs: build-package
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: noraneko-package-${{ needs.build-package.outputs.version }}-${{ needs.build-package.outputs.build_id }}
+          path: ~/noraneko-package
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ~/noraneko-package/*.nora.zip
+            ~/noraneko-package/*.nora.tar.gz
+            ~/noraneko-package/*.manifest.json
+            ~/noraneko-package/*.signature.json
+          tag_name: "package-v${{ needs.build-package.outputs.version }}"
+          name: "Noraneko Package v${{ needs.build-package.outputs.version }}"
+          body: |
+            ## Noraneko Package
+
+            **Version:** ${{ needs.build-package.outputs.version }}
+            **Build ID:** ${{ needs.build-package.outputs.build_id }}
+
+            ### Verification
+
+            This package is signed with Sigstore. To verify:
+
+            ```bash
+            cosign verify-blob <manifest>.json \
+              --signature <manifest>.json.sig \
+              --certificate <manifest>.json.cert \
+              --certificate-identity-regexp "^https://github.com/${{ github.repository }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+            ```
+
+            ### Installation
+
+            Download the package and place it in your Firefox profile's `noraneko-packages/current/` directory.
+          draft: false
+          prerelease: true
+          token: ${{ github.token }}

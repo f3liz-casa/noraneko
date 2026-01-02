@@ -9,6 +9,9 @@ import * as DevServer from "./src/dev_server.ts";
 import * as Injector from "./src/injector.ts";
 import * as BrowserLauncher from "./src/browser_launcher.ts";
 import * as DevEnvManager from "./src/dev_env_manager.ts";
+import * as Packager from "./src/packager.ts";
+import * as Signer from "./src/signer.ts";
+import * as Verifier from "./src/verifier.ts";
 import { Logger } from "./src/utils.ts";
 
 const logger = new Logger("feles-build");
@@ -174,6 +177,36 @@ async function runPatch(action = "apply"): Promise<void> {
   Patcher.run(action);
 }
 
+async function runPackage(options: {
+  sign?: boolean;
+  gpgKeyId?: string;
+  outputDir?: string;
+}): Promise<void> {
+  logger.info("Creating Noraneko package...");
+
+  const packagePath = await Packager.createPackage(options.outputDir);
+
+  if (options.sign) {
+    logger.info("Signing package...");
+    await Signer.createSignedBundle(packagePath, {
+      gpgKeyId: options.gpgKeyId,
+    });
+  }
+
+  logger.success("Package created successfully.");
+}
+
+async function runVerify(manifestPath: string, signaturePath: string): Promise<void> {
+  logger.info("Verifying package...");
+
+  await Verifier.run(manifestPath, signaturePath, {
+    expectedIdentity: {
+      repository: "f3liz-dev/noraneko",
+      issuer: "https://token.actions.githubusercontent.com",
+    },
+  });
+}
+
 function printHelp(): void {
   console.log("Usage: deno task feles-build <command> [options]\n");
   console.log("Commands:");
@@ -182,6 +215,8 @@ function printHelp(): void {
     "  stage      Build production assets and run browser in dev mode",
   );
   console.log("  build      Run the production build workflow (--phase)");
+  console.log("  package    Create a distributable Noraneko package");
+  console.log("  verify     Verify a signed Noraneko package");
   console.log("  misc       Misc commands (e.g. 'misc patch')");
   console.log("");
   console.log("Run 'feles-build <command> --help' for command-specific help.");
@@ -241,6 +276,45 @@ async function main(): Promise<void> {
         printHelp();
         Deno.exit(1);
       }
+      break;
+    }
+    case "package": {
+      if (argv.includes("--help") || argv.includes("-h")) {
+        console.log(
+          "Usage: feles-build package [--sign] [--gpg-key-id <key>] [--output-dir <dir>]",
+        );
+        console.log("");
+        console.log("Options:");
+        console.log("  --sign           Sign the package after creation");
+        console.log("  --gpg-key-id     GPG key ID to use for signing (optional)");
+        console.log("  --output-dir     Output directory for the package");
+        return;
+      }
+      const signIndex = argv.indexOf("--sign");
+      const gpgKeyIndex = argv.indexOf("--gpg-key-id");
+      const outputIndex = argv.indexOf("--output-dir");
+
+      await runPackage({
+        sign: signIndex >= 0,
+        gpgKeyId: gpgKeyIndex >= 0 ? argv[gpgKeyIndex + 1] : undefined,
+        outputDir: outputIndex >= 0 ? argv[outputIndex + 1] : undefined,
+      });
+      break;
+    }
+    case "verify": {
+      if (argv.includes("--help") || argv.includes("-h")) {
+        console.log("Usage: feles-build verify <manifest.json> <signature.json>");
+        return;
+      }
+      const manifestPath = argv[0];
+      const signaturePath = argv[1];
+
+      if (!manifestPath || !signaturePath) {
+        logger.error("Both manifest and signature paths are required");
+        Deno.exit(1);
+      }
+
+      await runVerify(manifestPath, signaturePath);
       break;
     }
     case "--help":
