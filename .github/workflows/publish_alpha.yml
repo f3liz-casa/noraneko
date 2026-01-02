@@ -69,8 +69,8 @@ jobs:
         run: |
           # Extract version from NMA manifest if available
           if [ -f ~/noraneko-publish/win/noraneko.nma.zip ]; then
-            unzip -p ~/noraneko-publish/win/noraneko.nma.zip manifest.json | jq -r '.noranekoVersion' > /tmp/version.txt
-            echo "NR_VERSION=$(cat /tmp/version.txt)" >> "$GITHUB_ENV"
+            VERSION=$(unzip -p ~/noraneko-publish/win/noraneko.nma.zip manifest.json 2>/dev/null | jq -r '.noranekoVersion // "alpha"' 2>/dev/null || echo "alpha")
+            echo "NR_VERSION=$VERSION" >> "$GITHUB_ENV"
           else
             echo "NR_VERSION=alpha" >> "$GITHUB_ENV"
           fi
