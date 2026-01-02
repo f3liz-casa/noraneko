@@ -140,12 +140,29 @@ noraneko.hotfix.installed = "[]"
 
 The hotfix system supports runtime hot-swapping of modules without requiring a browser restart. This is particularly useful during development and for quick fixes.
 
+### Hash-Based Change Detection
+
+The hotfix system uses SHA-256 hash-based detection to determine what changed and optimize the reload process:
+
+1. **deno.lock Hash**: If the `deno.lock` file hash changes (indicating dependency updates), a **full reload** of all modules is triggered
+2. **Module File Hashes**: If only specific module files changed, a **selective reload** of those modules and their dependents is triggered
+3. **No Changes**: If hashes match, no reload is needed
+
+This optimization minimizes disruption by only reloading what actually changed.
+
 ### How Hot-Swapping Works
 
+**Full Reload** (deno.lock changed):
 1. **Cleanup Phase**: All currently loaded modules have their `cleanup()` method called
 2. **Unregistration**: Modules are unregistered from the EventDispatcher registry
-3. **Reload**: New module versions are loaded from the hotfix directory
-4. **Re-initialization**: Modules are re-initialized with the new code
+3. **Reload**: All module versions are loaded fresh
+4. **Re-initialization**: All modules are re-initialized
+
+**Selective Reload** (only specific modules changed):
+1. **Dependency Analysis**: Identify modules that depend on changed modules
+2. **Selective Cleanup**: Cleanup only affected modules (changed + dependents)
+3. **Selective Reload**: Load only the affected modules
+4. **Re-initialization**: Re-initialize only the affected modules
 
 ### Component Cleanup Requirements
 
@@ -188,13 +205,20 @@ The cleanup method should:
 You can trigger a hot-swap programmatically:
 
 ```typescript
-import { loader } from "chrome://noraneko-startup/content/features-chrome/core.js";
+import { 
+  hotswapModules,
+  hotswapSelectiveModules,
+  hotswapWithHashDetection 
+} from "chrome://noraneko-startup/content/features-chrome/core.js";
 
-// Hot-swap all modules with new versions from the hotfix directory
-await loader.hotswap(hotfixId);
+// Full hot-swap of all modules
+await hotswapModules(hotfixId);
 
-// Access the module registry
-const registry = loader.getModuleRegistry();
+// Selective hot-swap of specific modules only
+await hotswapSelectiveModules(["sidebar", "tabs"]);
+
+// Hash-based detection (recommended) - automatically determines full vs selective
+await hotswapWithHashDetection(hotfixId, modulePaths);
 ```
 
 ## Technical Details

@@ -144,6 +144,9 @@ export {
   hasModule,
   cleanupModule,
   cleanupAllModules,
+  cleanupSelectiveModules,
+  getModulesForSelectiveCleanup,
+  getRegisteredModuleNames,
   unregisterModule,
   addHotswapListener,
   removeHotswapListener,
@@ -157,3 +160,26 @@ export type {
   ModuleInfo, 
   ModuleMetadata 
 } from "./module-registry.ts";
+
+// Re-export hash registry functions for change detection
+export {
+  computeHash,
+  computeFileHash,
+  extractModuleName,
+  getStoredHashState,
+  saveHashState,
+  clearHashState,
+  computeHotfixHashState,
+  compareHashStates,
+  getHotswapRecommendation,
+  analyzeHotfixChanges,
+  logHashComparison,
+  HotswapMode,
+} from "./hash-registry.ts";
+
+export type {
+  HashState,
+  ModuleHashInfo,
+  HashComparisonResult,
+  HotswapRecommendation,
+} from "./hash-registry.ts";

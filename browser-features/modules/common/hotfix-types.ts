@@ -32,6 +32,8 @@ export interface HotfixManifest {
   maxVersion?: string;
   /** Target update channels (if not specified, applies to all channels) */
   targetChannels?: UpdateChannel[];
+  /** SHA-256 hash of the deno.lock file (for dependency change detection) */
+  denoLockHash?: string;
 }
 
 /**

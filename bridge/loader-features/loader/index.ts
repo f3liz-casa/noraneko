@@ -21,10 +21,19 @@ import { registerModuleEventDispatcher } from "./event-dispatcher-registry.ts";
 import { 
   registerModule, 
   cleanupAllModules,
+  cleanupSelectiveModules,
   notifyHotswapStart,
   notifyHotswapComplete,
+  getRegisteredModuleNames,
   type ModuleMetadata,
 } from "./module-registry.ts";
+import {
+  analyzeHotfixChanges,
+  saveHashState,
+  HotswapMode,
+  logHashComparison,
+  type HotswapRecommendation,
+} from "./hash-registry.ts";
 
 console.log("[noraneko] Initializing scripts...");
 
@@ -392,23 +401,140 @@ export async function hotswapModules(_hotfixId?: string): Promise<boolean> {
   }
 }
 
+/** 
+ * Hotswap specific modules (selective reload)
+ * Only cleans up and reloads the specified modules and their dependents
+ */
+export async function hotswapSelectiveModules(moduleNames: string[]): Promise<boolean> {
+  console.log(`[noraneko] Starting selective hotswap for: ${moduleNames.join(", ")}`);
+  
+  try {
+    notifyHotswapStart();
+    
+    // Cleanup the specified modules and their dependents
+    const cleanedUp = await cleanupSelectiveModules(moduleNames);
+    console.log(`[noraneko] Cleaned up ${cleanedUp.length} modules: ${cleanedUp.join(", ")}`);
+    
+    const enabledFeatures = JSON.parse(
+      Services.prefs.getStringPref("noraneko.features.enabled", "{}"),
+    ) as typeof MODULES_KEYS;
+    
+    // Filter to only reload the cleaned up modules
+    const cleanedUpSet = new Set(cleanedUp);
+    const allModules = await loadEnabledModules(enabledFeatures);
+    const modulesToReload = allModules.filter(m => cleanedUpSet.has(m.name));
+    
+    await initializeModulesForHotswap(modulesToReload);
+    
+    console.log(`[noraneko] Selective hotswap complete. Reloaded: ${modulesToReload.map(m => m.name).join(", ")}`);
+    notifyHotswapComplete(true);
+    return true;
+  } catch (error) {
+    console.error("[noraneko] Selective hotswap failed:", error);
+    notifyHotswapComplete(false);
+    return false;
+  }
+}
+
+/**
+ * Hotswap modules with hash-based change detection
+ * Determines whether to do full reload or selective reload based on what changed
+ */
+export async function hotswapWithHashDetection(
+  hotfixId: string,
+  modulePaths: string[]
+): Promise<boolean> {
+  console.log(`[noraneko] Starting hash-based hotswap for hotfix: ${hotfixId}`);
+  
+  try {
+    const profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
+    const hotfixDir = PathUtils.join(profileDir, "noraneko-hotfixes");
+    
+    // Analyze changes
+    const { newState, comparison, recommendation } = await analyzeHotfixChanges(
+      hotfixDir,
+      hotfixId,
+      modulePaths
+    );
+    
+    logHashComparison(comparison);
+    console.log(`[noraneko] Hotswap recommendation: ${recommendation.mode} - ${recommendation.reason}`);
+    
+    let success = false;
+    
+    switch (recommendation.mode) {
+      case HotswapMode.NONE:
+        console.log("[noraneko] No changes detected, skipping hotswap");
+        success = true;
+        break;
+        
+      case HotswapMode.FULL:
+        console.log("[noraneko] deno.lock changed, performing full hotswap");
+        success = await hotswapModules(hotfixId);
+        break;
+        
+      case HotswapMode.SELECTIVE:
+        console.log(`[noraneko] Selective hotswap for modules: ${recommendation.modulesToReload.join(", ")}`);
+        success = await hotswapSelectiveModules(recommendation.modulesToReload);
+        break;
+    }
+    
+    // Save new hash state on success
+    if (success) {
+      saveHashState(newState);
+      console.log("[noraneko] Hash state saved");
+    }
+    
+    return success;
+  } catch (error) {
+    console.error("[noraneko] Hash-based hotswap failed:", error);
+    return false;
+  }
+}
+
+/**
+ * Get current registered module names (for external use)
+ */
+export function getLoadedModuleNames(): string[] {
+  return getRegisteredModuleNames();
+}
+
 // ============================================================================
 // Exports - Public API
 // ============================================================================
 
 // Main entry points
-export { initScripts, hotswapModules };
+export { initScripts, hotswapModules, hotswapSelectiveModules, hotswapWithHashDetection, getLoadedModuleNames };
 
 // Re-export for external use
 export { 
   registerModule, 
   cleanupModule, 
   cleanupAllModules,
+  cleanupSelectiveModules,
   notifyHotswapStart,
   notifyHotswapComplete,
+  getRegisteredModuleNames,
   type ModuleMetadata,
   type HotswapEvent,
 } from "./module-registry.ts";
+
+// Re-export hash registry for external use
+export {
+  computeHash,
+  computeFileHash,
+  analyzeHotfixChanges,
+  compareHashStates,
+  getHotswapRecommendation,
+  getStoredHashState,
+  saveHashState,
+  clearHashState,
+  HotswapMode,
+  type HashState,
+  type HashComparisonResult,
+  type HotswapRecommendation,
+  type ModuleHashInfo,
+} from "./hash-registry.ts";
 
 // Re-export Result utilities from event-dispatcher-registry
 export {
