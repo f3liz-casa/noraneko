@@ -109,21 +109,25 @@ jobs:
           
           echo "✅ NMA manifest signed"
           
-          # Read signature bundle and encode
-          BUNDLE=$(cat signature-bundle.json | base64 -w 0)
+          # Read signature bundle and encode (fixed UUOC)
+          BUNDLE=$(base64 -w 0 < signature-bundle.json)
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           
           # Extract Rekor log ID
           REKOR_LOG_ID=$(jq -r '.verificationMaterial.tlogEntries[0].logId.keyId // "unknown"' signature-bundle.json)
+          
+          # Security: Use fixed branch reference for production
+          # This ensures signatures are tied to the specific workflow run
+          WORKFLOW_REF=".github/workflows/nma_build.yml@${{ github.sha }}"
           
           # Update manifest with signature
           jq --arg bundle "$BUNDLE" \
              --arg rekorLogId "$REKOR_LOG_ID" \
              --arg signedAt "$TIMESTAMP" \
              --arg issuer "https://token.actions.githubusercontent.com" \
-             --arg subject "https://github.com/${{ github.repository }}/.github/workflows/nma_build.yml@${{ github.ref }}" \
+             --arg subject "https://github.com/${{ github.repository }}/.github/workflows/nma_build.yml@${{ github.sha }}" \
              --arg repository "${{ github.repository }}" \
-             --arg workflowRef ".github/workflows/nma_build.yml@${{ github.ref }}" \
+             --arg workflowRef "$WORKFLOW_REF" \
              '.sigstoreBundle = {
                "bundle": $bundle,
                "signerIdentity": {

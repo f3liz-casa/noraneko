@@ -125,8 +125,8 @@ async function discoverModules(sourceDir: string): Promise<ModuleEntry[]> {
     const textContent = new TextDecoder().decode(content);
     const dependencies = extractDependencies(textContent);
 
-    // Essential modules are core modules
-    const essential = name === "core" || name === "index" || name.includes("essential");
+    // Essential modules are defined by exact name match
+    const essential = isEssentialModule(name);
 
     modules.push({
       name,
@@ -142,17 +142,50 @@ async function discoverModules(sourceDir: string): Promise<ModuleEntry[]> {
   return modules;
 }
 
+/** List of essential module names that are required for browser startup */
+const ESSENTIAL_MODULES = new Set([
+  "core",
+  "index",
+  "main",
+  "startup",
+  "bootstrap",
+]);
+
+/** Check if a module is essential by exact name match */
+function isEssentialModule(name: string): boolean {
+  return ESSENTIAL_MODULES.has(name);
+}
+
+/**
+ * Extract dependencies from module content
+ * Handles various import patterns:
+ * - Static imports: import x from 'module'
+ * - Dynamic imports: import('module')
+ * - Re-exports: export * from 'module'
+ */
 function extractDependencies(content: string): string[] {
   const dependencies: string[] = [];
-  const importRegex = /import\s+.*?\s+from\s+['"]([^'"]+)['"]/g;
-  let match;
-
-  while ((match = importRegex.exec(content)) !== null) {
-    const importPath = match[1];
-    // Only track local module dependencies
-    if (importPath.startsWith("./") || importPath.startsWith("../")) {
-      const moduleName = basename(importPath).replace(/\.[^.]+$/, "");
-      dependencies.push(moduleName);
+  
+  // Static imports: import ... from 'module'
+  const staticImportRegex = /import\s+(?:[\w\s{},*]+\s+from\s+)?['"]([^'"]+)['"]/g;
+  
+  // Dynamic imports: import('module') or import("module")
+  const dynamicImportRegex = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+  
+  // Re-exports: export * from 'module' or export { x } from 'module'
+  const reExportRegex = /export\s+(?:[\w\s{},*]+\s+)?from\s+['"]([^'"]+)['"]/g;
+  
+  const patterns = [staticImportRegex, dynamicImportRegex, reExportRegex];
+  
+  for (const regex of patterns) {
+    let match;
+    while ((match = regex.exec(content)) !== null) {
+      const importPath = match[1];
+      // Only track local module dependencies (relative paths)
+      if (importPath.startsWith("./") || importPath.startsWith("../")) {
+        const moduleName = basename(importPath).replace(/\.[^.]+$/, "");
+        dependencies.push(moduleName);
+      }
     }
   }
 

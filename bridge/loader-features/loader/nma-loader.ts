@@ -74,6 +74,34 @@ const getExtractedModulesDir = (): string => {
   return PathUtils.join(installDir, NMA_PATHS.EXTRACTED_DIR);
 };
 
+/**
+ * Validate and sanitize NMA path
+ * Security: Ensures path is within installation directory
+ */
+const validateNMAPath = (nmaPath: string): string | null => {
+  try {
+    const installDir = getInstallDir();
+    const normalizedPath = PathUtils.normalize(nmaPath);
+    
+    // Security: Ensure path is within installation directory
+    if (!normalizedPath.startsWith(installDir)) {
+      console.error(`[NMALoader] Security: Path outside installation directory: ${nmaPath}`);
+      return null;
+    }
+    
+    // Security: Check for null bytes or other suspicious characters
+    if (normalizedPath.includes('\x00') || normalizedPath.includes('..')) {
+      console.error(`[NMALoader] Security: Invalid path characters: ${nmaPath}`);
+      return null;
+    }
+    
+    return normalizedPath;
+  } catch (error) {
+    console.error(`[NMALoader] Path validation error:`, error);
+    return null;
+  }
+};
+
 // ============================================================================
 // Event System
 // ============================================================================
@@ -156,11 +184,19 @@ export const findNMAFile = async (): Promise<string | null> => {
 /**
  * Read and parse NMA manifest from the archive
  * Note: In Firefox, we use jar: protocol to read from ZIP archives
+ * Security: Validates path before constructing jar: URL
  */
 const readNMAManifest = async (nmaPath: string): Promise<NMAManifest | null> => {
   try {
+    // Security: Validate path before constructing jar: URL
+    const validatedPath = validateNMAPath(nmaPath);
+    if (!validatedPath) {
+      console.error("[NMALoader] Invalid NMA path");
+      return null;
+    }
+
     // Use jar: URL to read manifest from ZIP archive
-    const manifestUrl = `jar:file://${nmaPath}!/manifest.json`;
+    const manifestUrl = `jar:file://${validatedPath}!/manifest.json`;
 
     // Use fetch to read from jar URL (supported in Firefox privileged code)
     const response = await fetch(manifestUrl);
@@ -186,10 +222,15 @@ const readNMAManifest = async (nmaPath: string): Promise<NMAManifest | null> => 
 
 /**
  * Read raw manifest content for signature verification
+ * Security: Validates path before constructing jar: URL
  */
 const readNMAManifestRaw = async (nmaPath: string): Promise<string | null> => {
   try {
-    const manifestUrl = `jar:file://${nmaPath}!/manifest.json`;
+    // Security: Validate path before constructing jar: URL
+    const validatedPath = validateNMAPath(nmaPath);
+    if (!validatedPath) return null;
+
+    const manifestUrl = `jar:file://${validatedPath}!/manifest.json`;
     const response = await fetch(manifestUrl);
     if (!response.ok) return null;
     return await response.text();

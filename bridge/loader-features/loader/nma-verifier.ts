@@ -98,11 +98,35 @@ export const computeNMAHash = async (content: string | Uint8Array): Promise<stri
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 };
 
-/** Parse Sigstore bundle from base64 */
+/** Validate base64 string format */
+const isValidBase64 = (str: string): boolean => {
+  if (!str || typeof str !== "string") return false;
+  // Check for valid base64 characters (standard or URL-safe)
+  const base64Regex = /^[A-Za-z0-9+/=]+$|^[A-Za-z0-9_-]+=*$/;
+  // Check length is valid (multiple of 4 after padding)
+  const stripped = str.replace(/=+$/, "");
+  return base64Regex.test(str) && stripped.length % 4 !== 1;
+};
+
+/** Parse Sigstore bundle from base64 with validation */
 const parseSigstoreBundle = (bundle: SigstoreBundle): Record<string, unknown> | null => {
   try {
+    // Security: Validate base64 format before decoding
+    if (!bundle.bundle || !isValidBase64(bundle.bundle)) {
+      console.error("[NMAVerifier] Invalid base64 format in Sigstore bundle");
+      return null;
+    }
+    
     const bundleJson = atob(bundle.bundle);
-    return JSON.parse(bundleJson);
+    const parsed = JSON.parse(bundleJson);
+    
+    // Validate it's an object
+    if (!parsed || typeof parsed !== "object") {
+      console.error("[NMAVerifier] Sigstore bundle is not a valid object");
+      return null;
+    }
+    
+    return parsed;
   } catch (error) {
     console.error("[NMAVerifier] Failed to parse Sigstore bundle:", error);
     return null;
@@ -242,21 +266,36 @@ export const verifyNMAManifest = async (
 
 /**
  * Verify NMA module hash integrity
+ * Supports both filesystem paths and jar: URLs
  *
- * @param modulePath - Path to the module file
+ * @param moduleUrl - jar: URL or filesystem path to the module
  * @param expectedHash - Expected SHA-256 hash
  * @returns True if hash matches
  */
 export const verifyNMAModuleHash = async (
-  modulePath: string,
+  moduleUrl: string,
   expectedHash: string,
 ): Promise<boolean> => {
   try {
-    const content = await IOUtils.readUTF8(modulePath);
+    let content: string;
+    
+    // Handle jar: URLs (modules in NMA archive)
+    if (moduleUrl.startsWith("jar:")) {
+      const response = await fetch(moduleUrl);
+      if (!response.ok) {
+        console.error(`[NMAVerifier] Failed to fetch module: ${response.status}`);
+        return false;
+      }
+      content = await response.text();
+    } else {
+      // Handle filesystem paths (fallback for extracted modules)
+      content = await IOUtils.readUTF8(moduleUrl);
+    }
+    
     const actualHash = await computeNMAHash(content);
     return actualHash === expectedHash;
   } catch (error) {
-    console.error(`[NMAVerifier] Failed to verify module hash: ${modulePath}`, error);
+    console.error(`[NMAVerifier] Failed to verify module hash: ${moduleUrl}`, error);
     return false;
   }
 };
