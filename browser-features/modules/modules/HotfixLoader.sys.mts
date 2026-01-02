@@ -595,6 +595,7 @@ IMPORTANT: It is strongly recommended to choose "Don't Apply" unless you trust t
   /**
    * Hot-swap modules with new versions from a hotfix
    * This triggers the loader to cleanup all modules and reload them with hotfix versions
+   * Uses hash-based change detection for selective or full reload
    * 
    * @param hotfixId - The ID of the hotfix to apply
    * @returns Promise<boolean> - true if hotswap was successful
@@ -610,14 +611,34 @@ IMPORTANT: It is strongly recommended to choose "Don't Apply" unless you trust t
         return false;
       }
       
-      // Trigger the loader to hotswap modules
-      // This will cleanup all modules and reload them with the new versions
-      const { loader } = ChromeUtils.importESModule(
+      // Get the list of module paths from the manifest
+      const manifestPath = PathUtils.join(this.hotfixDir, hotfixId, "manifest.json");
+      const manifestContent = await IOUtils.readUTF8(manifestPath);
+      const manifest = JSON.parse(manifestContent) as HotfixManifest;
+      const modulePaths = manifest.patches.map(p => p.patchedModulePath);
+      
+      // Trigger the loader with hash-based change detection
+      const { hotswapWithHashDetection, hotswapModules: loaderHotswap } = ChromeUtils.importESModule(
         "chrome://noraneko-startup/content/features-chrome/core.js",
       );
       
-      if (loader && typeof loader.hotswap === "function") {
-        const success = await loader.hotswap(hotfixId);
+      // Try hash-based hotswap first
+      if (hotswapWithHashDetection && typeof hotswapWithHashDetection === "function") {
+        console.log("[HotfixLoader] Using hash-based hotswap detection");
+        const success = await hotswapWithHashDetection(hotfixId, modulePaths);
+        if (success) {
+          console.log(`[HotfixLoader] Hash-based hotswap successful for hotfix: ${hotfixId}`);
+          return true;
+        } else {
+          console.error(`[HotfixLoader] Hash-based hotswap failed for hotfix: ${hotfixId}`);
+          return false;
+        }
+      }
+      
+      // Fallback to regular hotswap
+      if (loaderHotswap && typeof loaderHotswap === "function") {
+        console.log("[HotfixLoader] Falling back to regular hotswap");
+        const success = await loaderHotswap(hotfixId);
         if (success) {
           console.log(`[HotfixLoader] Hotswap successful for hotfix: ${hotfixId}`);
           return true;
@@ -625,11 +646,11 @@ IMPORTANT: It is strongly recommended to choose "Don't Apply" unless you trust t
           console.error(`[HotfixLoader] Hotswap failed for hotfix: ${hotfixId}`);
           return false;
         }
-      } else {
-        console.warn("[HotfixLoader] Loader does not support hotswap, restart required");
-        this.notifyRestartRequired({ id: hotfixId } as HotfixManifest);
-        return false;
       }
+      
+      console.warn("[HotfixLoader] Loader does not support hotswap, restart required");
+      this.notifyRestartRequired({ id: hotfixId } as HotfixManifest);
+      return false;
     } catch (error) {
       console.error("[HotfixLoader] Hotswap error:", error);
       return false;

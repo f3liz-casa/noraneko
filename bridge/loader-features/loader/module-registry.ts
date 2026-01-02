@@ -225,6 +225,90 @@ export async function cleanupAllModules(): Promise<void> {
   console.log("[ModuleRegistry] All modules cleaned up");
 }
 
+/**
+ * Get modules that need to be cleaned up when specific modules are being reloaded.
+ * This includes the target modules plus any modules that depend on them.
+ * @param moduleNames - Names of modules being reloaded
+ * @returns Sorted list of module names to cleanup (dependents first)
+ */
+export function getModulesForSelectiveCleanup(moduleNames: string[]): string[] {
+  const targetSet = new Set(moduleNames);
+  const toCleanup = new Set<string>(moduleNames);
+  const dependedBy = buildDependedByGraph();
+
+  // Add all modules that depend (directly or transitively) on the target modules
+  const addDependents = (name: string): void => {
+    const dependents = dependedBy.get(name) ?? new Set();
+    for (const dependent of dependents) {
+      if (!toCleanup.has(dependent) && _modules.has(dependent)) {
+        toCleanup.add(dependent);
+        addDependents(dependent);
+      }
+    }
+  };
+
+  for (const name of moduleNames) {
+    addDependents(name);
+  }
+
+  // Sort for cleanup (dependents first)
+  const sorted: string[] = [];
+  const processed = new Set<string>();
+
+  const visit = (name: string): void => {
+    if (processed.has(name) || !toCleanup.has(name)) return;
+
+    // First process modules that depend on this one
+    const dependents = dependedBy.get(name) ?? new Set();
+    for (const dependent of dependents) {
+      if (toCleanup.has(dependent)) {
+        visit(dependent);
+      }
+    }
+
+    processed.add(name);
+    sorted.push(name);
+  };
+
+  for (const name of toCleanup) {
+    visit(name);
+  }
+
+  return sorted;
+}
+
+/**
+ * Run cleanup on specific modules and their dependents
+ * @param moduleNames - Names of modules to cleanup
+ * @returns List of modules that were cleaned up
+ */
+export async function cleanupSelectiveModules(moduleNames: string[]): Promise<string[]> {
+  console.log(`[ModuleRegistry] Running selective cleanup for modules: ${moduleNames.join(", ")}`);
+
+  const modulesToCleanup = getModulesForSelectiveCleanup(moduleNames);
+  console.log(`[ModuleRegistry] Will cleanup ${modulesToCleanup.length} module(s) including dependents`);
+
+  const cleanedUp: string[] = [];
+
+  for (const moduleName of modulesToCleanup) {
+    const success = await cleanupModule(moduleName);
+    if (success) {
+      unregisterModule(moduleName);
+      cleanedUp.push(moduleName);
+    }
+  }
+
+  console.log(`[ModuleRegistry] Selective cleanup complete. Cleaned up: ${cleanedUp.join(", ")}`);
+  return cleanedUp;
+}
+
+/**
+ * Get list of all registered module names
+ */
+export function getRegisteredModuleNames(): string[] {
+  return Array.from(_modules.keys());
+}
+
 // ============================================================================
 // Public API - Hotswap Listener Functions
 // ============================================================================

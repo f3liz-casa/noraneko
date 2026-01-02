@@ -308,10 +308,21 @@ async function copyModuleFiles(
 /**
  * Generate manifest template
  */
-function generateManifestTemplate(
+async function generateManifestTemplate(
   config: HotfixConfig,
   patches: PatchInfo[],
-): string {
+  repoRoot: string,
+): Promise<string> {
+  // Compute deno.lock hash for dependency change detection
+  const denoLockPath = join(repoRoot, "deno.lock");
+  let denoLockHash = "";
+  if (await exists(denoLockPath)) {
+    denoLockHash = await computeFileHash(denoLockPath);
+    console.log(`✅ Computed deno.lock hash: ${denoLockHash.substring(0, HASH_DISPLAY_LENGTH)}...`);
+  } else {
+    console.warn("⚠️  deno.lock not found, skipping hash computation");
+  }
+
   const manifest: Record<string, any> = {
     id: config.id,
     version: config.version,
@@ -339,6 +350,10 @@ function generateManifestTemplate(
   }
   if (config.targetChannels && config.targetChannels.length > 0) {
     manifest.targetChannels = config.targetChannels;
+  }
+  // Add deno.lock hash for hotswap change detection
+  if (denoLockHash) {
+    manifest.denoLockHash = denoLockHash;
   }
 
   return JSON.stringify(manifest, null, 2);
@@ -499,8 +514,8 @@ Examples:
     // Copy module files
     const patches = await copyModuleFiles(repoRoot, config.modules);
 
-    // Generate manifest template
-    const manifestTemplate = generateManifestTemplate(config, patches);
+    // Generate manifest template (includes deno.lock hash)
+    const manifestTemplate = await generateManifestTemplate(config, patches, repoRoot);
     const manifestPath = join(
       repoRoot,
       "hotfixes",

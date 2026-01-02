@@ -144,6 +144,9 @@ export {
   hasModule,
   cleanupModule,
   cleanupAllModules,
+  cleanupSelectiveModules,
+  getModulesForSelectiveCleanup,
+  getRegisteredModuleNames,
   unregisterModule,
   addHotswapListener,
   removeHotswapListener,
@@ -157,3 +160,64 @@ export type {
   ModuleInfo, 
   ModuleMetadata 
 } from "./module-registry.ts";
+
+// Re-export hash registry functions for change detection
+export {
+  computeHash,
+  computeFileHash,
+  extractModuleName,
+  getStoredHashState,
+  saveHashState,
+  clearHashState,
+  computeHotfixHashState,
+  compareHashStates,
+  getHotswapRecommendation,
+  analyzeHotfixChanges,
+  logHashComparison,
+  HotswapMode,
+} from "./hash-registry.ts";
+
+export type {
+  HashState,
+  ModuleHashInfo,
+  HashComparisonResult,
+  HotswapRecommendation,
+} from "./hash-registry.ts";
+
+// Re-export hotfix loader functions
+export {
+  initializeHotfixSystem,
+  getInstalledHotfixes,
+  isModuleDisabled,
+  fetchAvailableHotfixes,
+  downloadHotfix,
+  installHotfix,
+  applyHotfix,
+  revertHotfix,
+  getPatchedModulePath,
+  validateUnlockCode,
+  requestUserConsent,
+  stopAutoUpdateChecking,
+  hotswapModules as hotfixHotswapModules,
+  getCurrentChannel,
+} from "./hotfix-loader.ts";
+
+// Re-export hotfix verifier
+export {
+  verifyManifest,
+  computeHash as computeSignatureHash,
+  setTrustedConfig,
+  getTrustedConfig,
+} from "./hotfix-verifier.ts";
+
+// Re-export hotfix types
+export {
+  type HotfixManifest,
+  type HotfixPatch,
+  type SignerIdentity,
+  type VerificationResult,
+  type InstalledHotfix,
+  HotfixStatus,
+  UpdateChannel,
+  VerificationStatus,
+} from "./hotfix-types.ts";

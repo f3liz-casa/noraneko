@@ -7,6 +7,7 @@ import istanbulPlugin from "vite-plugin-istanbul";
 import decorators from "../../libs/vite-oxc-decorator-stage-3/dist/index.js";
 import { genJarmnPlugin } from "../../libs/vite-plugin-gen-jarmn/plugin.ts";
 import deno from "@deno/vite-plugin";
+import { hotfixPlugin } from "./vite-plugin-hotfix.ts";
 
 const r = (dir: string) => path.resolve(import.meta.dirname, dir);
 
@@ -113,6 +114,7 @@ export default defineConfig({
 
     istanbulPlugin(),
     genJarmnPlugin("content", "noraneko", "content"),
+    hotfixPlugin({ outputDir: "hotfixes/source", enableOnBuild: false }),
   ],
 
   optimizeDeps: {
