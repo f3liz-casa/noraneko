@@ -14,10 +14,6 @@ on:
         type: string
         required: false
         default: ""
-      mac_runtime_artifact_workflow_call:
-        type: string
-        required: false
-        default: ""
 
 permissions:
   contents: write
@@ -28,13 +24,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
 
       - name: Retrieve run IDs
         run: |
@@ -49,41 +38,63 @@ jobs:
             echo "WINDOWS_RUN_ID=${{ inputs.win_runtime_artifact_workflow_call }}" >> $GITHUB_ENV
           fi
 
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: noraneko-windows-x86_64-mar-full
-          run-id: ${{ env.WINDOWS_RUN_ID }}
-          path: ~/noraneko-publish/win
-          github-token: ${{ github.token }}
+          if [ -z "${{ inputs.linux_runtime_artifact_workflow_call }}" ]; then
+            LINUX_ID=$(curl -s \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/package.yml/runs?branch=main&status=success" \
+            | jq -r '[.workflow_runs[] | select(.display_title | endswith("Linux-x86_64"))][0].id')
+            echo "LINUX_RUN_ID=$LINUX_ID" >> $GITHUB_ENV
+          else
+            echo "LINUX_RUN_ID=${{ inputs.linux_runtime_artifact_workflow_call }}" >> $GITHUB_ENV
+          fi
 
       - name: Download Windows installer
         uses: actions/download-artifact@v4
         with:
           name: noraneko-windows-x86_64-installer
           run-id: ${{ env.WINDOWS_RUN_ID }}
-          path: ~/noraneko-publish/win-dist
+          path: ~/noraneko-publish/win
           github-token: ${{ github.token }}
 
-      - name: Setup
-        run: |
-          deno install --allow-scripts
-          sudo apt install jq
-          deno run -A ./scripts/update/xml.ts ~/noraneko-publish/win/meta.json ~/noraneko-publish/win/WINNT_x86_64-msvc-x64.update.xml
+      - name: Download Linux installer
+        uses: actions/download-artifact@v4
+        with:
+          name: noraneko-linux-x86_64-installer
+          run-id: ${{ env.LINUX_RUN_ID }}
+          path: ~/noraneko-publish/linux
+          github-token: ${{ github.token }}
 
-          echo "VERSION=$(jq -r '.version' ~/noraneko-publish/win/meta.json)" >> "$GITHUB_ENV"
-          echo "NR_VERSION=$(jq -r '.noraneko_version' ~/noraneko-publish/win/meta.json)" >> "$GITHUB_ENV"
+      - name: Get version info
+        run: |
+          # Extract version from NMA manifest if available
+          if [ -f ~/noraneko-publish/win/noraneko.nma.zip ]; then
+            VERSION=$(unzip -p ~/noraneko-publish/win/noraneko.nma.zip manifest.json 2>/dev/null | jq -r '.noranekoVersion // "alpha"' 2>/dev/null || echo "alpha")
+            echo "NR_VERSION=$VERSION" >> "$GITHUB_ENV"
+          else
+            echo "NR_VERSION=alpha" >> "$GITHUB_ENV"
+          fi
 
       - name: Deploy to GitHub Releases 🚀
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ~/noraneko-publish/win/*.mar
-            ~/noraneko-publish/win/*.xml
-            ~/noraneko-publish/win-dist/*.exe
+            ~/noraneko-publish/win/*.exe
+            ~/noraneko-publish/win/*.nma.zip
+            ~/noraneko-publish/linux/*.tar.xz
+            ~/noraneko-publish/linux/*.deb
+            ~/noraneko-publish/linux/*.nma.zip
           tag_name: "alpha"
           name: "Alpha Release"
-          body: "Noraneko Alpha for Windows"
+          body: |
+            Noraneko Alpha Release
+
+            ## Downloads
+            - **Windows**: Use the installer (.exe) or extract and use noraneko-winupdater
+            - **Linux**: Use the tarball (.tar.xz) or deb package (.deb)
+
+            ## NMA (Noraneko Module Archive)
+            The NMA file contains the browser-features modules. For updates, use [noraneko-winupdater](https://github.com/f3liz-dev/noraneko-winupdater) or your package manager.
           draft: false
           prerelease: true
           token: ${{ github.token }}
