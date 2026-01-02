@@ -463,9 +463,6 @@ export function getLoadedModuleNames(): string[] {
 // Exports - Public API
 // ============================================================================
 
-// Main entry points
-export { initScripts, hotswapModules, hotswapSelectiveModules, hotswapWithHashDetection, getLoadedModuleNames };
-
 // Re-export for external use
 export { 
   registerModule, 
