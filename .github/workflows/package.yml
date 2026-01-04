@@ -62,6 +62,8 @@ jobs:
           repository: ${{ github.repository }}-runtime
           ref: ${{ steps.get-commit.outputs.commit_hash }}
           submodules: "recursive"
+          fetch-depth: 1
+          filter: blob:none
 
       - name: Apply upstream patches
         run: |
@@ -210,9 +212,9 @@ jobs:
         run: |
           ./mach configure
           if [ "${{inputs.platform}}" == "Windows-x86_64" ]; then
-            MOZ_ARTIFACT_FILE=$(echo ~/artifacts/noraneko-windows-x86_64-moz-artifact/noraneko-windows-x86_64-moz-artifact.zip) ./mach build
+            MOZ_ARTIFACT_FILE=$(find ~/artifacts/noraneko-windows-x86_64-moz-artifact -name "noraneko-*.zip" -type f | head -n 1) ./mach build
           elif [ "${{inputs.platform}}" == "Linux-x86_64" ]; then
-            MOZ_ARTIFACT_FILE=$(echo ~/artifacts/noraneko-linux-x86_64-moz-artifact/noraneko-linux-x86_64-moz-artifact.tar.xz) ./mach build
+            MOZ_ARTIFACT_FILE=$(find ~/artifacts/noraneko-linux-x86_64-moz-artifact -name "noraneko-*.tar.xz" -type f | head -n 1) ./mach build
           fi
 
       - name: Inject Noraneko
