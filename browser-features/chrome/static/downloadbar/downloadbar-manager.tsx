@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { createEffect, createSignal } from "solid-js";
-import type {} from "solid-styled-jsx";
+import { effect, signal } from "@preact/signals";
 
 export class DownloadBarManager {
-  _showDownloadBar = createSignal(
+  _showDownloadBar = signal(
     Services.prefs.getBoolPref("noraneko.downloadbar.enable", false),
   );
-  showDownloadBar = this._showDownloadBar[0];
-  setShowDownloadBar = this._showDownloadBar[1];
+  showDownloadBar = () => this._showDownloadBar.value;
+  setShowDownloadBar = (v: boolean | ((prev: boolean) => boolean)) => {
+    if (typeof v === "function") {
+      this._showDownloadBar.value = (v as (prev: boolean) => boolean)(
+        this._showDownloadBar.value,
+      );
+    } else {
+      this._showDownloadBar.value = v;
+    }
+  };
   constructor() {
     //? this effect will not called when pref is changed to same value.
     Services.prefs.addObserver(
@@ -24,10 +31,10 @@ export class DownloadBarManager {
   }
 
   init() {
-    createEffect(() => {
+    effect(() => {
       Services.prefs.setBoolPref(
         "noraneko.downloadbar.enable",
-        this.showDownloadBar(),
+        this._showDownloadBar.value,
       );
     });
     //move elem to bottom of window

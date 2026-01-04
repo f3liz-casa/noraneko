@@ -1,34 +1,42 @@
 {
   "name": "@nora/features-chrome",
   "imports": {
-    "@deno/vite-plugin": "npm:@deno/vite-plugin@^1.0.5",
-    "@jsr/std__assert": "npm:@jsr/std__assert@^1.0.15",
+    "tsdown": "npm:tsdown@^0.14.1",
+    "@preact/preset-vite": "npm:@preact/preset-vite@^2.8.1",
+    "@jsr/std__assert": "npm:@jsr/std__assert@^1.0.16",
     "@jsr/std__collections": "npm:@jsr/std__collections@^1.1.3",
     "@types/uuid": "npm:@types/uuid@^11.0.0",
 
-    "birpc": "npm:birpc@^2.6.1",
-    "es-toolkit": "npm:es-toolkit@^1.41.0",
+    "birpc": "npm:birpc@^4.0.0",
+    "es-toolkit": "npm:es-toolkit@^1.43.0",
     "fp-ts": "npm:fp-ts@^2.16.11",
-    "i18next": "npm:i18next@^25.6.0",
+    "i18next": "npm:i18next@^25.7.3",
     "io-ts": "npm:io-ts@^2.2.22",
-    "solid-js": "npm:solid-js@^1.9.10",
-    "solid-styled-jsx": "npm:solid-styled-jsx@^0.27.1",
+    "preact": "npm:preact@^10.25.4",
+    "preact/compat": "npm:preact@^10.25.4/compat",
+    "preact/hooks": "npm:preact@^10.25.4/hooks",
+    "@preact/signals": "npm:@preact/signals@^1.3.1",
     "uuid": "npm:uuid@^13.0.0",
-    "vite": "npm:rolldown-vite@latest",
-    "vite-plugin-istanbul": "npm:vite-plugin-istanbul@^7.2.0",
-    "vite-plugin-solid": "npm:vite-plugin-solid@^2.11.10",
-    "vite-tsconfig-paths": "npm:vite-tsconfig-paths@^5.1.4",
-    "chroma-js": "npm:chroma-js@^3.1.2",
+    "chroma-js": "npm:chroma-js@^3.2.0",
     "@types/chroma-js": "npm:@types/chroma-js@^3.1.2",
     "@types/gecko": "jsr:@types/gecko",
-    "@nora/shared/": "../shared/",
-    "#features-chrome/": "./"
+    "valibot": "npm:valibot@^1.2.0",
+    "@nora/solid-xul": "../shared/",
+    "@nora/preact-xul": "../../libs/preact-xul/index.ts",
+    "#features-chrome/": "./",
+    "@lib": "./lib/mod.ts",
+    "@lib/std": "./lib/std/mod.ts",
+    "@lib/core": "./lib/core/mod.ts",
+    "@lib/ui": "./lib/ui/mod.ts"
+  },
+  "tasks": {
+    "build": "deno run -A npm:tsdown"
   },
   "compilerOptions": {
     "lib": ["ESNext", "DOM"],
     "types": ["npm:vite/client", "jsr:@types/gecko"],
     "jsx": "react-jsx",
-    "jsxImportSource": "jsr:@nora/solid-xul"
+    "jsxImportSource": "preact"
   },
   "lint": {
     "rules": {
@@ -37,6 +45,6 @@
   },
   "exports": {
     "./static/mod.ts": "./static/mod.ts",
-    "./common/mod.ts": "./common/mod.ts"
+    "./features/mod.ts": "./features/mod.ts"
   }
 }

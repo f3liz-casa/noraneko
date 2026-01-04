@@ -1,0 +1,44 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+/* DockBar styles */
+
+.sidebar-dock-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  background-color: var(--toolbar-bgcolor);
+  border-inline-end: 1px solid var(--chrome-content-separator-color);
+  min-width: 48px;
+  width: 48px;
+}
+
+.sidebar-dock-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.sidebar-dock-icon:hover {
+  background-color: var(--toolbarbutton-hover-background);
+}
+
+.sidebar-dock-icon:active {
+  background-color: var(--toolbarbutton-active-background);
+}
+
+.sidebar-dock-icon img {
+  width: 16px;
+  height: 16px;
+  -moz-context-properties: fill;
+  fill: currentColor;
+}

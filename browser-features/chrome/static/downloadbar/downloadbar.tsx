@@ -163,9 +163,7 @@ export function DonwloadBar() {
           </hbox>
         </vbox>
       </vbox>
-      <style class="nora-statusbar" jsx>
-        {downloadbarStyle}
-      </style>
+      <style class="nora-statusbar">{downloadbarStyle}</style>
     </>
   );
 }

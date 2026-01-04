@@ -1,7 +1,11 @@
 {
   "name": "@nora/chrome",
+  "scripts": {
+    "build": "tsdown"
+  },
   "dependencies": {
-    "@deno/vite-plugin": "^1.0.5",
-    "vite": "7.1.12"
+    "@preact/preset-vite": "^2.8.1",
+    "tsdown": "^0.14.1",
+    "valibot": "^1.2.0"
   }
 }
