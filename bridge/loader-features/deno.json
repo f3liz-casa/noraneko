@@ -1,6 +1,7 @@
 {
   "imports": {
     "birpc": "npm:birpc@^2.3.0",
+    "@deno/vite-plugin": "npm:@deno/vite-plugin@^1.0.5",
     "fp-ts": "npm:fp-ts@^2.16.11"
   },
   "compilerOptions": {

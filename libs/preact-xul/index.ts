@@ -40,11 +40,3 @@ const prev = options.vnode;
 options.vnode = (v) => (patch(v), prev?.(v));
 
 export * from "preact";
-
-declare module "preact" {
-  namespace JSX {
-    interface IntrinsicElements {
-      [elemName: `xul:${string}`]: any;
-    }
-  }
-}

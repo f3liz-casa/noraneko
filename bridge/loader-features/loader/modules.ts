@@ -2,12 +2,12 @@
 
 /**
  * Module Registry - Data-Oriented Programming Style
- * 
+ *
  * Collects and exports all available feature modules.
  * Uses pure data structures (Records/Maps).
  */
 
-import { getFeaturesCommonEntries } from "#features-chrome/common/mod.ts";
+import { getFeaturesCommonEntries } from "#features-chrome/features/mod.ts";
 import { getFeaturesStaticEntries } from "#features-chrome/static/mod.ts";
 
 // ============================================================================
@@ -40,11 +40,11 @@ export interface ModulesKeys {
 const collectCommonModules = (): ModuleCategory => {
   const entries = getFeaturesCommonEntries();
   const modules: ModuleCategory = {};
-  
+
   for (const [key, loader] of Object.entries(entries)) {
     modules[key] = loader as ModuleLoader;
   }
-  
+
   return modules;
 };
 

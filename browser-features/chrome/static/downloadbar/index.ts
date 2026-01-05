@@ -15,7 +15,7 @@ export function init() {
     return;
   }
   document.getElementById("downloadsPanel")?.remove();
-  render(<DonwloadBar />, document.getElementById("appcontent")!);
+  render(DonwloadBar, document.getElementById("appcontent")!);
   console.log("init download bar");
   window.DownloadsPanel.hidePanel = () => {
     return;

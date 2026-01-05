@@ -46,6 +46,7 @@ interface ModuleEntry {
   size: number;
   dependencies: string[];
   essential: boolean;
+  sourceFiles?: { path: string; hash: string }[];
 }
 
 interface AssetEntry {
@@ -102,43 +103,47 @@ function getMimeType(filePath: string): string {
 // Module Discovery
 // ============================================================================
 
+// ============================================================================
+// Module Discovery
+// ============================================================================
+
 async function discoverModules(sourceDir: string): Promise<ModuleEntry[]> {
+  const metadataPath = join(sourceDir, "nma-metadata.json");
+
+  if (!(await exists(metadataPath))) {
+    console.warn(`[NMABuilder] Metadata not found: ${metadataPath}`);
+    return [];
+  }
+
+  const metadataContent = await Deno.readTextFile(metadataPath);
+  const metadata = JSON.parse(metadataContent);
   const modules: ModuleEntry[] = [];
-  const modulesDir = join(sourceDir, "modules");
 
-  if (!(await exists(modulesDir))) {
-    console.warn(`[NMABuilder] Modules directory not found: ${modulesDir}`);
-    return modules;
+  for (const mod of metadata.modules) {
+    const fullPath = join(sourceDir, mod.path);
+    if (await exists(fullPath)) {
+      const content = await Deno.readFile(fullPath);
+      // Use source hash from metadata if available (to avoid Vite artifact noise), otherwise fallback to content hash
+      const hash = mod.hash || (await computeContentHash(content));
+      const stat = await Deno.stat(fullPath);
+
+      modules.push({
+        name: mod.name,
+        path: mod.path,
+        hash,
+        size: stat.size,
+        dependencies: mod.dependencies,
+        essential: mod.essential,
+        sourceFiles: mod.sourceFiles,
+      });
+    } else {
+      console.warn(`[NMABuilder] Module file missing: ${fullPath}`);
+    }
   }
 
-  for await (const entry of walk(modulesDir, {
-    exts: ["js", "mjs"],
-    includeDirs: false,
-  })) {
-    const relativePath = relative(sourceDir, entry.path);
-    const name = basename(entry.name, ".js").replace(/\.mjs$/, "");
-    const content = await Deno.readFile(entry.path);
-    const hash = await computeContentHash(content);
-    const stat = await Deno.stat(entry.path);
-
-    // Try to extract dependencies from the module
-    const textContent = new TextDecoder().decode(content);
-    const dependencies = extractDependencies(textContent);
-
-    // Essential modules are defined by exact name match
-    const essential = isEssentialModule(name);
-
-    modules.push({
-      name,
-      path: relativePath.replace(/\\/g, "/"),
-      hash,
-      size: stat.size,
-      dependencies,
-      essential,
-    });
-  }
-
-  console.log(`[NMABuilder] Discovered ${modules.length} modules`);
+  console.log(
+    `[NMABuilder] Discovered ${modules.length} modules from metadata`,
+  );
   return modules;
 }
 
@@ -165,18 +170,19 @@ function isEssentialModule(name: string): boolean {
  */
 function extractDependencies(content: string): string[] {
   const dependencies: string[] = [];
-  
+
   // Static imports: import ... from 'module'
-  const staticImportRegex = /import\s+(?:[\w\s{},*]+\s+from\s+)?['"]([^'"]+)['"]/g;
-  
+  const staticImportRegex =
+    /import\s+(?:[\w\s{},*]+\s+from\s+)?['"]([^'"]+)['"]/g;
+
   // Dynamic imports: import('module') or import("module")
   const dynamicImportRegex = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-  
+
   // Re-exports: export * from 'module' or export { x } from 'module'
   const reExportRegex = /export\s+(?:[\w\s{},*]+\s+)?from\s+['"]([^'"]+)['"]/g;
-  
+
   const patterns = [staticImportRegex, dynamicImportRegex, reExportRegex];
-  
+
   for (const regex of patterns) {
     let match;
     while ((match = regex.exec(content)) !== null) {
@@ -293,6 +299,9 @@ function createUnsignedManifest(
 // ZIP Archive Creation
 // ============================================================================
 
+// @ts-types="npm:@types/jszip"
+import JSZip from "npm:jszip";
+
 async function createNMAArchive(
   outputPath: string,
   sourceDir: string,
@@ -300,52 +309,35 @@ async function createNMAArchive(
 ): Promise<void> {
   console.log(`[NMABuilder] Creating NMA archive: ${outputPath}`);
 
-  // Create a temporary directory for the archive contents
-  const tempDir = await Deno.makeTempDir({ prefix: "nma-" });
+  const zip = new JSZip();
 
-  try {
-    // Copy modules
-    const modulesDir = join(tempDir, "modules");
-    await Deno.mkdir(modulesDir, { recursive: true });
-
-    for (const module of manifest.modules) {
-      const srcPath = join(sourceDir, module.path);
-      const destPath = join(tempDir, module.path);
-      await Deno.mkdir(dirname(destPath), { recursive: true });
-      await Deno.copyFile(srcPath, destPath);
-    }
-
-    // Copy assets
-    for (const asset of manifest.assets) {
-      const srcPath = join(sourceDir, asset.path);
-      const destPath = join(tempDir, asset.path);
-      await Deno.mkdir(dirname(destPath), { recursive: true });
-      await Deno.copyFile(srcPath, destPath);
-    }
-
-    // Write manifest (without signature for now)
-    const manifestPath = join(tempDir, "manifest.json");
-    await Deno.writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
-
-    // Create ZIP archive using zip command
-    const zipProcess = new Deno.Command("zip", {
-      args: ["-r", "-9", outputPath, "."],
-      cwd: tempDir,
-      stdout: "piped",
-      stderr: "piped",
-    });
-
-    const zipOutput = await zipProcess.output();
-    if (!zipOutput.success) {
-      const stderr = new TextDecoder().decode(zipOutput.stderr);
-      throw new Error(`Failed to create ZIP archive: ${stderr}`);
-    }
-
-    console.log(`[NMABuilder] Archive created: ${outputPath}`);
-  } finally {
-    // Cleanup temp directory
-    await Deno.remove(tempDir, { recursive: true });
+  // Add modules
+  for (const module of manifest.modules) {
+    const srcPath = join(sourceDir, module.path);
+    const content = await Deno.readFile(srcPath);
+    zip.file(module.path, content);
   }
+
+  // Add assets
+  for (const asset of manifest.assets) {
+    const srcPath = join(sourceDir, asset.path);
+    const content = await Deno.readFile(srcPath);
+    zip.file(asset.path, content);
+  }
+
+  // Add manifest
+  zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+
+  // Generate zip file
+  const content = await zip.generateAsync({
+    type: "uint8array",
+    compression: "DEFLATE",
+    compressionOptions: { level: 9 },
+  });
+
+  // Write to file
+  await Deno.writeFile(outputPath, content);
+  console.log(`[NMABuilder] Archive created: ${outputPath}`);
 }
 
 // ============================================================================
@@ -368,7 +360,9 @@ async function signNMAArchive(
 
   if (!cosignCheckResult.success) {
     console.warn("[NMABuilder] cosign not found, skipping signing");
-    console.warn("[NMABuilder] Install cosign for production signing: https://docs.sigstore.dev/cosign/installation/");
+    console.warn(
+      "[NMABuilder] Install cosign for production signing: https://docs.sigstore.dev/cosign/installation/",
+    );
     return;
   }
 
@@ -379,8 +373,10 @@ async function signNMAArchive(
     args: [
       "sign-blob",
       "--yes",
-      "--oidc-issuer", "https://token.actions.githubusercontent.com",
-      "--bundle", bundlePath,
+      "--oidc-issuer",
+      "https://token.actions.githubusercontent.com",
+      "--bundle",
+      bundlePath,
       manifestPath,
     ],
     stdout: "piped",
@@ -443,8 +439,14 @@ async function buildNMA(config: NMABuildConfig): Promise<void> {
   // Sign if requested
   if (config.sign) {
     // Extract manifest, sign, and re-archive
-    const tempManifestPath = config.outputPath.replace(".nma", "-manifest.json");
-    await Deno.writeTextFile(tempManifestPath, JSON.stringify(manifest, null, 2));
+    const tempManifestPath = config.outputPath.replace(
+      ".nma",
+      "-manifest.json",
+    );
+    await Deno.writeTextFile(
+      tempManifestPath,
+      JSON.stringify(manifest, null, 2),
+    );
     await signNMAArchive(config.outputPath, tempManifestPath);
 
     // Cleanup temp files
@@ -512,7 +514,7 @@ Examples:
     return;
   }
 
-  const commitSha = args.commit || await getGitCommitSha();
+  const commitSha = args.commit || (await getGitCommitSha());
 
   const config: NMABuildConfig = {
     outputPath: args.output,

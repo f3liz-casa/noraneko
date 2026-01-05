@@ -1,10 +1,20 @@
 {
   "name": "@nora/chrome",
   "scripts": {
-    "build": "tsdown"
+    "build": "vite build",
+    "build:nma": "npm run build && deno run --allow-all ../../tools/scripts/build-nma.ts --source ./_dist"
   },
   "dependencies": {
-    "@preact/preset-vite": "^2.8.1",
+    "@freedomofpress/crypto-browser": "^0.1.6",
+    "@freedomofpress/tuf-browser": "^0.1.8",
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "@preact/signals-core": "^1.12.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.2",
+    "vite": "^6.0.0",
+    "@deno/vite-plugin": "^1.0.0",
     "tsdown": "^0.14.1",
     "valibot": "^1.2.0"
   }

@@ -2,34 +2,21 @@
 
 import { defineConfig } from "vite";
 import path from "node:path";
-import preact from "@preact/preset-vite";
+import react from "@vitejs/plugin-react";
 // import istanbulPlugin from "vite-plugin-istanbul";
 import decorators from "../../libs/vite-oxc-decorator-stage-3/dist/index.js";
 // import { genJarmnPlugin } from "../../libs/vite-plugin-gen-jarmn/plugin.ts";
-// import deno from "@deno/vite-plugin";
+import deno from "@deno/vite-plugin";
 // import { hotfixPlugin } from "./vite-plugin-hotfix.ts";
 // import { moduleManifestPlugin } from "./vite-plugin-module-manifest.ts";
+import { nmaPlugin } from "./vite-plugin-nma.ts";
 
-const r = (dir: string) => path.resolve(import.meta.dirname, dir);
+const r = (dir: string) => path.resolve(import.meta.dirname ?? ".", dir);
 
 export default defineConfig({
   publicDir: r("public"),
   server: { port: 5181, strictPort: true },
   define: { "import.meta.env.__BUILDID2__": '"placeholder"' },
-
-  // Configure environments
-  environments: {
-    client: {
-      resolve: {
-        conditions: ["preact", "module", "browser", "development|production"],
-      },
-    },
-    ssr: {
-      resolve: {
-        conditions: ["preact", "module", "node", "development|production"],
-      },
-    },
-  },
 
   build: {
     sourcemap: true,
@@ -64,25 +51,25 @@ export default defineConfig({
           if (id.includes("node_modules")) {
             const parts = id.split("node_modules/")[1].split("/");
             // .pnpm || .deno
-            let pkg = parts[0].startsWith(".") ? parts[1] : parts[0];
-            return `external/${pkg}`;
+            const pkg = parts[0].startsWith(".") ? parts[1] : parts[0];
+            return `modules/external/${pkg}`;
           }
 
           // SVG assets
           if (id.includes(".svg")) {
-            return `svg/${id.split("/").at(-1)?.replaceAll("svg_url", "glue")}`;
+            return `modules/svg/${id.split("/").at(-1)?.replaceAll("svg_url", "glue")}`;
           }
 
           // Feature modules from features/* - each gets its own chunk for hotswap
           const featureMatch = id.match(/\/features\/([A-Za-z0-9_-]+)\//);
           if (featureMatch?.[1]) {
-            return `features/${featureMatch[1]}`;
+            return `modules/${featureMatch[1]}`;
           }
 
           // Feature modules from static/* - each gets its own chunk for hotswap
           const staticMatch = id.match(/\/static\/([A-Za-z0-9_-]+)\//);
           if (staticMatch?.[1]) {
-            return `features/static/${staticMatch[1]}`;
+            return `modules/static/${staticMatch[1]}`;
           }
 
           // Legacy pattern support
@@ -104,9 +91,13 @@ export default defineConfig({
   },
 
   plugins: [
-    decorators(),
-    // deno(),
-    preact(),
+    // decorators(),
+    deno(),
+    react({
+      jsxRuntime: "automatic",
+      jsxImportSource: "preact",
+    }),
+    nmaPlugin(),
     // {
     //   name: "noraneko_component_hmr_support",
     //   enforce: "pre",
@@ -138,25 +129,7 @@ export default defineConfig({
     // moduleManifestPlugin(),
   ],
 
-  optimizeDeps: {
-    include: [
-      "./node_modules/@nora",
-      "preact",
-      "preact/compat",
-      "preact/hooks",
-      "preact/debug",
-      "@preact/signals",
-    ],
-  },
-
   resolve: {
-    dedupe: [
-      "preact",
-      "preact/compat",
-      "preact/hooks",
-      "preact/debug",
-      "@preact/signals",
-    ],
     preserveSymlinks: true,
     alias: [
       {

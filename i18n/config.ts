@@ -1,9 +1,6 @@
-// SPDX-License-Identifier: MPL-2.0
-
 import { parse } from "@std/toml";
-import { createRootHMR } from "@nora/solid-xul";
 import i18next from "i18next";
-import { createEffect, createSignal } from "solid-js";
+import { effect, signal } from "@preact/signals-core";
 import { Resources } from "./default.d.ts";
 
 export let resources: Resources;
@@ -40,10 +37,20 @@ export function initI18N(namespace: string[], defaultNamespace: string) {
     fallbackLng,
   });
 }
-const [lang, setLang] = createRootHMR(
-  () => createSignal("ja-JP"),
-  import.meta.hot,
-);
+
+const lang = signal("ja-JP");
+
+if (import.meta.hot) {
+  import.meta.hot.accept((_newModule) => {
+    // Preserve state if needed
+  });
+  if (import.meta.hot.data && import.meta.hot.data.lang) {
+    lang.value = import.meta.hot.data.lang;
+  }
+  import.meta.hot.dispose((data) => {
+    data.lang = lang.value;
+  });
+}
 
 /**
  * @param observer
@@ -61,11 +68,11 @@ const [lang, setLang] = createRootHMR(
  * ```
  */
 export function addI18nObserver(observer: (locale: string) => void) {
-  createEffect(() => {
-    observer(lang());
+  effect(() => {
+    observer(lang.value);
   });
 }
 
-export function setLanguage(lang: string) {
-  setLang(lang);
+export function setLanguage(newLang: string) {
+  lang.value = newLang;
 }

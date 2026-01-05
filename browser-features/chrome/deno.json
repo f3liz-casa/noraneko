@@ -2,7 +2,7 @@
   "name": "@nora/features-chrome",
   "imports": {
     "tsdown": "npm:tsdown@^0.14.1",
-    "@preact/preset-vite": "npm:@preact/preset-vite@^2.8.1",
+    "@deno/vite-plugin": "npm:@deno/vite-plugin@^1.0.5",
     "@jsr/std__assert": "npm:@jsr/std__assert@^1.0.16",
     "@jsr/std__collections": "npm:@jsr/std__collections@^1.1.3",
     "@types/uuid": "npm:@types/uuid@^11.0.0",
@@ -30,7 +30,8 @@
     "@lib/ui": "./lib/ui/mod.ts"
   },
   "tasks": {
-    "build": "deno run -A npm:tsdown"
+    "build": "deno run -A npm:vite build",
+    "build:nma": "deno task build && deno run -A ../../tools/scripts/build-nma.ts --source ./_dist"
   },
   "compilerOptions": {
     "lib": ["ESNext", "DOM"],

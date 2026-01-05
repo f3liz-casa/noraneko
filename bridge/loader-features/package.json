@@ -1,0 +1,14 @@
+{
+  "name": "@nora/loader-features",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "@deno/vite-plugin": "^1.0.0",
+    "@preact/signals-core": "^1.12.1",
+    "@types/node": "^22.0.0"
+  }
+}
