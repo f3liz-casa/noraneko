@@ -53,10 +53,9 @@ export const DEFAULT_AUTO_UPDATE_CONFIG: HotfixAutoUpdateConfig = {
   lastCheckTime: new Date(0).toISOString(),
 };
 
+// NMA Naming Convention: <type>_<version>_noraneko.nma.zip
 export const NMA_PATHS = {
-  NMA_FILENAME: "noraneko.nma.zip",
-  NMA_FALLBACK_FILENAME: "noraneko-modules.nma.zip",
-  NMA_LEGACY_FILENAME: "noraneko.nma",
+  FILE_PATTERN: /^([a-z0-9-]+)_([a-z0-9.-]+)_noraneko\.nma\.zip$/i,
   EXTRACTED_DIR: "noraneko-modules",
 } as const;
 
@@ -71,6 +70,7 @@ class StateContainer {
     isActive: false,
     loadedModules: [],
     lastVerification: null,
+    moduleVersions: new Map(),
   };
 
   hotfixDir: string | null = null;
@@ -101,6 +101,7 @@ export const resetLoaderState = (): void => {
     isActive: false,
     loadedModules: [],
     lastVerification: null,
+    moduleVersions: new Map(),
   };
 };
 
@@ -119,6 +120,11 @@ export const setHotfixTrustedConfig = (cfg: TrustedSignerConfig): void => {
 // ============================================================================
 // Event Management
 // ============================================================================
+
+export const isNMAActive = (): boolean => state.loader.isActive;
+
+export const getCurrentNMAManifest = (): typeof state.loader.currentNMA =>
+  state.loader.currentNMA;
 
 export const emitEvent = (event: string, data: unknown): void => {
   const listeners = state.listeners.get(event) || [];

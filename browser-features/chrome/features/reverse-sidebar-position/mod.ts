@@ -10,18 +10,15 @@
  *   ui/     - UI components and styles
  */
 
-import { defineModule, type ModuleContext } from "@lib/core";
+import { registerModule, type ModuleContext } from "@lib/core";
 
 // ============================================================================
 // Module Definition
 // ============================================================================
 
-export default defineModule(
+export default registerModule(
   {
     name: "reverse-sidebar-position",
-    hot: import.meta.hot,
-  },
-  {
     init(ctx) {
       ctx.log.debug("Initializing reverse-sidebar-position...");
       // Feature is currently disabled
@@ -33,4 +30,5 @@ export default defineModule(
       // Cleanup logic when feature is implemented
     },
   },
+  import.meta,
 );

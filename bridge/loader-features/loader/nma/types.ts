@@ -226,6 +226,7 @@ export interface NMALoaderState {
   isActive: boolean;
   loadedModules: string[];
   lastVerification: NMAVerificationResult | null;
+  moduleVersions: Map<string, string>; // Track module hashes for change detection
 }
 
 export interface NMALoaderEvents {
@@ -233,4 +234,8 @@ export interface NMALoaderEvents {
   "nma-verified": { result: NMAVerificationResult };
   "nma-error": { error: string; status: NMAVerificationStatus };
   "nma-activated": { modules: string[] };
+  "nma-hotswap-start": { modules: string[] };
+  "nma-hotswap-complete": { swapped: string[]; failed: string[] };
+  "nma-module-cleanup": { name: string };
+  "nma-module-reload": { name: string };
 }

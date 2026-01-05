@@ -15,7 +15,7 @@
  *   ui/     - UI for renaming tabs
  */
 
-import { defineModule, type ModuleContext } from "@lib/core";
+import { registerModule, type ModuleContext } from "@lib/core";
 import {
   loadFromPreferences,
   applyTabName,
@@ -48,12 +48,12 @@ function handleTabClose(_event: Event): void {
 // Module Definition
 // ============================================================================
 
-export default defineModule(
+export default registerModule(
   {
     name: "tab-rename",
-    hot: import.meta.hot,
-  },
-  {
+    state: () => ({
+      cleanup: null as (() => void) | null,
+    }),
     init(ctx) {
       ctx.log.debug("Initializing tab-rename...");
 
@@ -77,31 +77,36 @@ export default defineModule(
 
       // Apply names to existing tabs
       applyAllTabNames();
+
+      // Store cleanup
+      ctx.state.cleanup = () => {
+        // Remove event listeners
+        window.gBrowser.tabContainer.removeEventListener(
+          "TabOpen",
+          handleTabOpen,
+        );
+        window.gBrowser.tabContainer.removeEventListener(
+          "TabClose",
+          handleTabClose,
+        );
+
+        // Remove injected CSS
+        styleElement?.remove();
+        styleElement = null;
+
+        // Remove global function
+        if (window.gNoraShowTabRenameInput) {
+          delete window.gNoraShowTabRenameInput;
+        }
+      };
     },
 
     cleanup(ctx) {
       ctx.log.debug("Cleaning up tab-rename...");
-
-      // Remove event listeners
-      window.gBrowser.tabContainer.removeEventListener(
-        "TabOpen",
-        handleTabOpen,
-      );
-      window.gBrowser.tabContainer.removeEventListener(
-        "TabClose",
-        handleTabClose,
-      );
-
-      // Remove injected CSS
-      styleElement?.remove();
-      styleElement = null;
-
-      // Remove global function
-      if (window.gNoraShowTabRenameInput) {
-        delete window.gNoraShowTabRenameInput;
-      }
+      ctx.state.cleanup?.();
     },
   },
+  import.meta,
 );
 
 // ============================================================================

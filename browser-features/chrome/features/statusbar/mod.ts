@@ -13,7 +13,7 @@
  *   ui/     - UI components and rendering
  */
 
-import { defineModule, type ModuleContext } from "@lib/core";
+import { registerModule, type ModuleContext } from "@lib/core";
 import { syncWithPreferences } from "./state/mod.ts";
 import {
   initializeCustomizableUI,
@@ -27,51 +27,50 @@ import { renderStatusBar, renderContextMenuItem } from "./ui/mod.ts";
 // Module State
 // ============================================================================
 
-const cleanupFunctions: Array<() => void> = [];
-
 // ============================================================================
 // Module Definition
 // ============================================================================
 
-export default defineModule(
+export default registerModule(
   {
     name: "statusbar",
-    hot: import.meta.hot,
-  },
-  {
+    state: () => ({
+      cleanupFunctions: [] as Array<() => void>,
+    }),
     init(ctx) {
       ctx.log.debug("Initializing statusbar...");
 
       // Setup state sync with preferences
-      cleanupFunctions.push(syncWithPreferences());
+      ctx.state.cleanupFunctions.push(syncWithPreferences());
 
       // Setup global API
       setupGlobalAPI();
 
       // Render UI
-      cleanupFunctions.push(renderStatusBar());
-      cleanupFunctions.push(renderContextMenuItem());
+      ctx.state.cleanupFunctions.push(renderStatusBar());
+      ctx.state.cleanupFunctions.push(renderContextMenuItem());
 
       // Initialize CustomizableUI
       initializeCustomizableUI();
 
       // Setup status panel observer
-      cleanupFunctions.push(setupStatusPanel());
+      ctx.state.cleanupFunctions.push(setupStatusPanel());
     },
 
     cleanup(ctx) {
       ctx.log.debug("Cleaning up statusbar...");
 
       // Run all cleanup functions
-      for (const cleanup of cleanupFunctions) {
+      for (const cleanup of ctx.state.cleanupFunctions) {
         cleanup();
       }
-      cleanupFunctions.length = 0;
+      // ctx.state.cleanupFunctions = []; // not needed, instance is discarded
 
       // Cleanup CustomizableUI
       cleanupCustomizableUI();
     },
   },
+  import.meta,
 );
 
 // ============================================================================

@@ -18,15 +18,7 @@ import {
   NMAVerificationResult,
 } from "./types.ts";
 
-import {
-  state,
-  emitEvent,
-  getLoaderState,
-  getNMATrustedConfig,
-  setNMATrustedConfig,
-  DEFAULT_NMA_TRUSTED_CONFIG,
-  DEFAULT_TRUSTED_SIGNER_CONFIG,
-} from "./state.ts";
+import { state, emitEvent, getNMATrustedConfig } from "./state.ts";
 
 import * as IO from "./io.ts";
 import * as Verifier from "./verifier.ts";
@@ -212,6 +204,158 @@ export const activateNMAModules = async (): Promise<string[]> => {
   }
   emitEvent("nma-activated", { modules: activated });
   return activated;
+};
+
+// ============================================================================
+// Hotswap Support
+// ============================================================================
+
+// ============================================================================
+// Hotswap Support
+// ============================================================================
+
+const getCoreLib = async () => {
+  try {
+    const url = getNMAModuleUrl("lib/core/mod.ts");
+    return await IO.loadModule(url);
+  } catch (e) {
+    console.error("[NMA] Failed to load Core Lib:", e);
+    return null;
+  }
+};
+
+/**
+ * Cleanup a module instance using Core registry
+ */
+const cleanupModuleInstance = async (name: string): Promise<void> => {
+  const core = await getCoreLib();
+  if (core && typeof core.unregister === "function") {
+    try {
+      // Core unregister handles lifecycle cleanup
+      core.unregister(name);
+      emitEvent("nma-module-cleanup", { name });
+    } catch (e) {
+      console.error(`[NMA] Error cleaning up module ${name}:`, e);
+    }
+  }
+};
+
+/**
+ * Hotswap a single module (unload + reload)
+ * Side effect: cleans up old instance, invalidates cache, loads new instance
+ */
+export const hotswapModule = async (moduleName: string): Promise<boolean> => {
+  const module = getNMAModule(moduleName);
+  if (!module) {
+    console.error(`[NMA] Module ${moduleName} not found in manifest`);
+    return false;
+  }
+
+  console.log(`[NMA] Hotswapping module: ${moduleName}`);
+
+  // 1. Cleanup existing instance via Core
+  await cleanupModuleInstance(moduleName);
+
+  // 2. Reload module with cache busting
+  // Since Cu.unload is not available, we use a query parameter to force a fresh load.
+  // The old module remains in memory until browser restart.
+  const moduleUrl = getNMAModuleUrl(module.path);
+  const bustUrl = `${moduleUrl}?t=${Date.now()}`;
+
+  try {
+    // We bypass loadNMAModule wrapper here to use the busted URL directly
+    // but we still need to register it as loaded.
+    await IO.loadModule(bustUrl);
+
+    if (!state.loader.loadedModules.includes(moduleName)) {
+      state.loader.loadedModules.push(moduleName);
+    }
+
+    emitEvent("nma-module-reload", { name: moduleName });
+    return true;
+  } catch (e) {
+    console.error(`[NMA] Failed to reload module ${moduleName}:`, e);
+    return false;
+  }
+};
+
+/**
+ * Hotswap multiple modules based on recommendation
+ * Side effect: hotswaps modules according to HotswapRecommendation
+ */
+export const hotswapByRecommendation = async (
+  recommendation: import("./types.ts").HotswapRecommendation,
+): Promise<{ swapped: string[]; failed: string[] }> => {
+  const { HotswapMode } = await import("./types.ts");
+
+  if (recommendation.mode === HotswapMode.NONE) {
+    return { swapped: [], failed: [] };
+  }
+
+  if (recommendation.mode === HotswapMode.FULL) {
+    // Full reload required - return all loaded modules as "failed"
+    console.warn(`[NMA] Full reload required: ${recommendation.reason}`);
+    return { swapped: [], failed: [...state.loader.loadedModules] };
+  }
+
+  // Selective hotswap
+  const swapped: string[] = [];
+  const failed: string[] = [];
+
+  emitEvent("nma-hotswap-start", { modules: recommendation.modulesToReload });
+
+  for (const moduleName of recommendation.modulesToReload) {
+    const success = await hotswapModule(moduleName);
+    if (success) {
+      swapped.push(moduleName);
+    } else {
+      failed.push(moduleName);
+    }
+  }
+
+  emitEvent("nma-hotswap-complete", { swapped, failed });
+
+  if (swapped.length > 0) {
+    console.log(
+      `[NMA] Hotswapped ${swapped.length} modules: ${swapped.join(", ")}`,
+    );
+  }
+  if (failed.length > 0) {
+    console.error(
+      `[NMA] Failed to hotswap ${failed.length} modules: ${failed.join(", ")}`,
+    );
+  }
+
+  return { swapped, failed };
+};
+
+/**
+ * Check for module changes and get hotswap recommendation
+ */
+export const checkModuleChanges = async (): Promise<
+  import("./types.ts").HotswapRecommendation
+> => {
+  const { analyzeHotfixChanges } = await import("./hashing.ts");
+  const { getHotfixDir } = await import("./io.ts");
+
+  if (!state.loader.currentNMA) {
+    const { HotswapMode } = await import("./types.ts");
+    return {
+      mode: HotswapMode.NONE,
+      modulesToReload: [],
+      reason: "No NMA loaded",
+    };
+  }
+
+  // Analyze changes
+  const modulePaths = state.loader.currentNMA.modules.map((m) => m.path);
+  const analysis = await analyzeHotfixChanges(
+    getHotfixDir(),
+    state.loader.currentNMA.buildId,
+    modulePaths,
+  );
+
+  return analysis.recommendation;
 };
 
 // ============================================================================

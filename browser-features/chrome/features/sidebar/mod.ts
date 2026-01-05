@@ -16,7 +16,7 @@
  */
 
 import { events } from "../events.ts";
-import { defineModule, type ModuleContext } from "@lib/core";
+import { registerModule, type ModuleContext } from "@lib/core";
 import { signal, type Signal } from "@preact/signals";
 
 import type { IconRegistration } from "./types/mod.ts";
@@ -88,12 +88,9 @@ async function handleIconClick(
 // Module Definition
 // ============================================================================
 
-export default defineModule(
+export default registerModule(
   {
     name: "sidebar",
-    hot: import.meta.hot,
-  },
-  {
     init(ctx) {
       ctx.log.debug("Sidebar initializing...");
 
@@ -186,6 +183,7 @@ export default defineModule(
       cleanupUI();
     },
   },
+  import.meta,
 );
 
 // ============================================================================

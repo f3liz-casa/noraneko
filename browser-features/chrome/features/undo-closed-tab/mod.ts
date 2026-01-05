@@ -5,7 +5,7 @@
  * Adds a customizable toolbar button to undo the last closed tab.
  */
 
-import { defineModule } from "@lib/core";
+import { registerModule } from "@lib/core";
 import { createClickActionButton } from "#features-chrome/lib/ui/mod.ts";
 import { addI18nObserver, setLanguage } from "#i18n/config-browser-chrome.ts";
 import i18next from "i18next";
@@ -17,13 +17,10 @@ const { CustomizableUI } = ChromeUtils.importESModule(
 
 const WIDGET_ID = "undo-closed-tab";
 
-export default defineModule(
+export default registerModule(
   {
     name: "undo-closed-tab",
-    hot: import.meta.hot,
-  },
-  {
-    init(ctx) {
+    init(_ctx) {
       createClickActionButton({
         widgetId: WIDGET_ID,
         l10nId: null,
@@ -31,9 +28,9 @@ export default defineModule(
         styleElement: StyleElement(),
         area: CustomizableUI.AREA_NAVBAR,
         position: 2,
-        onCreated: (node) => {
+        onCreated: (node: any) => {
           // Create custom tooltip
-          const tooltip = document.createXULElement("tooltip") as XULElement;
+          const tooltip = document.createXULElement("tooltip") as any;
           tooltip.id = "undo-closed-tab-tooltip";
           tooltip.setAttribute("hasbeenopened", "false");
           document.getElementById("mainPopupSet")?.appendChild(tooltip);
@@ -52,4 +49,5 @@ export default defineModule(
       });
     },
   },
+  import.meta,
 );

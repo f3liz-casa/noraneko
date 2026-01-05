@@ -11,7 +11,7 @@
  *   ui/     - UI components and rendering
  */
 
-import { defineModule, type ModuleContext } from "@lib/core";
+import { registerModule, type ModuleContext } from "@lib/core";
 import { renderShareModeMenuItem } from "./ui/mod.ts";
 
 // ============================================================================
@@ -24,12 +24,9 @@ let cleanup: (() => void) | null = null;
 // Module Definition
 // ============================================================================
 
-export default defineModule(
+export default registerModule(
   {
     name: "browser-share-mode",
-    hot: import.meta.hot,
-  },
-  {
     init(ctx) {
       ctx.log.debug("Initializing browser-share-mode...");
       cleanup = renderShareModeMenuItem();
@@ -41,6 +38,7 @@ export default defineModule(
       cleanup = null;
     },
   },
+  import.meta,
 );
 
 // ============================================================================

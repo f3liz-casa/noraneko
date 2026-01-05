@@ -54,15 +54,52 @@ export const ensureHotfixDir = async (): Promise<void> => {
 
 export const resolveNMAPath = async (): Promise<string | null> => {
   const installDir = getInstallDir();
-  const paths = [
-    PathUtils.join(installDir, NMA_PATHS.NMA_FILENAME),
-    PathUtils.join(installDir, NMA_PATHS.NMA_FALLBACK_FILENAME),
-    PathUtils.join(installDir, NMA_PATHS.NMA_LEGACY_FILENAME),
-  ];
+  const validFiles: {
+    path: string;
+    type: string;
+    version: string;
+    priority: number;
+  }[] = [];
 
-  for (const path of paths) {
-    if (await IOUtils.exists(path)) return path;
+  try {
+    const children = await IOUtils.getChildren(installDir);
+
+    for (const path of children) {
+      const filename = PathUtils.filename(path);
+      const match = filename.match(NMA_PATHS.FILE_PATTERN);
+
+      if (match) {
+        const [, type, version] = match;
+        // Priority: hotfix (100) > stable (50) > others (10)
+        let priority = 10;
+        if (type === "hotfix") priority = 100;
+        else if (type === "stable") priority = 50;
+        else if (type === "beta") priority = 40;
+        else if (type === "nightly") priority = 30;
+
+        validFiles.push({ path, type, version, priority });
+      }
+    }
+  } catch (e) {
+    console.error("[NMA] Failed to scan install dir:", e);
   }
+
+  // Sort by Priority DESC, then Version DESC
+  validFiles.sort((a, b) => {
+    if (a.priority !== b.priority) return b.priority - a.priority;
+    try {
+      // Use Mozilla's native version comparator
+      return Services.vc.compare(b.version, a.version);
+    } catch {
+      // Fallback if Services.vc fails (unlikely)
+      return b.version.localeCompare(a.version);
+    }
+  });
+
+  if (validFiles.length > 0) {
+    return validFiles[0].path;
+  }
+
   return null;
 };
 

@@ -5,7 +5,7 @@
  * Automatically theme the browser's tab bar based on the website's manifest theme_color.
  */
 
-import { defineModule } from "@lib/core";
+import { registerModule } from "@lib/core";
 import { signal, effect } from "@preact/signals";
 import { generateTabColorStyles } from "./ops.ts";
 
@@ -56,12 +56,12 @@ async function updateTabColor() {
   }
 }
 
-export default defineModule(
+export default registerModule(
   {
     name: "browser-tab-color",
-    hot: import.meta.hot,
-  },
-  {
+    state: () => ({
+      disposers: [] as (() => void)[],
+    }),
     init(ctx) {
       // 1. Pref Sync
       const obs = {
@@ -93,16 +93,30 @@ export default defineModule(
       window.gBrowser.tabContainer.addEventListener("TabSelect", onUpdate);
 
       // 4. Reactive Update
-      const disposeUpdate = effect(onUpdate);
+      const disposeUpdate = effect(() => {
+        onUpdate();
+      });
 
-      return () => {
+      // Store disposers
+      ctx.state.disposers.push(() => {
         Services.prefs.removeObserver(PREF_ENABLE, obs);
         disposeSig();
         window.gBrowser.removeTabsProgressListener(progressListener);
         window.gBrowser.tabContainer.removeEventListener("TabSelect", onUpdate);
         disposeUpdate();
         document.getElementById(STYLE_ID)?.remove();
-      };
+
+        // Cleanup global API
+        if (window.gFloorp?.tabColor) {
+          delete window.gFloorp.tabColor;
+        }
+      });
+    },
+
+    cleanup(ctx) {
+      ctx.state.disposers.forEach((d) => d());
+      ctx.state.disposers = [];
     },
   },
+  import.meta,
 );

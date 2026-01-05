@@ -5,17 +5,14 @@
  * Checks for version changes and invalidates caches if necessary.
  */
 
-import { defineModule } from "@lib/core";
+import { registerModule } from "@lib/core";
 
 const PREF_VERSION = "noraneko.version2";
 const TARGET_VERSION = "version2";
 
-export default defineModule(
+export default registerModule(
   {
     name: "update-refresh-cache",
-    hot: import.meta.hot,
-  },
-  {
     init(ctx) {
       const current = Services.prefs.getStringPref(PREF_VERSION, "");
 
@@ -30,13 +27,14 @@ export default defineModule(
         Services.prefs.unlockPref(PREF_VERSION);
       }
       Services.prefs
-        .getDefaultBranch(null)
+        .getDefaultBranch("")
         .setStringPref(PREF_VERSION, TARGET_VERSION);
       Services.prefs.lockPref(PREF_VERSION);
-      Services.prefs.savePrefFile(null);
+      Services.prefs.savePrefFile(null as any);
 
       // Invalidate cache
       Services.appinfo.invalidateCachesOnRestart();
     },
   },
+  import.meta,
 );

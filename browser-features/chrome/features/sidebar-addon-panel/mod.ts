@@ -16,7 +16,7 @@
  */
 
 import { events } from "../events.ts";
-import { defineModule, type ModuleContext } from "@lib/core";
+import { registerModule, type ModuleContext } from "@lib/core";
 
 // Internal imports
 import {
@@ -99,13 +99,10 @@ function cleanupDOMElements(): void {
 // Module Definition
 // ============================================================================
 
-export default defineModule(
+export default registerModule(
   {
     name: "sidebar-addon-panel",
-    softDependencies: ["sidebar"],
-    hot: import.meta.hot,
-  },
-  {
+    softDeps: ["sidebar"],
     init(ctx) {
       ctx.log.debug("Initializing sidebar-addon-panel...");
 
@@ -151,6 +148,7 @@ export default defineModule(
       cleanupDOMElements();
     },
   },
+  import.meta,
 );
 
 // ============================================================================

@@ -2,18 +2,21 @@
 // Core framework module
 
 export {
-  defineModule,
-  getModuleContext,
-  cleanupAllModules,
-  cleanupModule,
-  hasCleanup,
-  type ModuleConfig,
-  type ModuleMetadata,
-  type ModuleContext,
-  type ModuleLifecycle,
-} from "./Module.ts";
-export {
   EventSystem,
   createEventSystem,
   type EventSystemType,
 } from "./EventSystem.ts";
+
+export {
+  registerModule,
+  unregister,
+  hotswap,
+  getInstance,
+  hasModule,
+  getModuleNames,
+  cleanupAll,
+  type Module,
+  type ModuleHandle,
+  type ModuleInstance,
+  type ModuleContext,
+} from "./module_factory.ts";

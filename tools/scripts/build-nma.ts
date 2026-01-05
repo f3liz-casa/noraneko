@@ -22,7 +22,7 @@
  */
 
 import { parseArgs } from "@std/cli/parse-args";
-import { join, basename, relative, dirname } from "@std/path";
+import { join, basename, relative, dirname as _dirname } from "@std/path";
 import { exists, walk } from "@std/fs";
 import { encodeHex } from "@std/encoding/hex";
 
@@ -155,48 +155,6 @@ const ESSENTIAL_MODULES = new Set([
   "startup",
   "bootstrap",
 ]);
-
-/** Check if a module is essential by exact name match */
-function isEssentialModule(name: string): boolean {
-  return ESSENTIAL_MODULES.has(name);
-}
-
-/**
- * Extract dependencies from module content
- * Handles various import patterns:
- * - Static imports: import x from 'module'
- * - Dynamic imports: import('module')
- * - Re-exports: export * from 'module'
- */
-function extractDependencies(content: string): string[] {
-  const dependencies: string[] = [];
-
-  // Static imports: import ... from 'module'
-  const staticImportRegex =
-    /import\s+(?:[\w\s{},*]+\s+from\s+)?['"]([^'"]+)['"]/g;
-
-  // Dynamic imports: import('module') or import("module")
-  const dynamicImportRegex = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-
-  // Re-exports: export * from 'module' or export { x } from 'module'
-  const reExportRegex = /export\s+(?:[\w\s{},*]+\s+)?from\s+['"]([^'"]+)['"]/g;
-
-  const patterns = [staticImportRegex, dynamicImportRegex, reExportRegex];
-
-  for (const regex of patterns) {
-    let match;
-    while ((match = regex.exec(content)) !== null) {
-      const importPath = match[1];
-      // Only track local module dependencies (relative paths)
-      if (importPath.startsWith("./") || importPath.startsWith("../")) {
-        const moduleName = basename(importPath).replace(/\.[^.]+$/, "");
-        dependencies.push(moduleName);
-      }
-    }
-  }
-
-  return [...new Set(dependencies)];
-}
 
 // ============================================================================
 // Asset Discovery
@@ -345,7 +303,7 @@ async function createNMAArchive(
 // ============================================================================
 
 async function signNMAArchive(
-  archivePath: string,
+  _archivePath: string,
   manifestPath: string,
 ): Promise<void> {
   console.log(`[NMABuilder] Signing NMA archive with Sigstore...`);
@@ -470,11 +428,17 @@ async function buildNMA(config: NMABuildConfig): Promise<void> {
 
 async function main(): Promise<void> {
   const args = parseArgs(Deno.args, {
-    string: ["output", "source", "version", "channel", "commit"],
+    string: ["output", "source", "version", "channel", "type", "commit"],
     boolean: ["help", "sign"],
-    alias: { h: "help", o: "output", s: "source", v: "version", c: "channel" },
+    alias: {
+      h: "help",
+      o: "output",
+      s: "source",
+      v: "version",
+      c: "channel",
+      t: "type",
+    },
     default: {
-      output: "noraneko.nma.zip",
       source: "browser-features/chrome/_dist",
       version: "0.0.0",
       channel: "nightly",
@@ -493,31 +457,58 @@ Usage:
   deno task nma:build [options]
 
 Options:
-  --output, -o <path>    Output NMA file path (default: noraneko.nma.zip)
+  --output, -o <path>    Output NMA file path (default: <type>_<version>_noraneko.nma.zip)
   --source, -s <path>    Source directory with built modules
   --version, -v <ver>    Noraneko version (default: 0.0.0)
   --channel, -c <ch>     Update channel: nightly, beta, release (default: nightly)
+  --type, -t <type>      Module type: stable, hotfix, beta, nightly (auto-detected from channel if not set)
   --commit <sha>         Git commit SHA (auto-detected if not provided)
   --sign                 Sign with Sigstore (requires cosign)
   --help, -h             Show this help message
 
 Examples:
-  # Build from default source
+  # Build default (nightly_0.0.0_noraneko.nma.zip)
   deno task nma:build
 
-  # Build with custom paths
-  deno task nma:build --source ./dist --output ./release/noraneko.nma.zip
+  # Build basic release
+  deno task nma:build --channel release --version 1.0.0
+  # Output: stable_1.0.0_noraneko.nma.zip
 
-  # Build and sign for release
-  deno task nma:build --channel release --sign
+  # Build hotfix
+  deno task nma:build --type hotfix --version 1.0.1
+  # Output: hotfix_1.0.1_noraneko.nma.zip
     `);
     return;
   }
 
   const commitSha = args.commit || (await getGitCommitSha());
 
+  // Resolve type from argument or channel
+  let type = args.type;
+  if (!type) {
+    switch (args.channel) {
+      case "release":
+        type = "stable";
+        break;
+      case "beta":
+        type = "beta";
+        break;
+      case "nightly":
+        type = "nightly";
+        break;
+      default:
+        type = "stable";
+    }
+  }
+
+  // Generate default output path if not specified
+  let outputPath = args.output;
+  if (!outputPath) {
+    outputPath = `${type}_${args.version}_noraneko.nma.zip`;
+  }
+
   const config: NMABuildConfig = {
-    outputPath: args.output,
+    outputPath,
     sourceDir: args.source,
     version: args.version,
     channel: args.channel as "nightly" | "beta" | "release" | "default",
@@ -528,7 +519,7 @@ Examples:
   try {
     await buildNMA(config);
   } catch (error) {
-    console.error(`\n❌ Build failed: ${error.message}`);
+    console.error(`\n❌ Build failed: ${(error as Error).message}`);
     Deno.exit(1);
   }
 }

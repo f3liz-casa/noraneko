@@ -15,6 +15,7 @@ export {
   verifyHotfixIdentity,
   verifyHotfixManifest,
   computeSha256 as computeNMAHash,
+  computeSha256 as computeHash, // Alias for compatibility
 } from "./verifier.ts";
 export {
   resolveNMAPath as findNMAFile,
@@ -29,4 +30,6 @@ export {
   compareHashStates,
   getHotswapRecommendation,
   logHashComparison,
+  extractModuleName,
+  computeHotfixHashState,
 } from "./hashing.ts";

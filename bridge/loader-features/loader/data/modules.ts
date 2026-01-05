@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 /**
- * Module Registry - Data-Oriented Programming Style
+ * Module Data - Data-Oriented Programming Style
  *
  * Collects and exports all available feature modules.
  * Uses pure data structures (Records/Maps).
@@ -10,30 +10,15 @@
 import { getFeaturesCommonEntries } from "#features-chrome/features/mod.ts";
 import { getFeaturesStaticEntries } from "#features-chrome/static/mod.ts";
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/** Module loader function type */
-export type ModuleLoader = () => Promise<unknown>;
-
-/** Module category record */
-export type ModuleCategory = Record<string, ModuleLoader>;
-
-/** All modules by category */
-export interface ModulesRegistry {
-  common: ModuleCategory;
-  static: ModuleCategory;
-}
-
-/** Module keys by category */
-export interface ModulesKeys {
-  common: string[];
-  static: string[];
-}
+import type {
+  ModuleCategory,
+  ModuleLoader,
+  ModulesKeys,
+  ModulesRegistry,
+} from "../types/mod.ts";
 
 // ============================================================================
-// Data - Module Registry
+// Data Collection - Module Registry
 // ============================================================================
 
 /** Collect common modules from glob imports */
@@ -52,6 +37,10 @@ const collectCommonModules = (): ModuleCategory => {
 const collectStaticModules = (): ModuleCategory => {
   return getFeaturesStaticEntries();
 };
+
+// ============================================================================
+// Exported Data - Module Registry
+// ============================================================================
 
 /** All available modules by category */
 export const MODULES: ModulesRegistry = {
