@@ -2,7 +2,7 @@
 
 /**
  * Module Loader - Data-Oriented Programming Style
- * 
+ *
  * Julia/Kotlin-like functional patterns:
  * - Pure functions for core logic
  * - Module-level data structures
@@ -18,8 +18,8 @@ import {
   _rejectOtherLoadStates,
 } from "./modules-hooks.ts";
 import { registerModuleEventDispatcher } from "./event-dispatcher-registry.ts";
-import { 
-  registerModule, 
+import {
+  registerModule,
   cleanupAllModules,
   cleanupSelectiveModules,
   notifyHotswapStart,
@@ -33,7 +33,7 @@ import {
   HotswapMode,
   logHashComparison,
   type HotswapRecommendation,
-} from "./hash-registry.ts";
+} from "./nma/mod.ts";
 import {
   initializeNMALoader,
   isNMAActive,
@@ -92,7 +92,10 @@ const setPrefFeatures = (allFeaturesKeys: typeof MODULES_KEYS): void => {
   const prefs = Services.prefs.getDefaultBranch("");
   prefs.setStringPref("noraneko.features.all", JSON.stringify(allFeaturesKeys));
   Services.prefs.lockPref("noraneko.features.all");
-  prefs.setStringPref("noraneko.features.enabled", JSON.stringify(allFeaturesKeys));
+  prefs.setStringPref(
+    "noraneko.features.enabled",
+    JSON.stringify(allFeaturesKeys),
+  );
 };
 
 /** Load a single module (NMA or built-in) */
@@ -106,7 +109,9 @@ const loadSingleModule = async (
     try {
       const exports = await loadNMAModule(moduleName);
       if (exports) {
-        const metadata = (exports as any).default?._metadata?.() ?? defaultMetadata(moduleName);
+        const metadata =
+          (exports as any).default?._metadata?.() ??
+          defaultMetadata(moduleName);
         const module: LoadedModule = {
           name: moduleName,
           metadata,
@@ -120,14 +125,18 @@ const loadSingleModule = async (
         return module;
       }
     } catch (e) {
-      console.warn(`[noraneko] Failed to load NMA module ${moduleName}, falling back:`, e);
+      console.warn(
+        `[noraneko] Failed to load NMA module ${moduleName}, falling back:`,
+        e,
+      );
     }
   }
 
   // Priority 2: Load from built-in modules (fallback)
   try {
     const exports = await categoryValue[moduleName]();
-    const metadata = (exports as any).default?._metadata?.() ?? defaultMetadata(moduleName);
+    const metadata =
+      (exports as any).default?._metadata?.() ?? defaultMetadata(moduleName);
 
     const module: LoadedModule = {
       name: moduleName,
@@ -150,13 +159,17 @@ const loadSingleModule = async (
 const loadEnabledModules = async (
   enabledFeatures: typeof MODULES_KEYS,
 ): Promise<LoadedModule[]> => {
-  const promises = Object.entries(MODULES).flatMap(([categoryKey, categoryValue]) =>
-    Object.keys(categoryValue)
-      .filter(moduleName => 
-        categoryKey in enabledFeatures &&
-        enabledFeatures[categoryKey as keyof typeof enabledFeatures].includes(moduleName)
-      )
-      .map(moduleName => loadSingleModule(categoryValue, moduleName))
+  const promises = Object.entries(MODULES).flatMap(
+    ([categoryKey, categoryValue]) =>
+      Object.keys(categoryValue)
+        .filter(
+          (moduleName) =>
+            categoryKey in enabledFeatures &&
+            enabledFeatures[
+              categoryKey as keyof typeof enabledFeatures
+            ].includes(moduleName),
+        )
+        .map((moduleName) => loadSingleModule(categoryValue, moduleName)),
   );
 
   const results = await Promise.all(promises);
@@ -165,12 +178,16 @@ const loadEnabledModules = async (
 
 /** Validate module dependencies (no missing, no circular) */
 const validateDependencies = (modules: LoadedModule[]): void => {
-  const moduleNames = new Set(modules.map(m => m.name));
-  const moduleMap = new Map(modules.map(m => [m.name, m]));
+  const moduleNames = new Set(modules.map((m) => m.name));
+  const moduleMap = new Map(modules.map((m) => [m.name, m]));
   const visited = new Set<string>();
   const visiting = new Set<string>();
 
-  const checkCircular = (name: string, deps: string[], path: string[] = []): void => {
+  const checkCircular = (
+    name: string,
+    deps: string[],
+    path: string[] = [],
+  ): void => {
     if (visiting.has(name)) {
       throw new Error(`Circular dependency: ${[...path, name].join(" -> ")}`);
     }
@@ -191,7 +208,9 @@ const validateDependencies = (modules: LoadedModule[]): void => {
     // Check hard dependencies exist
     for (const dep of module.metadata.dependencies) {
       if (!moduleNames.has(dep)) {
-        throw new Error(`Missing dependency: ${dep} required by ${module.name}`);
+        throw new Error(
+          `Missing dependency: ${dep} required by ${module.name}`,
+        );
       }
     }
     checkCircular(module.name, module.metadata.dependencies);
@@ -202,7 +221,7 @@ const validateDependencies = (modules: LoadedModule[]): void => {
 const sortByDependencies = (modules: LoadedModule[]): LoadedModule[] => {
   const sorted: LoadedModule[] = [];
   const processed = new Set<string>();
-  const moduleMap = new Map(modules.map(m => [m.name, m]));
+  const moduleMap = new Map(modules.map((m) => [m.name, m]));
 
   const process = (module: LoadedModule): void => {
     if (processed.has(module.name)) return;
@@ -221,19 +240,36 @@ const sortByDependencies = (modules: LoadedModule[]): LoadedModule[] => {
 };
 
 /** Register module instance and event methods */
-const registerModuleInstance = (module: LoadedModule, instance: any, isHotfix: boolean): void => {
+const registerModuleInstance = (
+  module: LoadedModule,
+  instance: any,
+  isHotfix: boolean,
+): void => {
   if (!instance) return;
 
-  registerModule(module.metadata.moduleName, instance, module.metadata, isHotfix);
+  registerModule(
+    module.metadata.moduleName,
+    instance,
+    module.metadata,
+    isHotfix,
+  );
 
   if (typeof instance.eventMethods === "function") {
     try {
       const eventMethods = instance.eventMethods();
-      console.debug(`[noraneko] Event methods for ${module.metadata.moduleName}:`, Object.keys(eventMethods));
+      console.debug(
+        `[noraneko] Event methods for ${module.metadata.moduleName}:`,
+        Object.keys(eventMethods),
+      );
       registerModuleEventDispatcher(module.metadata.moduleName, eventMethods);
-      console.debug(`[noraneko] Registered EventDispatcher for ${module.metadata.moduleName}`);
+      console.debug(
+        `[noraneko] Registered EventDispatcher for ${module.metadata.moduleName}`,
+      );
     } catch (e) {
-      console.error(`[noraneko] Failed to register EventDispatcher for ${module.metadata.moduleName}:`, e);
+      console.error(
+        `[noraneko] Failed to register EventDispatcher for ${module.metadata.moduleName}:`,
+        e,
+      );
     }
   }
 };
@@ -263,7 +299,10 @@ const initializeModules = async (modules: LoadedModule[]): Promise<void> => {
     try {
       await module?.initBeforeSessionStoreInit?.();
     } catch (e) {
-      console.error(`[noraneko] initBeforeSessionStoreInit failed for ${module.name}:`, e);
+      console.error(
+        `[noraneko] initBeforeSessionStoreInit failed for ${module.name}:`,
+        e,
+      );
     }
   }
 
@@ -286,7 +325,9 @@ const initializeModules = async (modules: LoadedModule[]): Promise<void> => {
 };
 
 /** Initialize modules during hotswap (no session store wait) */
-const initializeModulesForHotswap = async (modules: LoadedModule[]): Promise<void> => {
+const initializeModulesForHotswap = async (
+  modules: LoadedModule[],
+): Promise<void> => {
   validateDependencies(modules);
   const sortedModules = sortByDependencies(modules);
 
@@ -317,7 +358,10 @@ export async function initScripts(): Promise<void> {
   initI18NForBrowserChrome();
   console.debug(
     `[noraneko-buildid2]\nuuid: ${NoranekoConstants.buildID2}\ndate: ${new Date(
-      Number.parseInt(NoranekoConstants.buildID2.slice(0, 13).replace("-", ""), 16),
+      Number.parseInt(
+        NoranekoConstants.buildID2.slice(0, 13).replace("-", ""),
+        16,
+      ),
     ).toISOString()}`,
   );
 
@@ -338,19 +382,19 @@ export async function initScripts(): Promise<void> {
 /** Hotswap modules with new versions */
 export async function hotswapModules(_hotfixId?: string): Promise<boolean> {
   console.log("[noraneko] Starting module hotswap...");
-  
+
   try {
     notifyHotswapStart();
     await cleanupAllModules();
     console.log("[noraneko] All modules cleaned up");
-    
+
     const enabledFeatures = JSON.parse(
       Services.prefs.getStringPref("noraneko.features.enabled", "{}"),
     ) as typeof MODULES_KEYS;
-    
+
     const modules = await loadEnabledModules(enabledFeatures);
     await initializeModulesForHotswap(modules);
-    
+
     console.log("[noraneko] Module hotswap complete");
     notifyHotswapComplete(true);
     return true;
@@ -361,32 +405,40 @@ export async function hotswapModules(_hotfixId?: string): Promise<boolean> {
   }
 }
 
-/** 
+/**
  * Hotswap specific modules (selective reload)
  * Only cleans up and reloads the specified modules and their dependents
  */
-export async function hotswapSelectiveModules(moduleNames: string[]): Promise<boolean> {
-  console.log(`[noraneko] Starting selective hotswap for: ${moduleNames.join(", ")}`);
-  
+export async function hotswapSelectiveModules(
+  moduleNames: string[],
+): Promise<boolean> {
+  console.log(
+    `[noraneko] Starting selective hotswap for: ${moduleNames.join(", ")}`,
+  );
+
   try {
     notifyHotswapStart();
-    
+
     // Cleanup the specified modules and their dependents
     const cleanedUp = await cleanupSelectiveModules(moduleNames);
-    console.log(`[noraneko] Cleaned up ${cleanedUp.length} modules: ${cleanedUp.join(", ")}`);
-    
+    console.log(
+      `[noraneko] Cleaned up ${cleanedUp.length} modules: ${cleanedUp.join(", ")}`,
+    );
+
     const enabledFeatures = JSON.parse(
       Services.prefs.getStringPref("noraneko.features.enabled", "{}"),
     ) as typeof MODULES_KEYS;
-    
+
     // Filter to only reload the cleaned up modules
     const cleanedUpSet = new Set(cleanedUp);
     const allModules = await loadEnabledModules(enabledFeatures);
-    const modulesToReload = allModules.filter(m => cleanedUpSet.has(m.name));
-    
+    const modulesToReload = allModules.filter((m) => cleanedUpSet.has(m.name));
+
     await initializeModulesForHotswap(modulesToReload);
-    
-    console.log(`[noraneko] Selective hotswap complete. Reloaded: ${modulesToReload.map(m => m.name).join(", ")}`);
+
+    console.log(
+      `[noraneko] Selective hotswap complete. Reloaded: ${modulesToReload.map((m) => m.name).join(", ")}`,
+    );
     notifyHotswapComplete(true);
     return true;
   } catch (error) {
@@ -402,49 +454,53 @@ export async function hotswapSelectiveModules(moduleNames: string[]): Promise<bo
  */
 export async function hotswapWithHashDetection(
   hotfixId: string,
-  modulePaths: string[]
+  modulePaths: string[],
 ): Promise<boolean> {
   console.log(`[noraneko] Starting hash-based hotswap for hotfix: ${hotfixId}`);
-  
+
   try {
     const profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
     const hotfixDir = PathUtils.join(profileDir, "noraneko-hotfixes");
-    
+
     // Analyze changes
     const { newState, comparison, recommendation } = await analyzeHotfixChanges(
       hotfixDir,
       hotfixId,
-      modulePaths
+      modulePaths,
     );
-    
+
     logHashComparison(comparison);
-    console.log(`[noraneko] Hotswap recommendation: ${recommendation.mode} - ${recommendation.reason}`);
-    
+    console.log(
+      `[noraneko] Hotswap recommendation: ${recommendation.mode} - ${recommendation.reason}`,
+    );
+
     let success = false;
-    
+
     switch (recommendation.mode) {
       case HotswapMode.NONE:
         console.log("[noraneko] No changes detected, skipping hotswap");
         success = true;
         break;
-        
+
       case HotswapMode.FULL:
         console.log("[noraneko] deno.lock changed, performing full hotswap");
         success = await hotswapModules(hotfixId);
         break;
-        
+
       case HotswapMode.SELECTIVE:
-        console.log(`[noraneko] Selective hotswap for modules: ${recommendation.modulesToReload.join(", ")}`);
+        console.log(
+          `[noraneko] Selective hotswap for modules: ${recommendation.modulesToReload.join(", ")}`,
+        );
         success = await hotswapSelectiveModules(recommendation.modulesToReload);
         break;
     }
-    
+
     // Save new hash state on success
     if (success) {
       saveHashState(newState);
       console.log("[noraneko] Hash state saved");
     }
-    
+
     return success;
   } catch (error) {
     console.error("[noraneko] Hash-based hotswap failed:", error);
@@ -464,9 +520,9 @@ export function getLoadedModuleNames(): string[] {
 // ============================================================================
 
 // Re-export for external use
-export { 
-  registerModule, 
-  cleanupModule, 
+export {
+  registerModule,
+  cleanupModule,
   cleanupAllModules,
   cleanupSelectiveModules,
   notifyHotswapStart,
@@ -514,7 +570,7 @@ export {
   UpdateChannel,
   VerificationStatus,
   DEFAULT_TRUSTED_SIGNER_CONFIG,
-} from "./hotfix-types.ts";
+} from "./nma-types.ts";
 
 // Re-export NMA (Noraneko Module Archive) loader
 export {
@@ -559,4 +615,4 @@ export {
   NMAVerificationStatus,
   NMA_PATHS,
   DEFAULT_NMA_TRUSTED_CONFIG,
-} from "./nma-types.ts";
+} from "./nma/mod.ts";
