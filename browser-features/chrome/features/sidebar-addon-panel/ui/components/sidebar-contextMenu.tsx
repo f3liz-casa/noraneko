@@ -5,7 +5,7 @@
 
 import type { CPanelSidebar } from "./panel-sidebar.tsx";
 import { signal } from "@preact/signals";
-import type { Panel } from "../../../sidebar/core/utils/type.ts";
+import type { Panel } from "../../../sidebar/types/mod.ts";
 import { ContextMenuUtils } from "#features-chrome/utils/context-menu.tsx";
 import i18next from "i18next";
 

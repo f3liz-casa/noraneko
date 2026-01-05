@@ -11,9 +11,9 @@ import { SidebarSplitter } from "./sidebar-splitter.tsx";
 import { effect } from "@preact/signals";
 import {
   isFloating,
-  isPanelSidebarEnabled,
+  enabled as isPanelSidebarEnabled,
   selectedPanelId,
-} from "../../../sidebar/core/data.ts";
+} from "../../../sidebar/state/mod.ts";
 import { FloatingSplitter } from "./floating-splitter.tsx";
 import { BrowserBox } from "./browser-box.tsx";
 import type { CPanelSidebar } from "./panel-sidebar.tsx";

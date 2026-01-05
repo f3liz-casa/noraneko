@@ -6,18 +6,18 @@
 import { effect } from "@preact/signals";
 import {
   isFloating,
-  panelSidebarConfig,
+  config as panelSidebarConfig,
   selectedPanelId,
   setIsFloatingDragging,
-  setPanelSidebarConfig,
+  setConfig as setPanelSidebarConfig,
   setSelectedPanelId,
-} from "../../../sidebar/core/data.ts";
-import { STATIC_PANEL_DATA } from "../../../sidebar/core/static-panels.ts";
+} from "../../../sidebar/state/mod.ts";
+import { STATIC_PANELS as STATIC_PANEL_DATA } from "../../../sidebar/data/mod.ts";
 import { isResizeCooldown } from "./floating-splitter.tsx";
 import type {
   Panel,
-  PanelSidebarConfig,
-} from "../../../sidebar/core/utils/type.ts";
+  Config as PanelSidebarConfig,
+} from "../../../sidebar/types/mod.ts";
 
 declare global {
   interface Window {

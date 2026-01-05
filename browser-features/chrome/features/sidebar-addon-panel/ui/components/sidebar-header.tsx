@@ -8,8 +8,8 @@ import {
   selectedPanelId,
   setIsFloating,
   setSelectedPanelId,
-} from "../../../sidebar/core/data.ts";
-import { PanelNavigator } from "../../panel/panel-navigator.ts";
+} from "../../../sidebar/state/mod.ts";
+import * as PanelNavigator from "../../io/navigator.ts";
 import type { CPanelSidebar } from "./panel-sidebar.tsx";
 
 export function SidebarHeader(props: { ctx: CPanelSidebar }) {

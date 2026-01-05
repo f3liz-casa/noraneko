@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { panelSidebarData } from "../../../sidebar/core/data.ts";
+import { panels as panelSidebarData } from "../../../sidebar/state/mod.ts";
 import { PanelSidebarButton } from "./sidebar-panel-button.tsx";
 import { showPanelSidebarAddModal } from "./panel-sidebar-modal.tsx";
 import type { CPanelSidebar } from "./panel-sidebar.tsx";

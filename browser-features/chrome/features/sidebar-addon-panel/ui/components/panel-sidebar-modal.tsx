@@ -4,10 +4,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import {
-  setPanelSidebarData,
+  setPanels as setPanelSidebarData,
   setSelectedPanelId,
-} from "../../../sidebar/core/data.ts";
-import type { Panel } from "../../../sidebar/core/utils/type.ts";
+} from "../../../sidebar/state/mod.ts";
+import type { Panel } from "../../../sidebar/types/mod.ts";
 
 /**
  * Minimal synchronous modal replacement.

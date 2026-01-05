@@ -5,16 +5,16 @@
 
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { getFaviconURLForPanel } from "../../../sidebar/core/utils/favicon-getter.ts";
+import { getFavicon as getFaviconURLForPanel } from "../../../sidebar/io/mod.ts";
 import type { CPanelSidebar } from "./panel-sidebar.tsx";
 import {
-  panelSidebarData,
+  panels as panelSidebarData,
   selectedPanelId,
-  setPanelSidebarData,
-} from "../../../sidebar/core/data.ts";
-import type { Panel } from "../../../sidebar/core/utils/type.ts";
-import { isExtensionExist } from "../../../sidebar/core/extension-panels.ts";
-import { getUserContextColor } from "../../../sidebar/core/utils/userContextColor-getter.ts";
+  setPanels as setPanelSidebarData,
+} from "../../../sidebar/state/mod.ts";
+import type { Panel } from "../../../sidebar/types/mod.ts";
+import { extensionExists as isExtensionExist } from "../../../sidebar/io/mod.ts";
+import { getUserContextColor } from "../../../sidebar/io/mod.ts";
 import { setContextPanel } from "./sidebar-contextMenu.tsx";
 
 export function PanelSidebarButton(props: {

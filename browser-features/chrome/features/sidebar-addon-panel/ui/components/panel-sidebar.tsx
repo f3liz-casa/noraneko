@@ -4,21 +4,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { render } from "@nora/preact-xul";
-import { ChromeSiteBrowser } from "../../panel/browsers/chrome-site-browser.tsx";
-import { ExtensionSiteBrowser } from "../../panel/browsers/extension-site-browser.tsx";
-import { WebSiteBrowser } from "../../panel/browsers/web-site-browser.tsx";
+import { ChromeSiteBrowser } from "../browsers/chrome-site-browser.tsx";
+import { ExtensionSiteBrowser } from "../browsers/extension-site-browser.tsx";
+import { WebSiteBrowser } from "../browsers/web-site-browser.tsx";
 import {
-  panelSidebarConfig,
-  panelSidebarData,
+  config as panelSidebarConfig,
+  panels as panelSidebarData,
   selectedPanelId,
-  setPanelSidebarData,
+  setPanels as setPanelSidebarData,
   setSelectedPanelId,
-} from "../../../sidebar/core/data.ts";
-import type { Panel, Panels } from "../../../sidebar/core/utils/type.ts";
+} from "../../../sidebar/state/mod.ts";
+import type { Panel, Panels } from "../../../sidebar/types/mod.ts";
 import { effect } from "@preact/signals";
-import { getExtensionSidebarAction } from "../../../sidebar/core/extension-panels.ts";
-import { WebsitePanel } from "../../panel/website-panel-window-parent.ts";
-import "../../../sidebar/core/utils/webRequest.ts";
+import { getExtensionSidebarAction } from "../../../sidebar/io/mod.ts";
+import * as panelWindowIO from "../../io/panel-window.ts";
+import "../../../sidebar/io/web-request.ts";
 
 export class CPanelSidebar {
   private panelDisposers: Map<string, () => void> = new Map();
@@ -259,22 +259,19 @@ export class CPanelSidebar {
   }
 
   public mutePanel(panelId: string) {
-    const gWebsitePanel = WebsitePanel.getInstance();
-    gWebsitePanel.toggleMutePanel(panelId);
+    panelWindowIO.toggleMutePanel(panelId);
   }
 
   public changeZoomLevel(panelId: string, type: "in" | "out" | "reset") {
-    const gWebsitePanel = WebsitePanel.getInstance();
-
     switch (type) {
       case "in":
-        gWebsitePanel.zoomInPanel(panelId);
+        panelWindowIO.zoomInPanel(panelId);
         break;
       case "out":
-        gWebsitePanel.zoomOutPanel(panelId);
+        panelWindowIO.zoomOutPanel(panelId);
         break;
       case "reset":
-        gWebsitePanel.resetZoomLevelPanel(panelId);
+        panelWindowIO.resetZoomLevelPanel(panelId);
         break;
     }
   }

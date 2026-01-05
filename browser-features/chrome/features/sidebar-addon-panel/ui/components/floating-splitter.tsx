@@ -6,9 +6,9 @@
 import { signal, effect } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import {
-  panelSidebarConfig,
+  config as panelSidebarConfig,
   setIsFloatingDragging,
-} from "../../../sidebar/core/data.ts";
+} from "../../../sidebar/state/mod.ts";
 
 export const isResizeCooldown = signal<boolean>(false);
 // Helper for compatibility if needed, or direct usage.
