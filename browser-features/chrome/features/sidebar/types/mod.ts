@@ -7,3 +7,4 @@ export * from "./Config.ts";
 export * from "./State.ts";
 export * from "./Extension.ts";
 export * from "./Icon.ts";
+export * from "./Events.ts";

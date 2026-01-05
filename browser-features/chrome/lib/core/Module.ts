@@ -11,7 +11,6 @@
 
 import type { ViteHotContext } from "vite/types/hot";
 import { kebabCase } from "es-toolkit/string";
-import { createDependencyEventDispatchers } from "#bridge-loader-features/loader/modules-hooks.ts";
 
 // ============================================================================
 // Types - Module Definition
@@ -36,8 +35,6 @@ export interface ModuleMetadata {
 export interface ModuleContext {
   /** Logger with module prefix */
   log: ConsoleInstance;
-  /** Event dispatchers for dependencies */
-  events: Record<string, any>;
   /** Module name */
   name: string;
 }
@@ -50,10 +47,6 @@ export interface ModuleLifecycle {
   initBeforeSessionStoreInit?: (ctx: ModuleContext) => void | Promise<void>;
   /** Called when module is being cleaned up (required for hotswap) */
   cleanup: (ctx: ModuleContext) => void | Promise<void>;
-  /** Event methods exposed to other modules */
-  eventMethods?: (
-    ctx: ModuleContext,
-  ) => Record<string, (...args: any[]) => any>;
 }
 
 // ============================================================================
@@ -80,10 +73,10 @@ const _hotContexts: Map<string, ViteHotContext | undefined> = new Map();
  * ```typescript
  * // sidebar/mod.ts
  * import { defineModule } from "@lib/core";
+ * import { events } from "../events.ts";
  *
  * const state = {
  *   icons: new Map<string, SidebarIcon>(),
- *   dockBarElement: null as Element | null,
  * };
  *
  * export default defineModule({
@@ -92,28 +85,18 @@ const _hotContexts: Map<string, ViteHotContext | undefined> = new Map();
  * }, {
  *   init(ctx) {
  *     ctx.log.debug("Sidebar initializing...");
- *     renderDockBar(state);
+ *     events.sidebar.implement({
+ *       registerIcon: (icon) => state.icons.set(icon.name, icon),
+ *     });
  *   },
  *
  *   cleanup(ctx) {
  *     state.icons.clear();
- *     state.dockBarElement?.remove();
- *   },
- *
- *   eventMethods(ctx) {
- *     return {
- *       registerIcon: (icon) => state.icons.set(icon.name, icon),
- *       getIcons: () => Array.from(state.icons.values()),
- *     };
  *   },
  * });
  * ```
  */
 export function defineModule(config: ModuleConfig, lifecycle: ModuleLifecycle) {
-  const allDeps = [
-    ...(config.dependencies ?? []),
-    ...(config.softDependencies ?? []),
-  ];
   const moduleName = config.name;
 
   // Create the module class with a proper name for debugging
@@ -126,7 +109,6 @@ export function defineModule(config: ModuleConfig, lifecycle: ModuleLifecycle) {
         log: console.createInstance({
           prefix: `nora@${kebabCase(moduleName)}`,
         }),
-        events: createDependencyEventDispatchers(allDeps),
         name: moduleName,
       };
 
@@ -180,14 +162,6 @@ export function defineModule(config: ModuleConfig, lifecycle: ModuleLifecycle) {
       if (lifecycle.initBeforeSessionStoreInit) {
         return lifecycle.initBeforeSessionStoreInit(this.ctx);
       }
-    }
-
-    /** Event methods for other modules */
-    eventMethods(): Record<string, (...args: any[]) => any> {
-      if (lifecycle.eventMethods) {
-        return lifecycle.eventMethods(this.ctx);
-      }
-      return {};
     }
   };
 

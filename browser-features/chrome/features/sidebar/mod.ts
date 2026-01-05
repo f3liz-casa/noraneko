@@ -15,10 +15,12 @@
  *   ui/      - UI components
  */
 
+import { events } from "../events.ts";
 import { defineModule, type ModuleContext } from "@lib/core";
 import { signal, type Signal } from "@preact/signals";
 
-import type { IconRegistration, EventDispatcher } from "./types/mod.ts";
+import type { IconRegistration } from "./types/mod.ts";
+
 import { setPanels, setConfig, setSelectedPanelId } from "./state/mod.ts";
 import { renderDockBar, injectStyles, cleanup as cleanupUI } from "./ui/mod.ts";
 
@@ -83,76 +85,6 @@ async function handleIconClick(
 }
 
 // ============================================================================
-// Event Dispatcher Factory
-// ============================================================================
-
-function createEventDispatcher(ctx: ModuleContext): EventDispatcher {
-  return {
-    registerSidebarIcon(options: IconRegistration): void {
-      state.registeredIcons.set(options.name, options);
-      if (state.iconsSignal) {
-        state.iconsSignal.value = Array.from(state.registeredIcons.values());
-      }
-      ctx.log.debug(`Registered icon ${options.name}`);
-    },
-
-    async onClicked(iconName: string): Promise<void> {
-      return handleIconClick(ctx, iconName);
-    },
-
-    registerDataUpdateCallback(callback: (data: unknown) => void): void {
-      state.dataUpdateCallbacks.add(callback);
-      ctx.log.debug("Registered data update callback");
-    },
-
-    registerSelectionChangeCallback(callback: (panelId: string) => void): void {
-      state.selectionChangeCallbacks.add(callback);
-      ctx.log.debug("Registered selection change callback");
-    },
-
-    unregisterDataUpdateCallback(callback: (data: unknown) => void): void {
-      state.dataUpdateCallbacks.delete(callback);
-    },
-
-    unregisterSelectionChangeCallback(
-      callback: (panelId: string) => void,
-    ): void {
-      state.selectionChangeCallbacks.delete(callback);
-    },
-
-    notifyDataChanged(data: unknown): void {
-      setPanels(data as Parameters<typeof setPanels>[0]);
-      for (const callback of state.dataUpdateCallbacks) {
-        try {
-          callback(data);
-        } catch (error) {
-          ctx.log.error("Error in data update callback:", error);
-        }
-      }
-    },
-
-    notifyConfigChanged(config: unknown): void {
-      setConfig(config as Parameters<typeof setConfig>[0]);
-    },
-
-    selectPanel(panelId: string): void {
-      setSelectedPanelId(panelId);
-      for (const callback of state.selectionChangeCallbacks) {
-        try {
-          callback(panelId);
-        } catch (error) {
-          ctx.log.error("Error in selection change callback:", error);
-        }
-      }
-    },
-
-    getRegisteredIcons(): IconRegistration[] {
-      return Array.from(state.registeredIcons.values());
-    },
-  };
-}
-
-// ============================================================================
 // Module Definition
 // ============================================================================
 
@@ -164,6 +96,75 @@ export default defineModule(
   {
     init(ctx) {
       ctx.log.debug("Sidebar initializing...");
+
+      // Implement event methods
+      events.sidebar.implement({
+        registerSidebarIcon(options: IconRegistration): void {
+          state.registeredIcons.set(options.name, options);
+          if (state.iconsSignal) {
+            state.iconsSignal.value = Array.from(
+              state.registeredIcons.values(),
+            );
+          }
+          ctx.log.debug(`Registered icon ${options.name}`);
+        },
+
+        async onClicked(iconName: string): Promise<void> {
+          return handleIconClick(ctx, iconName);
+        },
+
+        registerDataUpdateCallback(callback: (data: unknown) => void): void {
+          state.dataUpdateCallbacks.add(callback);
+          ctx.log.debug("Registered data update callback");
+        },
+
+        registerSelectionChangeCallback(
+          callback: (panelId: string) => void,
+        ): void {
+          state.selectionChangeCallbacks.add(callback);
+          ctx.log.debug("Registered selection change callback");
+        },
+
+        unregisterDataUpdateCallback(callback: (data: unknown) => void): void {
+          state.dataUpdateCallbacks.delete(callback);
+        },
+
+        unregisterSelectionChangeCallback(
+          callback: (panelId: string) => void,
+        ): void {
+          state.selectionChangeCallbacks.delete(callback);
+        },
+
+        notifyDataChanged(data: unknown): void {
+          setPanels(data as Parameters<typeof setPanels>[0]);
+          for (const callback of state.dataUpdateCallbacks) {
+            try {
+              callback(data);
+            } catch (error) {
+              ctx.log.error("Error in data update callback:", error);
+            }
+          }
+        },
+
+        notifyConfigChanged(config: unknown): void {
+          setConfig(config as Parameters<typeof setConfig>[0]);
+        },
+
+        selectPanel(panelId: string): void {
+          setSelectedPanelId(panelId);
+          for (const callback of state.selectionChangeCallbacks) {
+            try {
+              callback(panelId);
+            } catch (error) {
+              ctx.log.error("Error in selection change callback:", error);
+            }
+          }
+        },
+
+        getRegisteredIcons(): IconRegistration[] {
+          return Array.from(state.registeredIcons.values());
+        },
+      });
 
       // Create signal for icons
       state.iconsSignal = signal<IconRegistration[]>([]);
@@ -184,22 +185,8 @@ export default defineModule(
       // Remove DOM elements
       cleanupUI();
     },
-
-    eventMethods(ctx) {
-      return createEventDispatcher(ctx);
-    },
   },
 );
-
-// ============================================================================
-// Type Declarations
-// ============================================================================
-
-declare global {
-  interface FeatureModuleEventMethods {
-    sidebar: EventDispatcher;
-  }
-}
 
 // ============================================================================
 // Re-exports for external consumers
@@ -212,6 +199,7 @@ export type {
   Config,
   IconRegistration,
   EventDispatcher,
+  EventDispatcher as SidebarEvents,
 } from "./types/mod.ts";
 
 // Data

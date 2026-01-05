@@ -12,3 +12,8 @@ export {
   type ModuleContext,
   type ModuleLifecycle,
 } from "./Module.ts";
+export {
+  EventSystem,
+  createEventSystem,
+  type EventSystemType,
+} from "./EventSystem.ts";

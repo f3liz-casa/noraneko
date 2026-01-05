@@ -15,6 +15,7 @@
  *   ui/      - UI components
  */
 
+import { events } from "../events.ts";
 import { defineModule, type ModuleContext } from "@lib/core";
 
 // Internal imports
@@ -57,7 +58,7 @@ function onBookmarksIconActivated(ctx: ModuleContext): void {
 
 async function registerExampleSidebarIcons(ctx: ModuleContext): Promise<void> {
   // Register notes icon with callback
-  ctx.events.sidebar.registerSidebarIcon({
+  events.sidebar.registerSidebarIcon({
     name: "notes",
     i18nName: "sidebar.notes.title",
     iconUrl: ICON_NOTES,
@@ -66,7 +67,7 @@ async function registerExampleSidebarIcons(ctx: ModuleContext): Promise<void> {
   ctx.log.debug("Notes icon registered");
 
   // Register bookmarks icon with callback
-  ctx.events.sidebar.registerSidebarIcon({
+  events.sidebar.registerSidebarIcon({
     name: "bookmarks",
     i18nName: "sidebar.bookmarks.title",
     iconUrl: ICON_BOOKMARKS,
@@ -81,8 +82,8 @@ async function registerExampleSidebarIcons(ctx: ModuleContext): Promise<void> {
   setDataUpdateCallback(dataUpdateCallback);
   setSelectionChangeCallback(selectionChangeCallback);
 
-  ctx.events.sidebar.registerDataUpdateCallback(dataUpdateCallback);
-  ctx.events.sidebar.registerSelectionChangeCallback(selectionChangeCallback);
+  events.sidebar.registerDataUpdateCallback(dataUpdateCallback);
+  events.sidebar.registerSelectionChangeCallback(selectionChangeCallback);
 
   ctx.log.debug("Callbacks registered with sidebar");
 }
@@ -135,12 +136,10 @@ export default defineModule(
 
       // Unregister callbacks to prevent memory leaks
       if (state.dataUpdateCallback) {
-        ctx.events.sidebar.unregisterDataUpdateCallback(
-          state.dataUpdateCallback,
-        );
+        events.sidebar.unregisterDataUpdateCallback(state.dataUpdateCallback);
       }
       if (state.selectionChangeCallback) {
-        ctx.events.sidebar.unregisterSelectionChangeCallback(
+        events.sidebar.unregisterSelectionChangeCallback(
           state.selectionChangeCallback,
         );
       }
