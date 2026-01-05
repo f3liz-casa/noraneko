@@ -4,25 +4,23 @@ Browser features for Noraneko, organized using Data-Oriented Programming (DOP) a
 
 ## 📁 Structure Overview
 
-```
 features/
-├── 📄 ARCHITECTURE.md          # Architecture patterns and diagrams
-├── 📄 MIGRATION_CHECKLIST.md   # Migration progress tracking
-├── 📄 REFACTORING_SUMMARY.md   # Refactoring summary and patterns
+├── 📄 ARCHITECTURE.md # Architecture patterns and diagrams
 │
-├── ✅ sidebar/                  # Independent dock bar (REFACTORED)
-├── ✅ sidebar-addon-panel/      # Sidebar addon panel (REFACTORED)
-├── ✅ browser-share-mode/       # Share mode toggle (REFACTORED)
-├── ✅ statusbar/                # Bottom statusbar (REFACTORED)
-├── ✅ tab-rename/               # Tab renaming feature (REFACTORED)
-├── ✅ reverse-sidebar-position/ # Sidebar positioning (DISABLED)
+├── ✅ sidebar/ # Independent dock bar (REFACTORED)
+├── ✅ sidebar-addon-panel/ # Sidebar addon panel (REFACTORED)
+├── ✅ browser-share-mode/ # Share mode toggle (REFACTORED)
+├── ✅ statusbar/ # Bottom statusbar (REFACTORED)
+├── ✅ tab-rename/ # Tab renaming feature (REFACTORED)
+├── ✅ undo-closed-tab/ # Undo closed tab button (REFACTORED)
+├── ✅ browser-tab-color/ # Dynamic tab color (REFACTORED)
+├── ✅ context-menu/ # Context menu modifications (REFACTORED)
+├── ✅ update-refresh-cache/ # Update refresh cache (REFACTORED)
 │
-├── 🔲 tmp/                      # Features awaiting refactoring
-│   ├── browser-tab-color/
-│   ├── context-menu/
-│   └── update-refresh-cache/
+├── ⚠️ reverse-sidebar-position/ # Sidebar positioning (DISABLED)
 │
-└── 📄 mod.ts                    # Feature module loader
+└── 📄 mod.ts # Feature module loader
+
 ```
 
 ## 🎯 Design Philosophy
@@ -50,16 +48,18 @@ features/
 Each feature follows a consistent directory structure:
 
 ```
+
 feature-name/
-├── mod.ts          # Module entry point (defineModule)
-├── README.md       # Documentation
-├── types/          # Type definitions & schemas (optional)
-├── data/           # Constants & defaults (optional)
-├── ops/            # Pure operations (optional)
-├── io/             # Side effects (optional)
-├── state/          # Reactive signals (optional)
-└── ui/             # Components & rendering (optional)
-```
+├── mod.ts # Module entry point (defineModule)
+├── README.md # Documentation
+├── types/ # Type definitions & schemas (optional)
+├── data/ # Constants & defaults (optional)
+├── ops/ # Pure operations (optional)
+├── io/ # Side effects (optional)
+├── state/ # Reactive signals (optional)
+└── ui/ # Components & rendering (optional)
+
+````
 
 ### Directory Purposes
 
@@ -78,7 +78,7 @@ feature-name/
 
    ```powershell
    New-Item -ItemType Directory -Force -Path "my-feature\state", "my-feature\ui"
-   ```
+````
 
 2. **Create mod.ts**:
 
@@ -212,11 +212,11 @@ When creating or refactoring features:
 
 ## 📊 Current Status
 
-- **Refactored**: 4 features (sidebar, sidebar-addon-panel, browser-share-mode, statusbar, tab-rename)
+- **Refactored**: 9 features (sidebar, sidebar-addon-panel, browser-share-mode, statusbar, tab-rename, undo-closed-tab, browser-tab-color, context-menu, update-refresh-cache)
 - **Disabled**: 1 feature (reverse-sidebar-position)
-- **Pending**: 3 features (in tmp/)
+- **Pending**: 0 features
 
-See `MIGRATION_CHECKLIST.md` for detailed progress.
+See `MIGRATION_CHECKLIST.md` for historical progress.
 
 ## Happy Coding! :3
 
