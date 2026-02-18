@@ -69,12 +69,25 @@ export const initModule = async (module: LoadedModule): Promise<void> => {
 /**
  * Initialize all modules
  * Side effect: validates, sorts, initializes modules, waits for SessionStore
+ * Never throws - per-module errors are caught and logged.
  */
 export const initializeModules = async (
   modules: LoadedModule[],
 ): Promise<void> => {
-  validateDependencies(modules);
-  const sortedModules = sortByDependencies(modules);
+  const invalid = validateDependencies(modules);
+
+  // Filter out modules with dependency issues and register them as failed so
+  // dependents can fail fast via onModuleLoaded().
+  const validModules = modules.filter((m) => {
+    if (invalid.has(m.name)) {
+      console.warn(`[noraneko] Skipping module ${m.name} due to dependency issues`);
+      registerModuleLoadState(m.name, false);
+      return false;
+    }
+    return true;
+  });
+
+  const sortedModules = sortByDependencies(validModules);
 
   // Run initBeforeSessionStoreInit
   for (const module of sortedModules) {
@@ -109,12 +122,23 @@ export const initializeModules = async (
 /**
  * Initialize modules during hotswap (no session store wait)
  * Side effect: validates, sorts, initializes modules
+ * Never throws - per-module errors are caught and logged.
  */
 export const initializeModulesForHotswap = async (
   modules: LoadedModule[],
 ): Promise<void> => {
-  validateDependencies(modules);
-  const sortedModules = sortByDependencies(modules);
+  const invalid = validateDependencies(modules);
+
+  const validModules = modules.filter((m) => {
+    if (invalid.has(m.name)) {
+      console.warn(`[noraneko] Hotswap skipping ${m.name}: dependency issues`);
+      registerModuleLoadState(m.name, false);
+      return false;
+    }
+    return true;
+  });
+
+  const sortedModules = sortByDependencies(validModules);
 
   for (const module of sortedModules) {
     try {

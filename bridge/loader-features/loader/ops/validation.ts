@@ -14,30 +14,33 @@ import type { LoadedModule } from "../types/mod.ts";
 // ============================================================================
 
 /**
- * Validate module dependencies (no missing, no circular)
- * @throws Error if dependencies are missing or circular
+ * Validate module dependencies (no missing, no circular).
+ * Returns a set of module names that should be skipped due to dependency issues.
+ * Never throws - errors are logged and the affected modules are excluded.
  */
-export const validateDependencies = (modules: LoadedModule[]): void => {
+export const validateDependencies = (modules: LoadedModule[]): Set<string> => {
   const moduleNames = new Set(modules.map((m) => m.name));
   const moduleMap = new Map(modules.map((m) => [m.name, m]));
+  const invalid = new Set<string>();
   const visited = new Set<string>();
   const visiting = new Set<string>();
 
-  const checkCircular = (
-    name: string,
-    deps: string[],
-    path: string[] = [],
-  ): void => {
+  const checkCircular = (name: string, path: string[]): void => {
     if (visiting.has(name)) {
-      throw new Error(`Circular dependency: ${[...path, name].join(" -> ")}`);
+      const cycle = [...path.slice(path.indexOf(name)), name];
+      console.error(
+        `[noraneko] Circular dependency detected: ${cycle.join(" -> ")}`,
+      );
+      for (const n of cycle) invalid.add(n);
+      return;
     }
     if (visited.has(name)) return;
 
     visiting.add(name);
-    for (const dep of deps) {
-      const depModule = moduleMap.get(dep);
-      if (depModule) {
-        checkCircular(dep, depModule.metadata.dependencies, [...path, name]);
+    const module = moduleMap.get(name);
+    if (module) {
+      for (const dep of module.metadata.dependencies) {
+        if (moduleMap.has(dep)) checkCircular(dep, [...path, name]);
       }
     }
     visiting.delete(name);
@@ -48,13 +51,16 @@ export const validateDependencies = (modules: LoadedModule[]): void => {
     // Check hard dependencies exist
     for (const dep of module.metadata.dependencies) {
       if (!moduleNames.has(dep)) {
-        throw new Error(
-          `Missing dependency: ${dep} required by ${module.name}`,
+        console.warn(
+          `[noraneko] Skipping ${module.name}: missing dependency "${dep}"`,
         );
+        invalid.add(module.name);
       }
     }
-    checkCircular(module.name, module.metadata.dependencies);
+    checkCircular(module.name, []);
   }
+
+  return invalid;
 };
 
 // ============================================================================
