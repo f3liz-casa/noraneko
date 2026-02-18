@@ -16,7 +16,7 @@ import {
   unwrapOr,
   mapResult,
   type Result,
-} from "#bridge-loader-features/loader/event-dispatcher-registry.ts";
+} from "#features-chrome/lib/core/event-dispatcher-registry.ts";
 
 // Test module A with event methods
 const moduleAFunctions = {
