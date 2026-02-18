@@ -130,6 +130,10 @@ export const verifyNMAModuleHash = async (
 };
 
 export const isDevModeNMAAllowed = (): boolean => {
+  // Build-time flag injected via --env.MODE=dev (feles-build dev/stage)
+  if (import.meta.env.MODE === "dev") {
+    return true;
+  }
   try {
     const { AppConstants } = ChromeUtils.importESModule(
       "resource://gre/modules/AppConstants.sys.mjs",

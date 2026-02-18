@@ -11,7 +11,7 @@
  */
 
 import { initI18NForBrowserChrome } from "#i18n/config-browser-chrome.ts";
-import { MODULES_KEYS } from "./data/mod.ts";
+import { MODULES_KEYS, buildModulesFromNMA } from "./data/mod.ts";
 import {
   setPrefFeatures,
   getEnabledFeatures,
@@ -30,6 +30,7 @@ import {
   saveHashState,
   logHashComparison,
   HotswapMode,
+  getCurrentNMAManifest,
 } from "./nma/mod.ts";
 
 console.log("[noraneko] Initializing scripts...");
@@ -61,6 +62,12 @@ export async function initScripts(): Promise<void> {
   // Initialize NMA (Noraneko Module Archive) system first
   // NMA provides omni.ja-like module distribution alongside installation
   await initNMASystem();
+
+  // Populate module registry from NMA manifest (replaces build-time #features-chrome dependency)
+  const nmaManifest = getCurrentNMAManifest();
+  if (nmaManifest) {
+    buildModulesFromNMA(nmaManifest.modules);
+  }
 
   setPrefFeatures(MODULES_KEYS);
 

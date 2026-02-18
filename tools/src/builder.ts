@@ -116,6 +116,10 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
       ],
       path.join(PROJECT_ROOT, "browser-features/chrome"),
     ],
+    [
+      ["deno", "task", "build", `--env.MODE=${mode}`],
+      path.join(PROJECT_ROOT, "bridge/loader-features"),
+    ],
   ];
 
   const prodCommands: CommandTuple[] = [
@@ -144,6 +148,10 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
         `--env.__VERSION2__=${version}`,
       ],
       path.join(PROJECT_ROOT, "bridge/loader-modules"),
+    ],
+    [
+      ["deno", "task", "build", "--env.MODE=production"],
+      path.join(PROJECT_ROOT, "bridge/loader-features"),
     ],
     // [
     //   [

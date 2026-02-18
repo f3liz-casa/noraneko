@@ -6,4 +6,4 @@
  * Re-exports all data structures.
  */
 
-export { MODULES, MODULES_KEYS } from "./modules.ts";
+export { MODULES, MODULES_KEYS, buildModulesFromNMA } from "./modules.ts";
