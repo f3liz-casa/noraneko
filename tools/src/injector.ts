@@ -34,6 +34,7 @@ function buildFlatManifestContent(mode: string): string {
     "content noraneko-startup startup/ contentaccessible=yes",
     "skin noraneko classic/1.0 skin/",
     "resource noraneko resource/ contentaccessible=yes",
+    "resource noraneko-loader loader/ contentaccessible=yes",
     mode !== "dev" ? "content noraneko-settings settings/ contentaccessible=yes" : "",
   ]
     .filter(Boolean)
@@ -52,6 +53,7 @@ function buildOmniManifestLines(mode: string): string[] {
     `content noraneko-startup ${toUri("bridge/startup/_dist")} contentaccessible=yes`,
     `skin noraneko classic/1.0 ${toUri("browser-features/skin")}`,
     `resource noraneko ${toUri("bridge/loader-modules/_dist")} contentaccessible=yes`,
+    `resource noraneko-loader ${toUri("bridge/loader-features/_dist")} contentaccessible=yes`,
   ];
   if (mode !== "dev") {
     // Production adds a settings package; adjust the source path as needed.
@@ -140,6 +142,7 @@ function runFlat(mode: string, dirName: string): void {
     ["startup", "bridge/startup/_dist"],
     ["skin", "browser-features/skin"],
     ["resource", "bridge/loader-modules/_dist"],
+    ["loader", "bridge/loader-features/_dist"],
   ];
 
   for (const [subdir, target] of mounts) {

@@ -124,7 +124,7 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
 
   const prodCommands: CommandTuple[] = [
     [
-      ["deno", "task", "build", "--env.MODE=production"],
+      ["deno", "task", "build", `--env.MODE=${mode}`],
       path.join(PROJECT_ROOT, "bridge/startup"),
     ],
     [
@@ -150,7 +150,7 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
       path.join(PROJECT_ROOT, "bridge/loader-modules"),
     ],
     [
-      ["deno", "task", "build", "--env.MODE=production"],
+      ["deno", "task", "build", `--env.MODE=${mode}`],
       path.join(PROJECT_ROOT, "bridge/loader-features"),
     ],
     // [
@@ -182,6 +182,7 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
       ["startup", "bridge/startup/_dist"],
       ["skin", "browser-features/skin"],
       ["resource", "bridge/loader-modules/_dist"],
+      ["loader", "bridge/loader-features/_dist"],
     ];
 
     const dirPath = "_dist/noraneko";

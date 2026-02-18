@@ -29,6 +29,21 @@ export const getInstallDir = (): string => {
   return appDir.path;
 };
 
+/**
+ * Register the directory containing the NMA file as resource://noraneko-nma/
+ * so that jar:resource://noraneko-nma/<file>!/ URLs are trusted by ChromeUtils.importESModule.
+ */
+export const registerNMAResource = (nmaPath: string): void => {
+  const resProto = Services.io
+    .getProtocolHandler("resource")
+    .QueryInterface(Ci.nsIResProtocolHandler);
+
+  const nmaFile = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  nmaFile.initWithPath(nmaPath);
+  const jarURI = Services.io.newURI("jar:" + Services.io.newFileURI(nmaFile).spec + "!/");
+  resProto.setSubstitution("noraneko-nma", jarURI);
+};
+
 export const getProfileDir = (): string => {
   return Services.dirsvc.get("ProfD", Ci.nsIFile).path;
 };
@@ -196,10 +211,10 @@ export const detectUpdateChannel = (): UpdateChannel => {
   }
 };
 
-export const loadModule = async (
+export const loadModule = (
   url: string,
-): Promise<Record<string, unknown>> => {
-  return await ChromeUtils.importESModule(url);
+): Record<string, unknown> => {
+  return ChromeUtils.importESModule(url, { global: "current" });
 };
 
 export const restartBrowser = (): void => {

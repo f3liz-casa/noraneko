@@ -94,10 +94,7 @@ async function runStage(): Promise<void> {
   await Patcher.run("apply");
   Symlinker.run();
   const buildid2 = Update.generateUuidV7();
-  await Builder.run("production", buildid2);
-
-  // Inject manifests but keep dev-style directory so dev servers and browser use the built assets
-  await Injector.run("dev");
+  await Builder.run("stage", buildid2);
   await Injector.injectXhtmlFromTs(true);
   DevEnvManager.setup();
 

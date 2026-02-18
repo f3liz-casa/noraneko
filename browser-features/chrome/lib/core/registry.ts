@@ -145,7 +145,7 @@ export const loadModule = async (
 ): Promise<boolean> => {
   try {
     // Import module
-    const module = await ChromeUtils.importESModule(url);
+    const module = await ChromeUtils.importESModule(url,{global:"current"});
 
     // Check if module exports default
     if (!module.default) {

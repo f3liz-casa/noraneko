@@ -61,6 +61,10 @@ export const initializeNMALoader = async (): Promise<boolean> => {
   state.loader.currentNMA = manifest;
   state.loader.isActive = true;
 
+  // Register the NMA directory as resource://noraneko-nma/ so modules can be
+  // loaded via jar:resource://noraneko-nma/<file>!/ (a trusted scheme)
+  IO.registerNMAResource(nmaPath);
+
   console.log(
     `[NMA] Loaded: ${manifest.buildId} (v${manifest.noranekoVersion})`,
   );
@@ -130,22 +134,19 @@ export const verifyNMAModuleHash = async (
 };
 
 export const isDevModeNMAAllowed = (): boolean => {
-  // Build-time flag injected via --env.MODE=dev (feles-build dev/stage)
-  if (import.meta.env.MODE === "dev") {
-    return true;
-  }
+  const config = getNMATrustedConfig();
+  if (!config.allowUnsignedInDev) return false;
+  // Build-time flag injected via --env.MODE=dev (tsdown loader-features build, future direct loading)
+  if (import.meta.env.MODE === "dev") return true;
   try {
     const { AppConstants } = ChromeUtils.importESModule(
       "resource://gre/modules/AppConstants.sys.mjs",
     ) as any;
     const isDebug = AppConstants.DEBUG ?? false;
     const channel = (AppConstants.MOZ_UPDATE_CHANNEL || "").toLowerCase();
-    const config = getNMATrustedConfig();
-    return (
-      config.allowUnsignedInDev && (isDebug || channel.includes("nightly"))
-    );
+    return isDebug || channel.includes("nightly") || channel === "default";
   } catch {
-    return false;
+    return true;
   }
 };
 
@@ -155,7 +156,7 @@ export const isDevModeNMAAllowed = (): boolean => {
 
 export const getNMAModuleUrl = (modulePath: string): string => {
   if (!state.loader.nmaPath) throw new Error("NMA not loaded");
-  return `jar:file://${state.loader.nmaPath}!/${modulePath}`;
+  return `resource://noraneko-nma/${modulePath}`;
 };
 
 export const hasNMAModule = (moduleName: string): boolean => {
@@ -170,15 +171,15 @@ export const getNMAModule = (moduleName: string) => {
   );
 };
 
-export const loadNMAModule = async (
+export const loadNMAModule = (
   moduleName: string,
-): Promise<Record<string, unknown> | null> => {
+): Record<string, unknown> | null => {
   const module = getNMAModule(moduleName);
   if (!module) return null;
 
   try {
     const url = getNMAModuleUrl(module.path);
-    const exports = await IO.loadModule(url);
+    const exports = IO.loadModule(url);
     state.loader.loadedModules.push(moduleName);
     return exports;
   } catch (e) {

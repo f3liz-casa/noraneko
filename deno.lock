@@ -4115,6 +4115,8 @@
           "npm:@deno/vite-plugin@^1.0.5",
           "npm:@mobily/ts-belt@^3.13.1",
           "npm:birpc@^2.3.0",
+          "npm:i18next@^25.7.3",
+          "npm:tsdown@~0.14.1",
           "npm:vite@*"
         ],
         "packageJson": {

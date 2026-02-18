@@ -10,7 +10,6 @@
  * - Pipeline-style composition
  */
 
-import { initI18NForBrowserChrome } from "#i18n/config-browser-chrome.ts";
 import { MODULES_KEYS, buildModulesFromNMA } from "./data/mod.ts";
 import {
   setPrefFeatures,
@@ -49,7 +48,6 @@ export async function initScripts(): Promise<void> {
   const { NoranekoConstants } = ChromeUtils.importESModule(
     "resource://noraneko/modules/NoranekoConstants.sys.mjs",
   );
-  initI18NForBrowserChrome();
   console.debug(
     `[noraneko-buildid2]\nuuid: ${NoranekoConstants.buildID2}\ndate: ${new Date(
       Number.parseInt(

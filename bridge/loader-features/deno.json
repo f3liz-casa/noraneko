@@ -2,7 +2,9 @@
   "imports": {
     "birpc": "npm:birpc@^2.3.0",
     "@deno/vite-plugin": "npm:@deno/vite-plugin@^1.0.5",
-    "@mobily/ts-belt": "npm:@mobily/ts-belt@^3.13.1"
+    "@mobily/ts-belt": "npm:@mobily/ts-belt@^3.13.1",
+    "tsdown": "npm:tsdown@^0.14.1",
+    "i18next": "npm:i18next@^25.7.3"
   },
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "deno.ns", "decorators"],
