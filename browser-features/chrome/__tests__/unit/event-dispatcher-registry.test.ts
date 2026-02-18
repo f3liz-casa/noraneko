@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+/// <reference lib="deno.ns" />
 
 import { assert, assertEquals } from "@jsr/std__assert";
 import {
@@ -14,11 +15,8 @@ import {
   unwrap,
   unwrapOr,
   mapResult,
-  toResult,
-  fromResult,
   type Result,
-} from "#bridge-loader-features/loader/event-dispatcher-registry.ts";
-import { Result as R } from "@mobily/ts-belt";
+} from "#features-chrome/lib/core/event-dispatcher-registry.ts";
 
 // Test module A with event methods
 const moduleAFunctions = {
@@ -89,48 +87,16 @@ Deno.test("Result Type - unwrapOr returns value on success", () => {
 
 Deno.test("Result Type - mapResult transforms success value", () => {
   const result = ok(5);
-  const mapped = mapResult(result, (x) => x * 2);
+  const mapped = mapResult(result, (x: number) => x * 2);
   assert(isOk(mapped));
   assertEquals(mapped[0], 10);
 });
 
 Deno.test("Result Type - mapResult preserves error", () => {
   const result = err<number>("failed");
-  const mapped = mapResult(result, (x) => x * 2);
+  const mapped = mapResult(result, (x: number) => x * 2);
   assert(isErr(mapped));
   assertEquals(mapped[1]?.message, "failed");
-});
-
-Deno.test("Result Type - toResult converts ok to Result", () => {
-  const result = ok("value");
-  const res = toResult(result);
-  assert(R.isOk(res));
-  if (R.isOk(res)) {
-    assertEquals(res, "value");
-  }
-});
-
-Deno.test("Result Type - toResult converts err to Error", () => {
-  const result = err<string>("error");
-  const res = toResult(result);
-  assert(R.isError(res));
-  if (R.isError(res)) {
-    assertEquals(R.getError(res)?.message, "error");
-  }
-});
-
-Deno.test("Result Type - fromResult converts Ok to ok", () => {
-  const res = R.Ok("value");
-  const result = fromResult(res);
-  assert(isOk(result));
-  assertEquals(result[0], "value");
-});
-
-Deno.test("Result Type - fromResult converts Error to err", () => {
-  const res = R.Error(new Error("error"));
-  const result = fromResult(res);
-  assert(isErr(result));
-  assertEquals(result[1]?.message, "error");
 });
 
 // ============================================================================
@@ -149,9 +115,9 @@ Deno.test("EventDispatcher - Get instance and call method", async () => {
   const instance = getEventDispatcherInstance("test-module-a");
   const result = await instance.getData();
   
-  assert(R.isOk(result), "Should return Ok");
-  if (R.isOk(result)) {
-    assertEquals(result, "test-data", "Should return correct data");
+  assert(isOk(result), "Should return Ok");
+  if (isOk(result)) {
+    assertEquals(result[0], "test-data", "Should return correct data");
   }
   
   unregisterModuleEventDispatcher("test-module-a");
@@ -162,9 +128,9 @@ Deno.test("EventDispatcher - Call method with arguments", async () => {
   const instance = getEventDispatcherInstance("test-module-b");
   const result = await instance.add(5, 3);
   
-  assert(R.isOk(result), "Should return Ok");
-  if (R.isOk(result)) {
-    assertEquals(result, 8, "Should return sum of arguments");
+  assert(isOk(result), "Should return Ok");
+  if (isOk(result)) {
+    assertEquals(result[0], 8, "Should return sum of arguments");
   }
   
   unregisterModuleEventDispatcher("test-module-b");
@@ -175,9 +141,9 @@ Deno.test("EventDispatcher - Call async method", async () => {
   const instance = getEventDispatcherInstance("test-module-a");
   const result = await instance.asyncMethod();
   
-  assert(R.isOk(result), "Should return Ok");
-  if (R.isOk(result)) {
-    assertEquals(result, "async-result", "Should return async result");
+  assert(isOk(result), "Should return Ok");
+  if (isOk(result)) {
+    assertEquals(result[0], "async-result", "Should return async result");
   }
   
   unregisterModuleEventDispatcher("test-module-a");
@@ -187,9 +153,9 @@ Deno.test("EventDispatcher - Get non-existent module returns soft proxy", async 
   const instance = getEventDispatcherInstance("non-existent-module");
   const result = await instance.someMethod();
   
-  assert(R.isOk(result), "Should return Ok for missing module");
-  if (R.isOk(result)) {
-    assertEquals(result, undefined, "Should return undefined for missing module");
+  assert(isOk(result), "Should return Ok for missing module");
+  if (isOk(result)) {
+    assertEquals(result[0], undefined, "Should return undefined for missing module");
   }
 });
 
@@ -198,9 +164,9 @@ Deno.test("EventDispatcher - Handle errors in event methods", async () => {
   const instance = getEventDispatcherInstance("test-module-a");
   const result = await instance.throwError();
   
-  assert(R.isError(result), "Should return Error on error");
-  if (R.isError(result)) {
-    assertEquals(R.getError(result)?.message, "Intentional error", "Should contain error message");
+  assert(isErr(result), "Should return Error on error");
+  if (isErr(result)) {
+    assertEquals(result[1]?.message, "Intentional error", "Should contain error message");
   }
   
   unregisterModuleEventDispatcher("test-module-a");
@@ -216,10 +182,10 @@ Deno.test("EventDispatcher - Multiple modules can be registered", async () => {
   const result1 = await instance1.method1();
   const result2 = await instance2.method2();
 
-  assert(R.isOk(result1) && R.isOk(result2), "Both should return Ok");
-  if (R.isOk(result1) && R.isOk(result2)) {
-    assertEquals(result1, "result1");
-    assertEquals(result2, "result2");
+  assert(isOk(result1) && isOk(result2), "Both should return Ok");
+  if (isOk(result1) && isOk(result2)) {
+    assertEquals(result1[0], "result1");
+    assertEquals(result2[0], "result2");
   }
 
   unregisterModuleEventDispatcher("module-1");

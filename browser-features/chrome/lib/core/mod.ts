@@ -20,3 +20,19 @@ export {
   type ModuleInstance,
   type ModuleContext,
 } from "./module_factory.ts";
+
+export {
+  registerModuleEventDispatcher,
+  unregisterModuleEventDispatcher,
+  isModuleRegistered,
+  getEventDispatcherInstance,
+  ok,
+  err,
+  isOk,
+  isErr,
+  unwrap,
+  unwrapOr,
+  mapResult,
+  type Result,
+} from "./event-dispatcher-registry.ts";
+
