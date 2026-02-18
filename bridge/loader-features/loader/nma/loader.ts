@@ -177,6 +177,12 @@ export const loadNMAModule = (
   const module = getNMAModule(moduleName);
   if (!module) return null;
 
+  // Skip empty modules (e.g. type-only stubs that compile to 0 bytes)
+  if (module.size === 0) {
+    console.debug(`[NMA] Skipping empty module: ${moduleName}`);
+    return null;
+  }
+
   try {
     const url = getNMAModuleUrl(module.path);
     const exports = IO.loadModule(url);
