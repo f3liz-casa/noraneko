@@ -2,13 +2,13 @@
   "imports": {
     "birpc": "npm:birpc@^2.3.0",
     "@deno/vite-plugin": "npm:@deno/vite-plugin@^1.0.5",
-    "fp-ts": "npm:fp-ts@^2.16.11"
+    "@mobily/ts-belt": "npm:@mobily/ts-belt@^3.13.1"
   },
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "deno.ns", "decorators"],
     "types": ["npm:vite/client", "jsr:@types/gecko"]
   },
   "tasks": {
-    "build": "deno run -A npm:vite build"
+    "build": "deno run -A npm:tsdown"
   }
 }

@@ -3,8 +3,7 @@
 import { commands } from "./commands";
 import { type CSKData, CSKCommandsCodec, CSKDataCodec } from "./defines";
 import { checkIsSystemShortcut } from "./utils";
-import { pipe } from 'fp-ts/function';
-import { fold, getOrElseW } from 'fp-ts/Either';
+import { pipe } from '@mobily/ts-belt';
 
 export class CustomShortcutKey {
   private static instance: CustomShortcutKey;
@@ -32,20 +31,22 @@ export class CustomShortcutKey {
     
     pipe(
       decoded,
-      fold(
-        (errors) => console.error('Failed to decode CSK command:', errors),
-        (d) => {
-          switch (d.type) {
-            case 'disable-csk':
-              this.disable_csk = d.data;
-              break;
-            case 'update-pref':
-              this.initCSKData();
-              console.log(this.cskData);
-              break;
-          }
+      (either) => {
+        if (either._tag === 'Left') {
+          console.error('Failed to decode CSK command:', either.left);
+          return;
         }
-      )
+        const d = either.right;
+        switch (d.type) {
+          case 'disable-csk':
+            this.disable_csk = d.data;
+            break;
+          case 'update-pref':
+            this.initCSKData();
+            console.log(this.cskData);
+            break;
+        }
+      }
     );
   }
 
@@ -64,9 +65,10 @@ export class CustomShortcutKey {
 
       this.cskData = pipe(
         CSKDataCodec.decode(prefData),
-        getOrElseW(errors => {
-          throw new Error(`CSKData validation failed: ${JSON.stringify(errors)}`);
-        })
+        (either) => {
+          if (either._tag === 'Right') return either.right;
+          throw new Error(`CSKData validation failed: ${JSON.stringify(either.left)}`);
+        }
       );
     } catch (e) {
       console.error("Could not initialize CSKData, falling back to empty config.", e);

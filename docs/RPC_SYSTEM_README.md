@@ -2,7 +2,7 @@
 
 ## What Changed
 
-This system replaces direct module dependencies (imports, `Services.obs`, global variables) with an EventDispatcher-based communication system using fp-ts Either for error handling.
+This system replaces direct module dependencies (imports, `Services.obs`, global variables) with an EventDispatcher-based communication system using `@mobily/ts-belt` Result for error handling.
 
 ## Key Benefits
 
@@ -11,7 +11,7 @@ This system replaces direct module dependencies (imports, `Services.obs`, global
 3. **No Circular Dependencies:** EventDispatcher prevents circular dependency issues
 4. **Better Testability:** Modules can be tested in isolation
 5. **Cleaner Architecture:** Clear separation between modules
-6. **Type-Safe Error Handling:** Either pattern for explicit error handling
+6. **Type-Safe Error Handling:** Result pattern for explicit error handling
 
 ## Architecture Overview
 
@@ -21,7 +21,7 @@ The central registry that:
 - Manages all module event interfaces
 - Routes calls between modules
 - Handles missing/unloaded modules gracefully
-- Wraps all methods with Either for error safety
+- Wraps all methods with Result for error safety
 
 ### Module Configuration
 
@@ -61,8 +61,7 @@ The loader (`bridge/loader-features/loader/index.ts`):
 ```typescript
 import { component } from "#features-chrome/utils/base";
 import type { EventDispatcherDependencies } from "../event-dispatcher-interfaces.ts";
-import * as E from "fp-ts/Either";
-import { pipe } from "fp-ts/function";
+import { pipe, Result as R } from "@mobily/ts-belt";
 
 @component({
   moduleName: "caller-module",
@@ -77,9 +76,9 @@ export default class CallerModule {
 
     pipe(
       result,
-      E.fold(
-        (error) => console.error("Failed:", error),
-        (data) => console.log("Got data:", data)
+      R.match(
+        (data) => console.log("Got data:", data),
+        (error) => console.error("Failed:", error)
       )
     );
   }
@@ -131,7 +130,7 @@ The following modules use the EventDispatcher system:
 
 - **sidebar-addon-panel** (`browser-features/chrome/common/sidebar-addon-panel/`)
   - Uses `this.events` to communicate with sidebar module
-  - Uses Either pattern for error handling
+  - Uses Result pattern for error handling
   - Gracefully handles missing sidebar module
 
 ## Key Files
@@ -155,7 +154,7 @@ To migrate a module to use EventDispatcher:
 2. Add `@eventMethod` decorator to methods you want to expose
 3. Declare interface in `FeatureModuleEventMethods`
 4. Use `this.events` to call methods on other modules
-5. Handle Either results with `E.fold`
+5. Handle Result results with `R.match`
 6. Test the module works independently
 
 ## Services.obs Usage Note

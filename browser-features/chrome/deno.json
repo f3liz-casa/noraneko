@@ -9,7 +9,7 @@
 
     "birpc": "npm:birpc@^4.0.0",
     "es-toolkit": "npm:es-toolkit@^1.43.0",
-    "fp-ts": "npm:fp-ts@^2.16.11",
+    "@mobily/ts-belt": "npm:@mobily/ts-belt@^3.13.1",
     "i18next": "npm:i18next@^25.7.3",
     "io-ts": "npm:io-ts@^2.2.22",
     "preact": "npm:preact@^10.25.4",

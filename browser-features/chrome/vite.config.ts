@@ -17,6 +17,13 @@ export default defineConfig({
   publicDir: r("public"),
   server: { port: 5181, strictPort: true },
   define: { "import.meta.env.__BUILDID2__": '"placeholder"' },
+  "oxc": {
+    "jsx": {
+      "throwIfNamespace": false,
+      "runtime": "automatic",
+      "importSource": "preact",
+    }
+  },
 
   build: {
     sourcemap: true,
@@ -27,8 +34,13 @@ export default defineConfig({
     assetsInlineLimit: 0,
     target: "esnext",
     outDir: r("_dist"),
-
-    rollupOptions: {
+    
+    rolldownOptions: {
+      transform: {
+        jsx: {
+          throwIfNamespace: false,
+        },
+      },
       preserveEntrySignatures: "allow-extension",
       input: { core: r("main.ts") },
       output: {
@@ -90,6 +102,7 @@ export default defineConfig({
     },
   },
 
+  
   plugins: [
     // decorators(),
     deno(),

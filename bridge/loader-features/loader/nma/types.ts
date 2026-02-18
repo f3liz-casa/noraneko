@@ -76,61 +76,6 @@ export interface NMATrustedConfig {
   allowUnsignedInDev: boolean;
 }
 
-// ============================================================================
-// Hotfix Types
-// ============================================================================
-
-export interface HotfixManifest {
-  id: string;
-  version: string;
-  description: string;
-  unlockCode: string;
-  patches: HotfixPatch[];
-  sigstoreBundle: SigstoreBundle;
-  createdAt: string;
-  minVersion: string;
-  maxVersion?: string;
-  targetChannels?: UpdateChannel[];
-  denoLockHash?: string;
-}
-
-export interface HotfixPatch {
-  moduleName: string;
-  originalModulePath: string;
-  patchedModulePath: string;
-  patchedModuleHash: string;
-}
-
-export enum HotfixStatus {
-  AVAILABLE = "AVAILABLE",
-  PENDING_APPROVAL = "PENDING_APPROVAL",
-  INSTALLED = "INSTALLED",
-  FAILED = "FAILED",
-  REVERTED = "REVERTED",
-}
-
-export interface InstalledHotfix {
-  id: string;
-  version: string;
-  status: HotfixStatus;
-  installedAt: string;
-  signerIdentity: SignerIdentity;
-  disabledModules: string[];
-  injectedModules: string[];
-}
-
-export interface HotfixAutoUpdateConfig {
-  enabled: boolean;
-  checkInterval: number;
-  lastCheckTime: string;
-}
-
-export interface HotfixConsentResult {
-  approved: boolean;
-  decidedAt: string;
-  rememberDecision: boolean;
-}
-
 export enum UpdateChannel {
   NIGHTLY = "nightly",
   BETA = "beta",
@@ -154,30 +99,6 @@ export interface SignerIdentity {
   subject: string;
   repository: string;
   workflowRef: string;
-}
-
-export interface TrustedSignerConfig {
-  allowedIssuers: string[];
-  allowedRepositories: string[];
-  allowedWorkflows: string[];
-}
-
-export enum VerificationStatus {
-  VALID = "VALID",
-  INVALID_BUNDLE = "INVALID_BUNDLE",
-  SIGNATURE_MISMATCH = "SIGNATURE_MISMATCH",
-  UNTRUSTED_IDENTITY = "UNTRUSTED_IDENTITY",
-  REKOR_VERIFICATION_FAILED = "REKOR_VERIFICATION_FAILED",
-  CERTIFICATE_EXPIRED = "CERTIFICATE_EXPIRED",
-  NETWORK_ERROR = "NETWORK_ERROR",
-  UNKNOWN_ERROR = "UNKNOWN_ERROR",
-}
-
-export interface VerificationResult {
-  isValid: boolean;
-  status: VerificationStatus;
-  errorMessage?: string;
-  verifiedIdentity?: SignerIdentity;
 }
 
 // ============================================================================
@@ -226,7 +147,7 @@ export interface NMALoaderState {
   isActive: boolean;
   loadedModules: string[];
   lastVerification: NMAVerificationResult | null;
-  moduleVersions: Map<string, string>; // Track module hashes for change detection
+  moduleVersions: Map<string, string>;
 }
 
 export interface NMALoaderEvents {
@@ -239,3 +160,4 @@ export interface NMALoaderEvents {
   "nma-module-cleanup": { name: string };
   "nma-module-reload": { name: string };
 }
+

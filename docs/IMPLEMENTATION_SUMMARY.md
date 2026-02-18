@@ -19,11 +19,11 @@ A centralized registry that:
 - Routes calls between modules without direct dependencies
 - Handles missing/unloaded modules gracefully (no panics)
 - Supports both hard and soft dependencies
-- Wraps all methods with Either for error safety
+- Wraps all methods with Result for error safety
 
 **Key Features:**
 - **Graceful Degradation:** Modules continue working even if dependencies are missing
-- **Either Pattern:** All methods return `Either<Error, T>` for explicit error handling
+- **Result Pattern:** All methods return `Result<T, Error>` for explicit error handling
 - **Error Isolation:** One module's failure doesn't crash others
 
 ### 2. Module Loader Integration (`bridge/loader-features/loader/index.ts`)
@@ -90,7 +90,7 @@ export default class MyModule {
 Test suite (`browser-features/chrome/test/unit/event-dispatcher-registry.test.ts`):
 - Tests for module registration, unregistration
 - Tests for event method calls
-- Tests for error handling with Either pattern
+- Tests for error handling with Result pattern
 - Tests for multiple simultaneous modules
 
 ## Documentation
@@ -141,7 +141,7 @@ createDependencyEventDispatchers(dependencies: string[]): object
 1. **No Direct Imports:** Modules communicate via `this.events`, no direct imports between modules
 2. **No Global Variables:** All communication through EventDispatcher registry
 3. **No Services.obs for Inter-module Communication:** Replaced with EventDispatcher
-4. **Either Pattern:** Explicit error handling with fp-ts Either
+4. **Result Pattern:** Explicit error handling with @mobily/ts-belt Result
 5. **Graceful Degradation:** Soft dependencies don't cause crashes
 
 ## Backwards Compatibility
@@ -158,15 +158,15 @@ The system is fully backwards compatible:
 
 1. Module A defines methods with `@eventMethod` decorator
 2. Loader calls `registerModuleEventDispatcher("module-a", methods)` after init
-3. EventDispatcher registry wraps methods with Either for error safety
+3. EventDispatcher registry wraps methods with Result for error safety
 4. Module B uses `this.events["module-a"].method()`
-5. Registry routes call to A's methods and wraps result in Either
-6. Result is returned to B (or `Right(undefined)` if A is not loaded)
+5. Registry routes call to A's methods and wraps result in Result
+6. Result is returned to B (or `Ok(undefined)` if A is not loaded)
 
 ### Error Handling
 
-- **Missing Module:** Returns `Right(undefined)` for soft dependencies
-- **Method Error:** Error is wrapped in `Left(error)`
+- **Missing Module:** Returns `Ok(undefined)` for soft dependencies
+- **Method Error:** Error is wrapped in `Error(error)`
 - **Module Failure:** Other modules continue working
 
 ### Dependency Management

@@ -4,32 +4,21 @@
  * NMA IO Operations
  *
  * Handles all side-effectful operations:
- * - File system access (reading/writing manifests, patches)
- * - Network requests (fetching hotfixes)
- * - Browser API interactions (Preferences, ChromeUtils)
+ * - File system access (reading/writing manifests, NMA files)
+ * - Browser API interactions (ChromeUtils, Services)
  */
 
-import { NMA_PATHS, DEFAULT_AUTO_UPDATE_CONFIG } from "./state.ts";
+import { NMA_PATHS } from "./state.ts";
 
 import {
-  type HotfixAutoUpdateConfig,
-  type InstalledHotfix,
-  UpdateChannel,
   type HashState,
+  UpdateChannel,
 } from "./types.ts";
 
 import { computeSha256 } from "./verifier.ts";
 
 // Preference Keys
-const PREF_HOTFIX_INSTALLED = "noraneko.hotfix.installed";
-const PREF_HOTFIX_DISABLED_MODULES = "noraneko.hotfix.disabled_modules";
-const PREF_HOTFIX_UNLOCK_CODES = "noraneko.hotfix.unlock_codes";
-const PREF_HOTFIX_TRUSTED_DECISIONS = "noraneko.hotfix.trusted_decisions";
-const PREF_HOTFIX_AUTO_UPDATE_CONFIG = "noraneko.hotfix.auto_update_config";
-const PREF_HOTFIX_MANIFEST_URL = "noraneko.hotfix.manifest_url";
-const PREF_HASH_STATE = "noraneko.hotfix.hash_state";
-const DEFAULT_MANIFEST_URL =
-  "https://raw.githubusercontent.com/noraneko-browser/noraneko/main/hotfixes/manifest.json";
+const PREF_HASH_STATE = "noraneko.nma.hash_state";
 
 // ============================================================================
 // File System IO
@@ -42,14 +31,6 @@ export const getInstallDir = (): string => {
 
 export const getProfileDir = (): string => {
   return Services.dirsvc.get("ProfD", Ci.nsIFile).path;
-};
-
-export const getHotfixDir = (): string => {
-  return PathUtils.join(getProfileDir(), "noraneko-hotfixes");
-};
-
-export const ensureHotfixDir = async (): Promise<void> => {
-  await IOUtils.makeDirectory(getHotfixDir(), { ignoreExisting: true });
 };
 
 export const resolveNMAPath = async (): Promise<string | null> => {
@@ -88,10 +69,8 @@ export const resolveNMAPath = async (): Promise<string | null> => {
   validFiles.sort((a, b) => {
     if (a.priority !== b.priority) return b.priority - a.priority;
     try {
-      // Use Mozilla's native version comparator
       return Services.vc.compare(b.version, a.version);
     } catch {
-      // Fallback if Services.vc fails (unlikely)
       return b.version.localeCompare(a.version);
     }
   });
@@ -148,19 +127,12 @@ export const computeFileHash = async (
   }
 };
 
-export const getHotfixDenoLockPath = (
-  hotfixDir: string,
-  hotfixId: string,
-): string => {
-  return PathUtils.join(hotfixDir, hotfixId, "deno.lock");
-};
-
-export const getHotfixModulePath = (
-  hotfixDir: string,
-  hotfixId: string,
+export const getNMAModulePath = (
+  nmaDir: string,
+  buildId: string,
   modulePath: string,
 ): string => {
-  return PathUtils.join(hotfixDir, hotfixId, modulePath);
+  return PathUtils.join(nmaDir, buildId, modulePath);
 };
 
 // ============================================================================
@@ -179,92 +151,9 @@ export const fetchText = async (url: string): Promise<string> => {
   return await response.text();
 };
 
-export const getManifestUrl = (): string => {
-  return Services.prefs.getStringPref(
-    PREF_HOTFIX_MANIFEST_URL,
-    DEFAULT_MANIFEST_URL,
-  );
-};
-
 // ============================================================================
 // Preferences IO
 // ============================================================================
-
-export const getInstalledHotfixes = (): InstalledHotfix[] => {
-  try {
-    const stored = Services.prefs.getStringPref(PREF_HOTFIX_INSTALLED, "[]");
-    return JSON.parse(stored) as InstalledHotfix[];
-  } catch {
-    return [];
-  }
-};
-
-export const saveInstalledHotfixes = (hotfixes: InstalledHotfix[]): void => {
-  Services.prefs.setStringPref(PREF_HOTFIX_INSTALLED, JSON.stringify(hotfixes));
-};
-
-export const getDisabledModules = (): string[] => {
-  try {
-    const stored = Services.prefs.getStringPref(
-      PREF_HOTFIX_DISABLED_MODULES,
-      "[]",
-    );
-    return JSON.parse(stored) as string[];
-  } catch {
-    return [];
-  }
-};
-
-export const saveDisabledModules = (modules: string[]): void => {
-  Services.prefs.setStringPref(
-    PREF_HOTFIX_DISABLED_MODULES,
-    JSON.stringify(modules),
-  );
-};
-
-export const getUnlockedCodes = (): string[] => {
-  try {
-    const stored = Services.prefs.getStringPref(PREF_HOTFIX_UNLOCK_CODES, "[]");
-    return JSON.parse(stored) as string[];
-  } catch {
-    return [];
-  }
-};
-
-export const saveUnlockedCodes = (codes: string[]): void => {
-  Services.prefs.setStringPref(PREF_HOTFIX_UNLOCK_CODES, JSON.stringify(codes));
-};
-
-export const getTrustedDecisions = (): Record<string, boolean> => {
-  try {
-    const stored = Services.prefs.getStringPref(
-      PREF_HOTFIX_TRUSTED_DECISIONS,
-      "{}",
-    );
-    return JSON.parse(stored) as Record<string, boolean>;
-  } catch {
-    return {};
-  }
-};
-
-export const getAutoUpdateConfig = (): HotfixAutoUpdateConfig => {
-  try {
-    const stored = Services.prefs.getStringPref(
-      PREF_HOTFIX_AUTO_UPDATE_CONFIG,
-      JSON.stringify(DEFAULT_AUTO_UPDATE_CONFIG),
-    );
-    return JSON.parse(stored) as HotfixAutoUpdateConfig;
-  } catch {
-    return DEFAULT_AUTO_UPDATE_CONFIG;
-  }
-};
-
-export const saveAutoUpdateConfig = (config: HotfixAutoUpdateConfig): void => {
-  Services.prefs.setStringPref(
-    PREF_HOTFIX_AUTO_UPDATE_CONFIG,
-    JSON.stringify(config),
-  );
-};
 
 export const getStoredHashState = (): HashState | null => {
   try {
@@ -319,35 +208,3 @@ export const restartBrowser = (): void => {
   );
 };
 
-// ============================================================================
-// UI IO (Prompts)
-// ============================================================================
-
-export const showConfirmDialog = (
-  title: string,
-  message: string,
-  button0: string,
-  button1: string,
-): boolean => {
-  const promptService = Services.prompt;
-  const buttonFlags =
-    Ci.nsIPromptService.BUTTON_POS_0 *
-      Ci.nsIPromptService.BUTTON_TITLE_IS_STRING +
-    Ci.nsIPromptService.BUTTON_POS_1 *
-      Ci.nsIPromptService.BUTTON_TITLE_IS_STRING +
-    Ci.nsIPromptService.BUTTON_POS_0_DEFAULT;
-
-  const result = promptService.confirmEx(
-    null,
-    title,
-    message,
-    buttonFlags,
-    button0,
-    button1,
-    "",
-    null,
-    {},
-  );
-
-  return result === 0;
-};

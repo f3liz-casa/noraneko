@@ -26,7 +26,7 @@ import {
   getRegisteredModuleNames,
 } from "./io/mod.ts";
 import {
-  analyzeHotfixChanges,
+  analyzeNMAChanges,
   saveHashState,
   logHashComparison,
   HotswapMode,
@@ -73,7 +73,7 @@ export async function initScripts(): Promise<void> {
  * Hotswap modules with new versions
  * Side effect: cleans up and reloads all modules
  */
-export async function hotswapModules(_hotfixId?: string): Promise<boolean> {
+export async function hotswapModules(): Promise<boolean> {
   console.log("[noraneko] Starting module hotswap...");
 
   try {
@@ -141,19 +141,18 @@ export async function hotswapSelectiveModules(
  * Determines whether to do full reload or selective reload based on what changed
  */
 export async function hotswapWithHashDetection(
-  hotfixId: string,
+  buildId: string,
   modulePaths: string[],
 ): Promise<boolean> {
-  console.log(`[noraneko] Starting hash-based hotswap for hotfix: ${hotfixId}`);
+  console.log(`[noraneko] Starting hash-based hotswap for NMA build: ${buildId}`);
 
   try {
-    const profileDir = Services.dirsvc.get("ProfD", Ci.nsIFile).path;
-    const hotfixDir = PathUtils.join(profileDir, "noraneko-hotfixes");
+    const installDir = Services.dirsvc.get("GreD", Ci.nsIFile).path;
 
     // Analyze changes
-    const { newState, comparison, recommendation } = await analyzeHotfixChanges(
-      hotfixDir,
-      hotfixId,
+    const { newState, comparison, recommendation } = await analyzeNMAChanges(
+      installDir,
+      buildId,
       modulePaths,
     );
 
@@ -171,8 +170,8 @@ export async function hotswapWithHashDetection(
         break;
 
       case HotswapMode.FULL:
-        console.log("[noraneko] deno.lock changed, performing full hotswap");
-        success = await hotswapModules(hotfixId);
+        console.log("[noraneko] Full reload required, performing full hotswap");
+        success = await hotswapModules();
         break;
 
       case HotswapMode.SELECTIVE:
@@ -232,8 +231,9 @@ export {
   notifyHotswapComplete,
 } from "./io/mod.ts";
 
-// Re-export hash registry for external use
+// Re-export hash/hotswap utilities for external use
 export {
+  analyzeNMAChanges,
   analyzeHotfixChanges,
   compareHashStates,
   getHotswapRecommendation,
@@ -247,23 +247,10 @@ export {
   type ModuleHashInfo,
   computeFileHash,
   extractModuleName,
+  computeNMAHashState,
   computeHotfixHashState,
   logHashComparison,
 } from "./nma/mod.ts";
-
-// Re-export Try utilities
-export {
-  type Try,
-  type Success,
-  type Failure,
-  isSuccess,
-  isFailure,
-  unwrap,
-  unwrapOr,
-  mapTry,
-  toEither,
-  fromEither,
-} from "./try.ts";
 
 // Re-export NMA types and functions
 export type {
@@ -281,7 +268,6 @@ export {
   NMA_PATHS,
   DEFAULT_NMA_TRUSTED_CONFIG,
   UpdateChannel,
-  VerificationStatus,
 } from "./nma/mod.ts";
 
 export {
@@ -295,8 +281,6 @@ export {
   getCurrentNMAManifest,
   verifyNMAIdentity,
   verifyNMAManifest,
-  verifyHotfixIdentity,
-  verifyHotfixManifest,
   computeNMAHash,
   findNMAFile,
   readTextFile,

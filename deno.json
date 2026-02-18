@@ -3,10 +3,10 @@
   "links": ["libs/@types/gecko"],
   "workspace": ["./libs/*", "./browser-features/*", "./bridge/*"],
   "imports": {
-    "@std/cli": "jsr:@std/cli@^1.0.23",
+    "@std/cli": "jsr:@std/cli@^1.0.27",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
-    "@std/fs": "jsr:@std/fs@^1.0.19",
-    "@std/path": "jsr:@std/path@^1.1.2",
+    "@std/fs": "jsr:@std/fs@^1.0.22",
+    "@std/path": "jsr:@std/path@^1.1.4",
     "#i18n/": "./i18n/",
     "#chrome/": "./chrome/",
     "#libs/": "./libs/",
@@ -16,11 +16,13 @@
     "#themes/": "./src/themes/",
     "#bridge-loader-features/": "./bridge/loader-features/",
     "@nora/shared/": "./browser-features/shared/",
+    "@mobily/ts-belt": "npm:@mobily/ts-belt@^3.13.1",
     "jszip": "npm:jszip@^3.10.1",
-    "@std/streams": "jsr:@std/streams@^1.0.13",
+    "diff": "npm:diff@^8.0.3",
+    "@std/streams": "jsr:@std/streams@^1.0.17",
     "@std/toml": "npm:@jsr/std__toml@^1.0.11",
-    "@preact/signals-core": "npm:@preact/signals-core@^1.12.1",
-    "vite": "npm:rolldown-vite@^7.1.20"
+    "@preact/signals-core": "npm:@preact/signals-core@^1.13.0",
+    "vite": "npm:rolldown-vite@^7.3.1"
   },
   "compilerOptions": {
     "lib": ["deno.ns", "ESNext", "dom", "dom.asynciterable"],
@@ -38,7 +40,6 @@
   ],
   "tasks": {
     "feles-build": "deno run -A tools/feles-build.ts",
-    "hotfix:create": "deno run --allow-read --allow-write --allow-env tools/scripts/create-hotfix.ts",
     "nma:build": "deno run --allow-read --allow-write --allow-env --allow-run tools/scripts/build-nma.ts"
   },
   "nodeModulesDir": "auto",

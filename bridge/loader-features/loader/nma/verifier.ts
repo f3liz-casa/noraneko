@@ -3,9 +3,8 @@
 /**
  * NMA Verifier
  *
- * Handles Sigstore-based signature verification.
- * Pure logic + crypto operations.
- * Separated from IO.
+ * Handles Sigstore-based signature verification for NMA archives.
+ * Pure logic + crypto operations. Separated from IO.
  */
 
 import { SigstoreVerifier } from "@freedomofpress/sigstore-browser";
@@ -15,14 +14,10 @@ import {
   type SignerIdentity,
   type SigstoreBundle,
   type NMATrustedConfig,
-  type TrustedSignerConfig,
-  type VerificationResult,
-  VerificationStatus,
-  type HotfixManifest,
   type NMAManifest,
 } from "./types.ts";
 
-import { getNMATrustedConfig, getHotfixTrustedConfig } from "./state.ts";
+import { getNMATrustedConfig } from "./state.ts";
 
 // ============================================================================
 // Core Verifier Instance
@@ -33,9 +28,6 @@ let _verifierInstance: SigstoreVerifier | null = null;
 const getVerifier = async (): Promise<SigstoreVerifier> => {
   if (_verifierInstance) return _verifierInstance;
 
-  // Note: verifier creation is effectively pure computation/initialization
-  // but loading the root might involve resource fetching in some contexts.
-  // In this environment, it reads bundled roots.
   try {
     _verifierInstance = new SigstoreVerifier({
       tlogThreshold: 1,
@@ -220,80 +212,3 @@ export const verifyNMAManifest = async (
   }
 };
 
-// ============================================================================
-// Hotfix Verification
-// ============================================================================
-
-export const verifyHotfixIdentity = (
-  identity: SignerIdentity,
-  config: TrustedSignerConfig,
-): VerificationResult => {
-  const result = checkIdentity(identity, config);
-  if (!result.isValid) {
-    return {
-      isValid: false,
-      status: VerificationStatus.UNTRUSTED_IDENTITY,
-      errorMessage: result.error,
-    };
-  }
-  return {
-    isValid: true,
-    status: VerificationStatus.VALID,
-    verifiedIdentity: identity,
-  };
-};
-
-export const verifyHotfixManifest = async (
-  manifest: HotfixManifest,
-  manifestContent: string,
-): Promise<VerificationResult> => {
-  try {
-    const bundle = parseSigstoreBundle(manifest.sigstoreBundle);
-    if (!bundle) {
-      return {
-        isValid: false,
-        status: VerificationStatus.INVALID_BUNDLE,
-        errorMessage: "Failed to parse Sigstore bundle",
-      };
-    }
-
-    const config = getHotfixTrustedConfig();
-    const identityResult = verifyHotfixIdentity(
-      manifest.sigstoreBundle.signerIdentity,
-      config,
-    );
-    if (!identityResult.isValid) return identityResult;
-
-    const verifier = await getVerifier();
-    const manifestBytes = new TextEncoder().encode(manifestContent);
-
-    try {
-      await verifier.verifyArtifact(
-        manifest.sigstoreBundle.signerIdentity.subject,
-        manifest.sigstoreBundle.signerIdentity.issuer,
-        // @ts-expect-error: Bundle type mismatch in lib
-        bundle,
-        manifestBytes,
-      );
-
-      return {
-        isValid: true,
-        status: VerificationStatus.VALID,
-        verifiedIdentity: manifest.sigstoreBundle.signerIdentity,
-      };
-    } catch (e: unknown) {
-      const error = e as Error;
-      return {
-        isValid: false,
-        status: VerificationStatus.SIGNATURE_MISMATCH,
-        errorMessage: error.message,
-      };
-    }
-  } catch (error) {
-    return {
-      isValid: false,
-      status: VerificationStatus.UNKNOWN_ERROR,
-      errorMessage: String(error),
-    };
-  }
-};

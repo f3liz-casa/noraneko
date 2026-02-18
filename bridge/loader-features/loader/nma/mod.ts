@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 /**
- * NMA Module (DOP/FP Style)
+ * NMA Module
  *
- * Re-exports the API from the new organized structure.
+ * Re-exports the public API from the NMA subsystem.
  */
 
 export * from "./types.ts";
@@ -12,10 +12,7 @@ export * from "./loader.ts";
 export {
   verifyNMAIdentity,
   verifyNMAManifest,
-  verifyHotfixIdentity,
-  verifyHotfixManifest,
   computeSha256 as computeNMAHash,
-  computeSha256 as computeHash, // Alias for compatibility
 } from "./verifier.ts";
 export {
   resolveNMAPath as findNMAFile,
@@ -26,10 +23,13 @@ export {
   clearHashState,
 } from "./io.ts";
 export {
+  analyzeNMAChanges,
   analyzeHotfixChanges,
   compareHashStates,
   getHotswapRecommendation,
   logHashComparison,
   extractModuleName,
+  computeNMAHashState,
   computeHotfixHashState,
 } from "./hashing.ts";
+

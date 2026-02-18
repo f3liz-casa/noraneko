@@ -2,8 +2,7 @@
 // This file demonstrates the EventDispatcher system with DOP patterns
 
 import { defineModule, type ModuleContext } from "#features-chrome/utils/base";
-import * as E from "fp-ts/Either";
-import { pipe } from "fp-ts/function";
+import { pipe, Result as R } from "@mobily/ts-belt";
 
 // ============================================================================
 // Module A State - Provider
@@ -67,8 +66,7 @@ const demonstrateEventDispatcherCalls = async (ctx: ModuleContext): Promise<void
 
   pipe(
     dataResult,
-    E.fold(
-      (error) => ctx.log.error("Failed to get data:", error),
+    R.match(
       (data) => {
         if (data === undefined) {
           ctx.log.debug("ModuleA not available");
@@ -76,6 +74,7 @@ const demonstrateEventDispatcherCalls = async (ctx: ModuleContext): Promise<void
           ctx.log.debug("Received data from ModuleA:", data);
         }
       },
+      (error) => ctx.log.error("Failed to get data:", error),
     ),
   );
 
@@ -83,9 +82,9 @@ const demonstrateEventDispatcherCalls = async (ctx: ModuleContext): Promise<void
   const setResult = await ctx.events["module-a"].setData("new value");
   pipe(
     setResult,
-    E.fold(
-      (error) => ctx.log.error("Failed to set data:", error),
+    R.match(
       () => ctx.log.debug("Data set successfully"),
+      (error) => ctx.log.error("Failed to set data:", error),
     ),
   );
 
@@ -93,9 +92,9 @@ const demonstrateEventDispatcherCalls = async (ctx: ModuleContext): Promise<void
   const actionResult = await ctx.events["module-a"].performAction("test");
   pipe(
     actionResult,
-    E.fold(
-      (error) => ctx.log.error("Failed to perform action:", error),
+    R.match(
       (result) => ctx.log.debug("Action result:", result || "No result"),
+      (error) => ctx.log.error("Failed to perform action:", error),
     ),
   );
 };

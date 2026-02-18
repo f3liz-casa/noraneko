@@ -174,7 +174,7 @@ noraneko/
 
 **Key Components:**
 - **Module Loader** - Loads modules based on preferences
-- **EventDispatcher Registry** - Inter-module communication with Either error handling
+- **EventDispatcher Registry** - Inter-module communication with Result error handling
 - **Event Dispatcher** - Event routing between modules
 - **Dependency Manager** - Handles module dependencies
 
@@ -230,8 +230,7 @@ export default class MyModule {
 // Module B calls methods via this.events
 import { component } from "#features-chrome/utils/base";
 import type { EventDispatcherDependencies } from "../event-dispatcher-interfaces.ts";
-import * as E from "fp-ts/Either";
-import { pipe } from "fp-ts/function";
+import { pipe, Result as R } from "@mobily/ts-belt";
 
 @component({
   moduleName: "other-module",
@@ -245,9 +244,9 @@ export default class OtherModule {
     const result = await this.events["my-module"].getData();
     pipe(
       result,
-      E.fold(
-        (error) => console.error("Failed:", error),
-        (data) => console.log("Got data:", data)
+      R.match(
+        (data) => console.log("Got data:", data),
+        (error) => console.error("Failed:", error)
       )
     );
   }
@@ -258,7 +257,7 @@ export default class OtherModule {
 - No direct imports between modules
 - Graceful handling of missing modules
 - Clear API boundaries
-- Type-safe error handling with Either
+- Type-safe error handling with Result
 
 See [RPC_SYSTEM_README.md](./RPC_SYSTEM_README.md) for details.
 
@@ -314,7 +313,7 @@ Noraneko integrates with Firefox through:
 | UI Framework | Solid.js |
 | XUL Binding | solid-xul |
 | Type System | TypeScript |
-| Inter-module Communication | EventDispatcher with fp-ts Either |
+| Inter-module Communication | EventDispatcher with ts-belt Result |
 | Styling | CSS, Tailwind CSS |
 | Runtime | Firefox/Gecko |
 | Package Manager | Deno |

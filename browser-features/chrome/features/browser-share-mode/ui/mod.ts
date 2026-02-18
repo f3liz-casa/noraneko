@@ -6,7 +6,7 @@
  * Rendering utilities and component exports for share mode.
  */
 
-import { render } from "preact";
+import { render, h } from "preact";
 import { ShareModeMenuItem } from "./components/ShareModeMenuItem.tsx";
 
 // ============================================================================

@@ -62,5 +62,3 @@ export const ContextMenuUtils = {
     onPopupShowing(type);
   },
 };
-
-export { ContextMenu } from "../lib/ui/ContextMenu.tsx";

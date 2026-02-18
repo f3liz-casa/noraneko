@@ -31,8 +31,7 @@ export const registerModule = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   instance: any,
   metadata: ModuleMetadata,
-  isHotfixModule = false,
-  hotfixId?: string,
+  isNMAModule = true,
 ): void => {
   const modules = getModulesMap();
   modules.set(name, {
@@ -40,8 +39,7 @@ export const registerModule = (
     instance,
     metadata,
     loadedAt: Date.now(),
-    isHotfixModule,
-    hotfixId,
+    isNMAModule,
   });
 
   console.debug(`[noraneko] Registered module: ${name}`);

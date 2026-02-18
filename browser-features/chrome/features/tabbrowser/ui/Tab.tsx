@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-/** @jsx h */
-/** @jsxFrag Fragment */
 import { h, Fragment } from "#libs/preact-xul/index.ts";
 import { useEffect, useRef } from "preact/hooks";
 import type { TabData } from "../types/TabState.ts";

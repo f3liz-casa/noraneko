@@ -14,8 +14,7 @@ export interface ModuleInfo {
   instance: any;
   metadata: ModuleMetadata;
   loadedAt: number;
-  isHotfixModule: boolean;
-  hotfixId?: string;
+  isNMAModule: boolean;
 }
 
 /** Hotswap event types */

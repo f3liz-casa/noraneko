@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import * as path from "@std/path";
-import { PROJECT_ROOT, PATHS } from "./defines.ts";
+import { PROJECT_ROOT, PATHS, BIN_DIR } from "./defines.ts";
 import {
   createSymlink,
   exists,
@@ -41,6 +41,39 @@ export async function runInParallel(commands: CommandTuple[]): Promise<void> {
         `Build command \`${res.cmd.join(" ")}\` in \`${res.dir}\` failed\nSTDOUT:\n${res.out}\nSTDERR:\n${res.err}`,
       );
     }
+  }
+}
+
+export async function buildAndDeployNMA(version: string, channel = "nightly"): Promise<void> {
+  logger.info("Packaging browser-features/chrome to NMA...");
+
+  const type = channel === "release" ? "stable" : channel;
+  const nmaFilename = `${type}_${version}_noraneko.nma.zip`;
+
+  const result = runCommandChecked(
+    "deno",
+    ["task", "nma:build", "--version", version, "--channel", channel, "--output", nmaFilename],
+    PROJECT_ROOT,
+  );
+
+  if (!result.success) {
+    logger.warn(`NMA build failed:\n${result.stderr}`);
+    return;
+  }
+
+  const srcPath = path.join(PROJECT_ROOT, nmaFilename);
+  if (exists(srcPath) && exists(BIN_DIR)) {
+    // Remove stale NMA files from BIN_DIR
+    for (const entry of Deno.readDirSync(BIN_DIR)) {
+      if (entry.name.match(/^[a-z0-9-]+_[a-z0-9.-]+_noraneko\.nma\.zip$/i)) {
+        safeRemove(path.join(BIN_DIR, entry.name));
+      }
+    }
+    Deno.copyFileSync(srcPath, path.join(BIN_DIR, nmaFilename));
+    safeRemove(srcPath);
+    logger.success(`NMA deployed: ${path.join(BIN_DIR, nmaFilename)}`);
+  } else {
+    logger.warn(`NMA file not found at ${srcPath} or BIN_DIR not ready, skipping deploy`);
   }
 }
 
@@ -131,6 +164,9 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
   } else {
     await runInParallel(prodCommands);
   }
+
+  // Always package browser-features/chrome into NMA and deploy to BIN_DIR
+  await buildAndDeployNMA(version);
 
   if (mode.startsWith("production")) {
     const mounts: Array<[string, string]> = [

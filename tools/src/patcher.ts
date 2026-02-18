@@ -3,6 +3,9 @@
 import * as path from "@std/path";
 import { runCommandChecked, Logger, exists, safeRemove } from "./utils.ts";
 import { BIN_DIR } from "./defines.ts";
+import JSZip from "jszip";
+import { applyPatch, parsePatch, reversePatch } from "diff";
+import type { ParsedDiff } from "diff";
 
 const logger = new Logger("patcher");
 
@@ -11,6 +14,90 @@ const PATCHES_TMP = "_dist/bin/applied_patches";
 
 function binDir(): string {
   return BIN_DIR;
+}
+
+function isOmniMode(): boolean {
+  return exists(path.join(binDir(), "browser", "omni.ja"));
+}
+
+type PatchTarget =
+  | { kind: "omni"; jarFile: string; entryPath: string }
+  | { kind: "flat"; filePath: string };
+
+/** Map a patch file path (e.g. "./browser/modules/Foo.sys.mjs") to its location. */
+function resolvePatchTarget(rawPath: string): PatchTarget {
+  const normalized = rawPath.replace(/^\.\//, "").replace(/^[ab]\//, "");
+  if (normalized.startsWith("browser/")) {
+    return {
+      kind: "omni",
+      jarFile: path.join(binDir(), "browser", "omni.ja"),
+      entryPath: normalized.slice("browser/".length),
+    };
+  }
+  return {
+    kind: "flat",
+    filePath: path.join(binDir(), normalized),
+  };
+}
+
+/**
+ * Apply (or reverse) every hunk in a single .patch file using npm:diff.
+ * Handles both files inside browser/omni.ja and flat files.
+ */
+async function applyPatchFileOmni(
+  patchText: string,
+  reverse: boolean,
+): Promise<void> {
+  const hunks: ParsedDiff[] = parsePatch(patchText);
+
+  // Cache open jars so we only read/write each jar once per call
+  const jarCache = new Map<string, JSZip>();
+
+  for (const hunk of hunks) {
+    const rawPath = hunk.oldFileName ?? "";
+    if (!rawPath || rawPath === "/dev/null") continue;
+
+    const target = resolvePatchTarget(rawPath);
+    const actualHunk = reverse ? (reversePatch(hunk) as ParsedDiff) : hunk;
+
+    if (target.kind === "omni") {
+      if (!jarCache.has(target.jarFile)) {
+        const data = await Deno.readFile(target.jarFile);
+        jarCache.set(target.jarFile, await JSZip.loadAsync(data));
+      }
+      const zip = jarCache.get(target.jarFile)!;
+      const entry = zip.file(target.entryPath);
+      if (!entry) {
+        throw new Error(`Entry not found in omni.ja: ${target.entryPath}`);
+      }
+      const original = await entry.async("string");
+      const patched = applyPatch(original, actualHunk);
+      if (patched === false) {
+        throw new Error(`Failed to apply patch to omni.ja entry: ${target.entryPath}`);
+      }
+      zip.file(target.entryPath, patched, { compression: "STORE" });
+    } else {
+      if (!exists(target.filePath)) {
+        throw new Error(`Flat file not found: ${target.filePath}`);
+      }
+      const original = Deno.readTextFileSync(target.filePath);
+      const patched = applyPatch(original, actualHunk);
+      if (patched === false) {
+        throw new Error(`Failed to apply patch to flat file: ${target.filePath}`);
+      }
+      Deno.writeTextFileSync(target.filePath, patched as string);
+    }
+  }
+
+  // Flush modified jars back to disk with STORE compression
+  for (const [jarPath, zip] of jarCache) {
+    const out = await zip.generateAsync({
+      type: "uint8array",
+      compression: "STORE",
+      compressionOptions: { level: 0 },
+    });
+    await Deno.writeFile(jarPath, out);
+  }
 }
 
 function gitInitialized(dir: string): boolean {
@@ -68,11 +155,13 @@ export function patchNeeded(): boolean {
   return false;
 }
 
-export function applyPatches(): void {
+export async function applyPatches(): Promise<void> {
   if (!patchNeeded()) {
     logger.info("No patches needed to apply.");
     return;
   }
+
+  const omni = isOmniMode();
 
   // Reverse previously applied patches if any
   if (exists(PATCHES_TMP)) {
@@ -83,24 +172,34 @@ export function applyPatches(): void {
       .sort();
     for (const patch of entries) {
       const patchPath = path.join(PATCHES_TMP, patch);
-      const result = runCommandChecked(
-        "git",
-        [
-          "apply",
-          "-R",
-          "--reject",
-          "--whitespace=fix",
-          "--unsafe-paths",
-          "--directory",
-          binDir(),
-          patchPath,
-        ],
-        undefined,
-      );
-      if (!result.success) {
-        logger.warn(`Failed to reverse patch: ${patchPath}`);
-        logger.warn(result.stderr);
-        reverseIsAborted = true;
+      if (omni) {
+        try {
+          await applyPatchFileOmni(Deno.readTextFileSync(patchPath), true);
+        } catch (e: any) {
+          logger.warn(`Failed to reverse patch: ${patchPath}`);
+          logger.warn(e?.message ?? String(e));
+          reverseIsAborted = true;
+        }
+      } else {
+        const result = runCommandChecked(
+          "git",
+          [
+            "apply",
+            "-R",
+            "--reject",
+            "--whitespace=fix",
+            "--unsafe-paths",
+            "--directory",
+            binDir(),
+            patchPath,
+          ],
+          undefined,
+        );
+        if (!result.success) {
+          logger.warn(`Failed to reverse patch: ${patchPath}`);
+          logger.warn(result.stderr);
+          reverseIsAborted = true;
+        }
       }
     }
     if (reverseIsAborted) throw new Error("Reverse Patch Failed: aborted");
@@ -124,30 +223,41 @@ export function applyPatches(): void {
     if (!patch.endsWith(".patch")) continue;
     const patchPath = path.join(PATCHES_DIR, patch);
     logger.info(`Applying patch: ${patchPath}`);
-    const result = runCommandChecked(
-      "git",
-      [
-        "apply",
-        "--reject",
-        "--whitespace=fix",
-        "--unsafe-paths",
-        "--directory",
-        binDir(),
-        patchPath,
-      ],
-      undefined,
-    );
-    if (result.success) {
+    if (omni) {
       try {
+        await applyPatchFileOmni(Deno.readTextFileSync(patchPath), false);
         Deno.copyFileSync(patchPath, path.join(PATCHES_TMP, patch));
       } catch (e: any) {
-        logger.warn(`Failed to copy patch to tmp: ${e?.message ?? e}`);
+        logger.warn(`Failed to apply patch: ${patchPath}`);
+        logger.warn(e?.message ?? String(e));
         aborted = true;
       }
     } else {
-      logger.warn(`Failed to apply patch: ${patchPath}`);
-      logger.warn(result.stderr);
-      aborted = true;
+      const result = runCommandChecked(
+        "git",
+        [
+          "apply",
+          "--reject",
+          "--whitespace=fix",
+          "--unsafe-paths",
+          "--directory",
+          binDir(),
+          patchPath,
+        ],
+        undefined,
+      );
+      if (result.success) {
+        try {
+          Deno.copyFileSync(patchPath, path.join(PATCHES_TMP, patch));
+        } catch (e: any) {
+          logger.warn(`Failed to copy patch to tmp: ${e?.message ?? e}`);
+          aborted = true;
+        }
+      } else {
+        logger.warn(`Failed to apply patch: ${patchPath}`);
+        logger.warn(result.stderr);
+        aborted = true;
+      }
     }
   }
   if (aborted) throw new Error("Patch failed: aborted");
@@ -194,10 +304,10 @@ export function createPatches(): void {
   }
 }
 
-export function run(action = "apply"): void {
+export async function run(action = "apply"): Promise<void> {
   switch (action) {
     case "apply":
-      applyPatches();
+      await applyPatches();
       break;
     case "create":
       createPatches();

@@ -2,8 +2,7 @@
 
 import * as t from 'io-ts';
 import { commands } from './commands';
-import { getOrElseW } from 'fp-ts/Either';
-import { pipe } from 'fp-ts/function';
+import { pipe } from '@mobily/ts-belt';
 
 // KeyCodes list
 export const keyCodesList = {
@@ -80,9 +79,10 @@ export function floorpCSKToNora(data: FloorpCSKData): CSKData {
 
   return pipe(
     CSKDataCodec.decode(arr),
-    getOrElseW(errors => {
-      throw new Error(`Invalid CSKData: ${JSON.stringify(errors)}`);
-    })
+    (either) => {
+      if (either._tag === 'Right') return either.right;
+      throw new Error(`Invalid CSKData: ${JSON.stringify(either.left)}`);
+    }
   );
 }
 

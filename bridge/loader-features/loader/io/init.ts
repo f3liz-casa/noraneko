@@ -27,7 +27,6 @@ export const registerModuleInstance = (
   module: LoadedModule,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   instance: any,
-  isHotfix: boolean,
 ): void => {
   if (!instance) return;
 
@@ -35,7 +34,6 @@ export const registerModuleInstance = (
     module.metadata.moduleName,
     instance,
     module.metadata,
-    isHotfix,
   );
 };
 
@@ -55,9 +53,16 @@ export const initModule = async (module: LoadedModule): Promise<void> => {
     await onModuleLoaded(dep);
   }
 
-  // Create instance (decorator auto-runs init via constructor)
-  const instance = module?.default ? new module.default() : null;
-  registerModuleInstance(module, instance, false);
+  // Create instance - handle both old class-based and new ModuleHandle patterns.
+  // ModuleHandle (from registerModule()) is a plain object with a `create` method;
+  // it self-registers at import time, so we skip construction here.
+  const isModuleHandle =
+    module?.default !== null &&
+    typeof module?.default === "object" &&
+    typeof module?.default?.create === "function";
+  const instance =
+    !isModuleHandle && module?.default ? new module.default() : null;
+  registerModuleInstance(module, instance);
   registerModuleLoadState(module.name, true);
 };
 
@@ -114,9 +119,14 @@ export const initializeModulesForHotswap = async (
   for (const module of sortedModules) {
     try {
       console.log("[noraneko] Hotswap init: " + module.name);
-      const instance = module?.default ? new module.default() : null;
-      // NMA modules are always from the primary source, not hotfixes
-      registerModuleInstance(module, instance, false);
+      const isModuleHandle =
+        module?.default !== null &&
+        typeof module?.default === "object" &&
+        typeof module?.default?.create === "function";
+      const instance =
+        !isModuleHandle && module?.default ? new module.default() : null;
+      // NMA modules are always from the primary source
+      registerModuleInstance(module, instance);
     } catch (e) {
       console.error(`[noraneko] Hotswap init failed for ${module.name}:`, e);
     }

@@ -71,7 +71,7 @@ The `@nora/shared` alias is configured in multiple locations for maximum compati
 
 The shared code uses:
 - **io-ts** for runtime type validation
-- **fp-ts** for functional programming utilities
+- **@mobily/ts-belt** for functional programming utilities
 - TypeScript for static type checking
 
 Dependencies are managed in `browser-features/shared/package.json`.

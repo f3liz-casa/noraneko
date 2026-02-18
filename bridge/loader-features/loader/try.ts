@@ -7,7 +7,7 @@
  * - Try type (Success/Failure) for error handling
  */
 
-import * as E from "fp-ts/lib/Either.js";
+import { R } from "@mobily/ts-belt";
 
 export const _success = Symbol("Success");
 export const _failure = Symbol("Failure");
@@ -65,13 +65,13 @@ export const mapTry = <T, U, E>(t: Try<T, E>, fn: (v: T) => U): Try<U, E> =>
   isSuccess(t) ? Success(fn(t.value)) : t;
 
 // ============================================================================
-// fp-ts Either interop
+// ts-belt Result interop
 // ============================================================================
 
-/** Convert Try to Either */
-export const toEither = <T, E>(t: Try<T, E>): E.Either<E, T> =>
-  isSuccess(t) ? E.right(t.value) : E.left(t.error);
+/** Convert Try to Result */
+export const toResult = <T, E>(t: Try<T, E>): R.Result<T, E> =>
+  isSuccess(t) ? R.Ok(t.value) : R.Error(t.error);
 
-/** Convert Either to Try */
-export const fromEither = <T, E>(either: E.Either<E, T>): Try<T, E> =>
-  E.isRight(either) ? Success(either.right) : Failure(either.left);
+/** Convert Result to Try */
+export const fromResult = <T, E>(result: R.Result<T, E>): Try<T, E> =>
+  R.match(result, (v) => Success(v), (e) => Failure(e));

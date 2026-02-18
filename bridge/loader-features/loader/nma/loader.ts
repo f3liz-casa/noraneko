@@ -9,12 +9,7 @@
 
 import {
   NMAManifest,
-  HotfixManifest,
-  HotfixStatus,
-  InstalledHotfix,
-  UpdateChannel,
   NMAVerificationStatus,
-  HotfixConsentResult,
   NMAVerificationResult,
 } from "./types.ts";
 
@@ -30,10 +25,7 @@ import * as Verifier from "./verifier.ts";
 export const initializeNMALoader = async (): Promise<boolean> => {
   console.log("[NMA] Initializing...");
 
-  // 1. Initialize Hotfix System (parallel/prep)
-  await initializeHotfixSystem();
-
-  // 2. Locate NMA File
+  // Locate NMA File
   const nmaPath = await IO.resolveNMAPath();
   if (!nmaPath) {
     console.log("[NMA] No NMA file found, using built-in modules");
@@ -43,7 +35,7 @@ export const initializeNMALoader = async (): Promise<boolean> => {
   state.loader.nmaPath = nmaPath;
   console.log(`[NMA] Found archive: ${nmaPath}`);
 
-  // 3. Verify NMA
+  // Verify NMA
   const verificationResult = await verifyNMA(nmaPath);
   if (!verificationResult.isValid) {
     console.error(
@@ -58,7 +50,7 @@ export const initializeNMALoader = async (): Promise<boolean> => {
     return false;
   }
 
-  // 4. Load Manifest
+  // Load Manifest
   const manifest = await readNMAManifest(nmaPath);
   if (!manifest) {
     console.error("[NMA] Failed to read manifest");
@@ -210,10 +202,6 @@ export const activateNMAModules = async (): Promise<string[]> => {
 // Hotswap Support
 // ============================================================================
 
-// ============================================================================
-// Hotswap Support
-// ============================================================================
-
 const getCoreLib = async () => {
   try {
     const url = getNMAModuleUrl("lib/core/mod.ts");
@@ -224,14 +212,10 @@ const getCoreLib = async () => {
   }
 };
 
-/**
- * Cleanup a module instance using Core registry
- */
 const cleanupModuleInstance = async (name: string): Promise<void> => {
   const core = await getCoreLib();
   if (core && typeof core.unregister === "function") {
     try {
-      // Core unregister handles lifecycle cleanup
       core.unregister(name);
       emitEvent("nma-module-cleanup", { name });
     } catch (e) {
@@ -240,10 +224,6 @@ const cleanupModuleInstance = async (name: string): Promise<void> => {
   }
 };
 
-/**
- * Hotswap a single module (unload + reload)
- * Side effect: cleans up old instance, invalidates cache, loads new instance
- */
 export const hotswapModule = async (moduleName: string): Promise<boolean> => {
   const module = getNMAModule(moduleName);
   if (!module) {
@@ -253,18 +233,12 @@ export const hotswapModule = async (moduleName: string): Promise<boolean> => {
 
   console.log(`[NMA] Hotswapping module: ${moduleName}`);
 
-  // 1. Cleanup existing instance via Core
   await cleanupModuleInstance(moduleName);
 
-  // 2. Reload module with cache busting
-  // Since Cu.unload is not available, we use a query parameter to force a fresh load.
-  // The old module remains in memory until browser restart.
   const moduleUrl = getNMAModuleUrl(module.path);
   const bustUrl = `${moduleUrl}?t=${Date.now()}`;
 
   try {
-    // We bypass loadNMAModule wrapper here to use the busted URL directly
-    // but we still need to register it as loaded.
     await IO.loadModule(bustUrl);
 
     if (!state.loader.loadedModules.includes(moduleName)) {
@@ -279,10 +253,6 @@ export const hotswapModule = async (moduleName: string): Promise<boolean> => {
   }
 };
 
-/**
- * Hotswap multiple modules based on recommendation
- * Side effect: hotswaps modules according to HotswapRecommendation
- */
 export const hotswapByRecommendation = async (
   recommendation: import("./types.ts").HotswapRecommendation,
 ): Promise<{ swapped: string[]; failed: string[] }> => {
@@ -293,12 +263,10 @@ export const hotswapByRecommendation = async (
   }
 
   if (recommendation.mode === HotswapMode.FULL) {
-    // Full reload required - return all loaded modules as "failed"
     console.warn(`[NMA] Full reload required: ${recommendation.reason}`);
     return { swapped: [], failed: [...state.loader.loadedModules] };
   }
 
-  // Selective hotswap
   const swapped: string[] = [];
   const failed: string[] = [];
 
@@ -329,14 +297,10 @@ export const hotswapByRecommendation = async (
   return { swapped, failed };
 };
 
-/**
- * Check for module changes and get hotswap recommendation
- */
 export const checkModuleChanges = async (): Promise<
   import("./types.ts").HotswapRecommendation
 > => {
-  const { analyzeHotfixChanges } = await import("./hashing.ts");
-  const { getHotfixDir } = await import("./io.ts");
+  const { analyzeNMAChanges } = await import("./hashing.ts");
 
   if (!state.loader.currentNMA) {
     const { HotswapMode } = await import("./types.ts");
@@ -347,10 +311,10 @@ export const checkModuleChanges = async (): Promise<
     };
   }
 
-  // Analyze changes
+  const installDir = IO.getInstallDir();
   const modulePaths = state.loader.currentNMA.modules.map((m) => m.path);
-  const analysis = await analyzeHotfixChanges(
-    getHotfixDir(),
+  const analysis = await analyzeNMAChanges(
+    installDir,
     state.loader.currentNMA.buildId,
     modulePaths,
   );
@@ -358,252 +322,3 @@ export const checkModuleChanges = async (): Promise<
   return analysis.recommendation;
 };
 
-// ============================================================================
-// Hotfix System
-// ============================================================================
-
-export const initializeHotfixSystem = async (): Promise<void> => {
-  state.currentChannel = IO.detectUpdateChannel();
-  await IO.ensureHotfixDir();
-
-  // Apply installed hotfixes
-  const installed = IO.getInstalledHotfixes();
-  for (const hf of installed) {
-    if (hf.status === HotfixStatus.INSTALLED) {
-      await applyHotfix(hf.id);
-    }
-  }
-
-  // Auto-update check
-  if (state.currentChannel === UpdateChannel.NIGHTLY) {
-    await startAutoUpdateChecking();
-  }
-};
-
-// --- Hotfix Actions ---
-
-export const fetchAvailableHotfixes = async (): Promise<HotfixManifest[]> => {
-  try {
-    const url = IO.getManifestUrl();
-    const manifests = await IO.fetchJson<HotfixManifest[]>(url);
-    return filterApplicableHotfixes(manifests);
-  } catch (e) {
-    console.error("[Hotfix] Fetch failed:", e);
-    return [];
-  }
-};
-
-export const downloadHotfix = async (
-  manifest: HotfixManifest,
-): Promise<boolean> => {
-  console.log(`[Hotfix] Downloading ${manifest.id}`);
-  const hotfixPath = PathUtils.join(IO.getHotfixDir(), manifest.id);
-
-  try {
-    await IO.makeDirectory(hotfixPath);
-
-    // Verify Manifest
-    const content = JSON.stringify(manifest);
-    const result = await Verifier.verifyHotfixManifest(manifest, content);
-    if (!result.isValid) throw new Error(result.errorMessage);
-
-    // Download Patches
-    for (const patch of manifest.patches) {
-      const patchUrl = new URL(
-        patch.patchedModulePath,
-        IO.getManifestUrl(),
-      ).toString();
-      const patchContent = await IO.fetchText(patchUrl);
-
-      const hash = await Verifier.computeSha256(patchContent);
-      if (hash !== patch.patchedModuleHash)
-        throw new Error(`Hash mismatch for ${patch.moduleName}`);
-
-      const patchFilePath = PathUtils.join(hotfixPath, patch.patchedModulePath);
-      await IO.makeDirectory(PathUtils.parent(patchFilePath));
-      await IO.writeTextFile(patchFilePath, patchContent);
-    }
-
-    await IO.writeTextFile(
-      PathUtils.join(hotfixPath, "manifest.json"),
-      content,
-    );
-    return true;
-  } catch (e) {
-    console.error(`[Hotfix] Download failed for ${manifest.id}:`, e);
-    await IO.removeFileOrDir(hotfixPath);
-    return false;
-  }
-};
-
-export const installHotfix = async (
-  manifest: HotfixManifest,
-): Promise<boolean> => {
-  console.log(`[Hotfix] Installing ${manifest.id}`);
-  const hotfixPath = PathUtils.join(
-    IO.getHotfixDir(),
-    manifest.id,
-    "manifest.json",
-  );
-
-  try {
-    const content = await IO.readTextFile(hotfixPath);
-    const storedManifest = JSON.parse(content) as HotfixManifest;
-
-    // Verify again before install
-    const result = await Verifier.verifyHotfixManifest(storedManifest, content);
-    let verified = result.isValid;
-
-    if (!verified) {
-      const proceed = IO.showConfirmDialog(
-        "⚠️ Verification Failed",
-        `Hotfix ${manifest.id} verification failed: ${result.errorMessage}. Install anyway?`,
-        "Install (Unsafe)",
-        "Cancel",
-      );
-      if (!proceed) return false;
-    }
-
-    // Consent
-    const consent = await requestUserConsent(
-      storedManifest,
-      result.verifiedIdentity,
-      verified,
-    );
-    if (!consent.approved) return false;
-
-    // Apply Logic
-    for (const patch of storedManifest.patches) {
-      // Logic to disable module handled via state/prefs
-      disableModule(patch.moduleName);
-    }
-
-    const record: InstalledHotfix = {
-      id: storedManifest.id,
-      version: storedManifest.version,
-      status: HotfixStatus.INSTALLED,
-      installedAt: new Date().toISOString(),
-      signerIdentity: result.verifiedIdentity || {
-        issuer: "?",
-        subject: "?",
-        repository: "?",
-        workflowRef: "?",
-      },
-      disabledModules: storedManifest.patches.map((p) => p.moduleName),
-      injectedModules: storedManifest.patches.map((p) => p.patchedModulePath),
-    };
-
-    const installed = IO.getInstalledHotfixes().filter(
-      (h) => h.id !== record.id,
-    );
-    installed.push(record);
-    IO.saveInstalledHotfixes(installed);
-
-    notifyRestartRequired(storedManifest);
-    return true;
-  } catch (e) {
-    console.error(`[Hotfix] Install failed for ${manifest.id}:`, e);
-    return false;
-  }
-};
-
-export const applyHotfix = async (id: string): Promise<boolean> => {
-  const path = PathUtils.join(IO.getHotfixDir(), id, "manifest.json");
-  if (!(await IOUtils.exists(path))) return false;
-  console.log(`[Hotfix] Applied ${id}`);
-  return true;
-};
-
-// --- Helpers ---
-
-const filterApplicableHotfixes = (
-  manifests: HotfixManifest[],
-): HotfixManifest[] => {
-  // Version comparison logic omitted for brevity, assuming generic filter
-  return manifests.filter((m) => {
-    if (m.targetChannels && !m.targetChannels.includes(state.currentChannel))
-      return false;
-    return true; // Expand version check if needed
-  });
-};
-
-const disableModule = (name: string) => {
-  const list = IO.getDisabledModules();
-  if (!list.includes(name)) {
-    list.push(name);
-    IO.saveDisabledModules(list);
-  }
-};
-
-const requestUserConsent = async (
-  manifest: HotfixManifest,
-  identity: any,
-  verified: boolean,
-): Promise<HotfixConsentResult> => {
-  if (verified && IO.getTrustedDecisions()[manifest.id]) {
-    return {
-      approved: true,
-      decidedAt: new Date().toISOString(),
-      rememberDecision: true,
-    };
-  }
-
-  const approved = IO.showConfirmDialog(
-    "Install Hotfix?",
-    `Install hotfix ${manifest.id} v${manifest.version}?\n\n${manifest.description}`,
-    "Install",
-    "Cancel",
-  );
-
-  return {
-    approved,
-    decidedAt: new Date().toISOString(),
-    rememberDecision: false,
-  };
-};
-
-const notifyRestartRequired = (manifest: HotfixManifest) => {
-  const restart = IO.showConfirmDialog(
-    "Restart Required",
-    `Hotfix ${manifest.id} installed. Restart now?`,
-    "Restart Now",
-    "Later",
-  );
-  if (restart) IO.restartBrowser();
-};
-
-const startAutoUpdateChecking = async () => {
-  const config = IO.getAutoUpdateConfig();
-  if (!config.enabled) return;
-
-  console.log("[Hotfix] Auto-update started");
-  const checkForUpdates = async () => {
-    const manifests = await fetchAvailableHotfixes();
-    const installedIds = IO.getInstalledHotfixes().map((h) => h.id);
-    const newOnes = manifests.filter((m) => !installedIds.includes(m.id));
-
-    for (const m of newOnes) {
-      if (await downloadHotfix(m)) {
-        await installHotfix(m);
-      }
-    }
-  };
-
-  if (
-    Date.now() - new Date(config.lastCheckTime).getTime() >
-    config.checkInterval
-  ) {
-    await checkForUpdates();
-    config.lastCheckTime = new Date().toISOString();
-    IO.saveAutoUpdateConfig(config);
-  }
-
-  state.autoUpdateTimer = setInterval(checkForUpdates, config.checkInterval);
-};
-
-export const stopAutoUpdateChecking = () => {
-  if (state.autoUpdateTimer) {
-    clearInterval(state.autoUpdateTimer);
-    state.autoUpdateTimer = null;
-  }
-};

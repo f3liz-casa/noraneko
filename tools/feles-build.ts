@@ -71,12 +71,12 @@ async function runDev(): Promise<void> {
 
   // Initial setup
   await Initializer.run();
-  Patcher.run("apply");
+  await Patcher.run("apply");
   Symlinker.run();
 
   const buildid2 = Update.generateUuidV7();
   await Builder.run("dev", buildid2);
-  Injector.run("dev");
+  await Injector.run("dev");
   await Injector.injectXhtmlFromTs(true);
   DevEnvManager.setup();
 
@@ -91,15 +91,13 @@ async function runStage(): Promise<void> {
 
   // Initial setup
   await Initializer.run();
-  Patcher.run("apply");
+  await Patcher.run("apply");
   Symlinker.run();
-
-  // Build production assets
   const buildid2 = Update.generateUuidV7();
   await Builder.run("production", buildid2);
 
   // Inject manifests but keep dev-style directory so dev servers and browser use the built assets
-  Injector.run("dev");
+  await Injector.run("dev");
   await Injector.injectXhtmlFromTs(true);
   DevEnvManager.setup();
 
@@ -129,7 +127,7 @@ async function runBuild(phase?: string): Promise<void> {
 }
 
 async function runPatch(action = "apply"): Promise<void> {
-  Patcher.run(action);
+  await Patcher.run(action);
 }
 
 function printHelp(): void {

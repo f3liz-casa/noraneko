@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.4",
   "dependencies": {
-    "fp-ts": "^2.16.10",
+    "@mobily/ts-belt": "^3.13.1",
     "io-ts": "^2.2.22",
     "solid-js": "^1.9.5",
     "vite": "npm:rolldown-vite@latest"

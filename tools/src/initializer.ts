@@ -4,6 +4,7 @@ import * as path from "@std/path";
 import {
   PLATFORM,
   VERSION,
+  BRANDING,
   PATHS,
   BIN_DIR,
   BIN_ROOT_DIR,
@@ -169,15 +170,29 @@ async function extractNestedZip(
 
 export async function decompressBin(): Promise<void> {
   const binArchive = getBinArchive();
-  const archivePath = path.resolve(binArchive.filename);
   logger.info(`Binary extraction started: ${binArchive.filename}`);
 
   if (!exists(binArchive.filename)) {
-    logger.warn(
-      `${binArchive.filename} not found. Downloading from GitHub release.`,
-    );
-    await downloadBin(binArchive.filename);
+    // Try to find any DMG in root if we are on darwin
+    if (PLATFORM === "darwin") {
+      for (const entry of Deno.readDirSync(PATHS.root)) {
+        if (entry.isFile && entry.name.endsWith(".dmg")) {
+          logger.info(`Found local DMG: ${entry.name}. Using it.`);
+          binArchive.filename = entry.name;
+          break;
+        }
+      }
+    }
+
+    if (!exists(binArchive.filename)) {
+      logger.warn(
+        `${binArchive.filename} not found. Downloading from GitHub release.`,
+      );
+      await downloadBin(binArchive.filename);
+    }
   }
+
+  const archivePath = path.resolve(binArchive.filename);
 
   try {
     // Handle nested zip extraction
@@ -191,6 +206,8 @@ export async function decompressBin(): Promise<void> {
 
         case "darwin": {
           logger.info("macOS extraction (hdiutil)");
+          const destDir = path.join(BIN_ROOT_DIR, BRANDING.base_name);
+          Deno.mkdirSync(destDir, { recursive: true });
           const mountPoint = await Deno.makeTempDir({
             prefix: "nora_dmg_mount_",
           });
@@ -203,13 +220,13 @@ export async function decompressBin(): Promise<void> {
               mountPoint,
               archivePath,
             ]);
-            runCommand("cp", ["-a", `${mountPoint}/.`, BIN_ROOT_DIR]);
+            runCommand("cp", ["-a", `${mountPoint}/.`, destDir]);
             try {
-              runCommand("xattr", ["-rc", BIN_ROOT_DIR]);
+              runCommand("xattr", ["-rc", destDir]);
             } catch {
               // xattr might not be present; ignore
             }
-            runCommand("chmod", ["-R", "755", BIN_ROOT_DIR]);
+            runCommand("chmod", ["-R", "755", destDir]);
           } finally {
             try {
               runCommand("hdiutil", ["detach", "-quiet", mountPoint]);

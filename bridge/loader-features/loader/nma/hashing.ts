@@ -3,7 +3,7 @@
 /**
  * NMA Hashing Logic
  *
- * Pure functions for hash comparison and analysis.
+ * Pure functions for hash comparison and hotswap analysis.
  */
 
 import {
@@ -33,20 +33,16 @@ export const extractModuleName = (filePath: string): string => {
     .replace(/\.tsx$/, "");
 };
 
-export const computeHotfixHashState = async (
-  hotfixDir: string,
-  hotfixId: string,
+export const computeNMAHashState = async (
+  nmaDir: string,
+  buildId: string,
   modulePaths: string[],
 ): Promise<HashState> => {
-  // Compute deno.lock hash
-  const denoLockPath = IO.getHotfixDenoLockPath(hotfixDir, hotfixId);
-  const denoLockHash = (await IO.computeFileHash(denoLockPath)) ?? "";
-
   const moduleHashes: Record<string, ModuleHashInfo> = {};
   const now = Date.now();
 
   for (const modulePath of modulePaths) {
-    const fullPath = IO.getHotfixModulePath(hotfixDir, hotfixId, modulePath);
+    const fullPath = IO.getNMAModulePath(nmaDir, buildId, modulePath);
     const hash = await IO.computeFileHash(fullPath);
 
     if (hash) {
@@ -55,8 +51,11 @@ export const computeHotfixHashState = async (
     }
   }
 
-  return { denoLockHash, moduleHashes, computedAt: now };
+  return { denoLockHash: "", moduleHashes, computedAt: now };
 };
+
+/** @deprecated Use computeNMAHashState */
+export const computeHotfixHashState = computeNMAHashState;
 
 export const compareHashStates = (
   oldState: HashState | null,
@@ -144,9 +143,9 @@ export const getHotswapRecommendation = (
   };
 };
 
-export const analyzeHotfixChanges = async (
-  hotfixDir: string,
-  hotfixId: string,
+export const analyzeNMAChanges = async (
+  nmaDir: string,
+  buildId: string,
   modulePaths: string[],
 ): Promise<{
   newState: HashState;
@@ -154,16 +153,15 @@ export const analyzeHotfixChanges = async (
   recommendation: HotswapRecommendation;
 }> => {
   const oldState = IO.getStoredHashState();
-  const newState = await computeHotfixHashState(
-    hotfixDir,
-    hotfixId,
-    modulePaths,
-  );
+  const newState = await computeNMAHashState(nmaDir, buildId, modulePaths);
   const comparison = compareHashStates(oldState, newState);
   const recommendation = getHotswapRecommendation(comparison);
 
   return { newState, comparison, recommendation };
 };
+
+/** @deprecated Use analyzeNMAChanges */
+export const analyzeHotfixChanges = analyzeNMAChanges;
 
 export const logHashComparison = (comparison: HashComparisonResult): void => {
   console.log("[Hash] Comparison results:");
@@ -172,3 +170,4 @@ export const logHashComparison = (comparison: HashComparisonResult): void => {
   console.log(`  - New: ${comparison.newModules.join(", ") || "none"}`);
   console.log(`  - Removed: ${comparison.removedModules.join(", ") || "none"}`);
 };
+
