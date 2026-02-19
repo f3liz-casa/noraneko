@@ -32,6 +32,7 @@ function buildFlatManifestContent(mode: string): string {
   return [
     "content noraneko content/ contentaccessible=yes",
     "content noraneko-startup startup/ contentaccessible=yes",
+    `content noraneko-newtab pages-newtab contentaccessible=yes`,
     "skin noraneko classic/1.0 skin/",
     "resource noraneko resource/ contentaccessible=yes",
     "resource noraneko-loader loader/ contentaccessible=yes",
@@ -53,6 +54,7 @@ function buildOmniManifestLines(mode: string): string[] {
     OMNI_SECTION_BEGIN,
     `content noraneko ${toUri("browser-features/chrome/_dist")} contentaccessible=yes`,
     `content noraneko-startup ${toUri("bridge/startup/_dist")} contentaccessible=yes`,
+    `content noraneko-newtab ${toUri("browser-features/pages-newtab/_dist")} contentaccessible=yes`,
     `skin noraneko classic/1.0 ${toUri("browser-features/skin")}`,
     `resource noraneko ${toUri("bridge/loader-modules/_dist")} contentaccessible=yes`,
     `resource noraneko-loader ${toUri("bridge/loader-features/_dist")} contentaccessible=yes`,
@@ -148,6 +150,7 @@ function runFlat(mode: string, dirName: string): void {
     ["resource", "bridge/loader-modules/_dist"],
     ["loader", "bridge/loader-features/_dist"],
     ["aboutdialog", "browser-features/pages-aboutDialog/_dist"],
+    ["newtab","browser-features/pages-newtab/_dist"]
   ];
 
   for (const [subdir, target] of mounts) {

@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: MPL-2.0
 
 export class NRAboutNewTabChild extends JSWindowActorChild {
-  handleEvent(event) {
+  handleEvent(event: Event) {
     if (event.type === "DOMContentLoaded") {
-      //https://searchfox.org/mozilla-central/rev/3a34b4616994bd8d2b6ede2644afa62eaec817d1/browser/actors/AboutNewTabChild.sys.mjs#70
-      Services.scriptloader.loadSubScript(
-        "chrome://noraneko-startup/content/about-newtab.js",
-        this.contentWindow,
-      );
+      this.sendAsyncMessage("NewTab:RequestData", {});
+    }
+  }
+
+  receiveMessage(message: { name: string; data: any }) {
+    if (message.name === "NewTab:Data") {
+      const win = this.contentWindow;
+      if (win) {
+        win.dispatchEvent(
+          new win.CustomEvent("noranekoNewtabData", { detail: message.data }),
+        );
+      }
     }
   }
 }

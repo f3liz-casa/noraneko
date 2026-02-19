@@ -20,6 +20,11 @@ const JS_WINDOW_ACTORS: {
 } = {
   //https://searchfox.org/mozilla-central/rev/3a34b4616994bd8d2b6ede2644afa62eaec817d1/browser/components/BrowserGlue.sys.mjs#310
   NRAboutNewTab: {
+    parent: {
+      esModuleURI: localPathToResourceURI(
+        "../actors/NRAboutNewTabParent.sys.mts",
+      ),
+    },
     child: {
       esModuleURI: localPathToResourceURI(
         "../actors/NRAboutNewTabChild.sys.mts",

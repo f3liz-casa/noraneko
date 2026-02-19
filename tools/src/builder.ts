@@ -124,6 +124,10 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
       ["deno", "task", "build"],
       path.join(PROJECT_ROOT, "browser-features/pages-aboutDialog"),
     ],
+    [
+      ["deno", "task", "build"],
+      path.join(PROJECT_ROOT, "browser-features/pages-newtab"),
+    ],
   ];
 
   const prodCommands: CommandTuple[] = [
@@ -161,6 +165,10 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
       ["deno", "task", "build"],
       path.join(PROJECT_ROOT, "browser-features/pages-aboutDialog"),
     ],
+    [
+      ["deno", "task", "build"],
+      path.join(PROJECT_ROOT, "browser-features/pages-newtab"),
+    ],
     // [
     //   [
     //     "deno",
@@ -192,6 +200,7 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
       ["resource", "bridge/loader-modules/_dist"],
       ["loader", "bridge/loader-features/_dist"],
       ["aboutdialog", "browser-features/pages-aboutDialog/_dist"],
+      ["newtab", "browser-features/pages-newtab/_dist"],
     ];
 
     const dirPath = "_dist/noraneko";

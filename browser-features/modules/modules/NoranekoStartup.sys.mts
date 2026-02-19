@@ -32,22 +32,22 @@ export function executeOnce(id: string, callback: () => void): boolean {
 }
 
 function initializeVersionInfo(): void {
-  isFirstRun = !Services.prefs.getStringPref(
-    "browser.startup.homepage_override.mstone",
-    undefined,
-  );
+  // isFirstRun = !Services.prefs.getStringPref(
+  //   "browser.startup.homepage_override.mstone",
+  //   undefined,
+  // );
 
-  const nowVersion = AppConstants.MOZ_APP_VERSION_DISPLAY;
-  const oldVersionPref = Services.prefs.getStringPref(
-    "floorp.startup.oldVersion",
-    undefined,
-  );
+  // const nowVersion = AppConstants.MOZ_APP_VERSION_DISPLAY;
+  // const oldVersionPref = Services.prefs.getStringPref(
+  //   "floorp.startup.oldVersion",
+  //   undefined,
+  // );
 
-  if (oldVersionPref !== nowVersion && !isFirstRun) {
-    isUpdated = true;
-  }
+  // if (oldVersionPref !== nowVersion && !isFirstRun) {
+  //   isUpdated = true;
+  // }
 
-  Services.prefs.setStringPref("floorp.startup.oldVersion", nowVersion);
+  // Services.prefs.setStringPref("floorp.startup.oldVersion", nowVersion);
 }
 
 export function onFinalUIStartup(): void {
@@ -152,15 +152,16 @@ async function checkNewtabUserPreference(): Promise<boolean> {
     return false;
   }
 
-  const result = Services.prefs.getStringPref("floorp.design.configs");
+  // const result = Services.prefs.getStringPref("floorp.design.configs");
 
-  if (!result) {
-    return true;
-  }
+  // if (!result) {
+  //   return true;
+  // }
 
-  const data = JSON.parse(result);
+  // const data = JSON.parse(result);
 
-  return !data.uiCustomization.disableFloorpStart;
+  // return !data.uiCustomization.disableFloorpStart;
+  return true;
 }
 
 /* Register Custom About Pages
