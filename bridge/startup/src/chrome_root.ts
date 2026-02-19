@@ -8,6 +8,6 @@ if (import.meta.env.MODE === "test") {
 } else {
   // tsdown-built loader-features is the primary entrypoint; Vite provides feature modules via NMA.
   //@ts-expect-error TS cannot resolve resource:// modules
-  const { initScripts } = ChromeUtils.importESModule("resource://noraneko-loader/mod.js",{global:"current"});
+  const { initScripts } = await import("resource://noraneko-loader/mod.js");
   await initScripts();
 }

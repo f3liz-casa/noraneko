@@ -3,9 +3,39 @@ import { JSX } from "preact";
 declare module "preact" {
   namespace JSX {
     type XULElementBase = JSX.HTMLAttributes<HTMLElement> & {
+      // layout
       flex?: `${number}`;
+      pack?: string;
+      orient?: "horizontal" | "vertical";
+      align?: string; // e.g. "center", "baseline", etc.
+
+      // localization
       "data-l10n-id"?: string;
-      align?: "center";
+      "data-l10n-name"?: string;
+      "data-l10n-args"?: string;
+
+      // common XUL attributes
+      href?: string;
+      is?: string;
+      useoriginprincipal?: string | boolean;
+      windowtype?: string;
+      hidden?: boolean | string;
+      selected?: string | boolean;
+      pinned?: string | boolean;
+      busy?: string | boolean;
+      fadein?: string | boolean;
+      value?: string;
+      crop?: string;
+      src?: string;
+      role?: string;
+      accesskey?: string;
+      tooltip?: string;
+
+      // ui/css helpers
+      class?: string;
+
+      // allow additional XUL-specific attributes without explicit typing
+      [key: string]: any;
     };
     interface XULBrowserElement extends XULElementBase {
       contextmenu?: string;
@@ -124,10 +154,8 @@ declare module "preact" {
       height?: string;
     }
 
-    interface XULTabElement
-      extends XULElementBase,
-        JSX.HTMLAttributes<HTMLElement> {
-      onwheel?: JSX.EventHandler<WheelEvent>;
+    interface XULTabElement extends XULElementBase {
+      onwheel?: (e: WheelEvent) => void;
     }
 
     interface IntrinsicElements {
@@ -136,6 +164,18 @@ declare module "preact" {
       "xul:button": XULButtonElement;
       "xul:menuitem": XULMenuitemElement;
       "xul:window": XULElementBase;
+      "xul:div": XULElementBase;
+      "xul:stack": XULElementBase;
+      "xul:tabs": XULElementBase;
+      "xul:tab": XULElementBase;
+      "xul:stack": XULElementBase;
+      "xul:richlistbox": XULElementBase;
+      "xul:richlistitem": XULElementBase;
+      "xul:menubar": XULElementBase;
+      "xul:menupopup": XULMenuPopupElement;
+      "xul:menuseparator": XULElementBase;
+      "xul:menulist": XULMenuListElement;
+      "xul:menu": XULMenuElement;
       "xul:linkset": XULElementBase;
       "xul:popupset": XULPopupSetElement;
       "xul:tooltip": XULElementBase;
@@ -185,7 +225,7 @@ declare module "preact" {
         modifiers?: string;
         keycode?: string;
         key?: string;
-        command: string;
+        command?: string;
       };
       "xul:commandset": {
         id?: string;

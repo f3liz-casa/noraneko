@@ -1,0 +1,32 @@
+<html
+  id="aboutDialog"
+  windowtype="Browser:About"
+  role="dialog"
+  data-l10n-id="aboutDialog-title"
+>
+  <head>
+    <title data-l10n-id="aboutDialog-title"></title>
+    <link rel="stylesheet" href="chrome://global/skin/global.css" />
+    <link rel="stylesheet" href="chrome://browser/content/aboutDialog.css" />
+    <link rel="stylesheet" href="chrome://branding/content/aboutDialog.css" />
+    <link
+      rel="stylesheet"
+      href="chrome://noraneko-pages-aboutdialog/content/pico.min.css"
+    />
+    <link rel="localization" href="branding/brand.ftl" />
+    <link rel="localization" href="browser/aboutDialog.ftl" />
+    <script src="chrome://browser/content/utilityOverlay.js"></script>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="chrome://noraneko-pages-aboutdialog/content/main.js"></script>
+  </body>
+</html>

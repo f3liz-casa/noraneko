@@ -1,0 +1,20 @@
+{
+  "name": "@nora/pages-aboutdialog",
+  "imports": {
+    "@deno/vite-plugin": "npm:@deno/vite-plugin@^1.0.5",
+    "preact": "npm:preact@^10.25.4",
+    "preact/compat": "npm:preact@^10.25.4/compat",
+    "preact/hooks": "npm:preact@^10.25.4/hooks",
+    "@preact/signals": "npm:@preact/signals@^1.3.1",
+    "vite": "npm:vite@^7.1.4",
+    "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^4.3.4"
+  },
+  "tasks": {
+    "build": "deno run -A npm:vite build"
+  },
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
+  }
+}

@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-
-
 // @ts-ignore
 import { ActorManagerParent } from "resource://gre/modules/ActorManagerParent.sys.mjs";
 
@@ -67,102 +65,6 @@ const JS_WINDOW_ACTORS: {
     //* port seems to not be supported
     //https://searchfox.org/mozilla-central/rev/3966e5534ddf922b186af4777051d579fd052bad/dom/chrome-webidl/JSWindowActor.webidl#99
     //https://searchfox.org/mozilla-central/rev/3966e5534ddf922b186af4777051d579fd052bad/dom/chrome-webidl/MatchPattern.webidl#17
-    matches: ["*://localhost/*", "chrome://noraneko-settings/*"],
-  },
-  NRTabManager: {
-    parent: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRTabManagerParent.sys.mts",
-      ),
-    },
-    child: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRTabManagerChild.sys.mts",
-      ),
-      events: {
-        DOMDocElementInserted: {},
-      },
-    },
-    matches: ["*://localhost/*", "chrome://noraneko-settings/*"],
-  },
-  NRSyncManager: {
-    parent: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRSyncManagerParent.sys.mts",
-      ),
-    },
-    child: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRSyncManagerChild.sys.mts",
-      ),
-      events: {
-        DOMDocElementInserted: {},
-      },
-    },
-    matches: ["*://localhost/*", "chrome://noraneko-settings/*"],
-  },
-  NRAppConstants: {
-    parent: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRAppConstantsParent.sys.mts",
-      ),
-    },
-    child: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRAppConstantsChild.sys.mts",
-      ),
-      events: {
-        DOMDocElementInserted: {},
-      },
-    },
-    matches: ["*://localhost/*"],
-  },
-  NRRestartBrowser: {
-    parent: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRRestartBrowserParent.sys.mts",
-      ),
-    },
-    child: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRRestartBrowserChild.sys.mts",
-      ),
-      events: {
-        DOMDocElementInserted: {},
-      },
-    },
-    matches: ["*://localhost/*", "chrome://noraneko-settings/*"],
-  },
-  NRProgressiveWebApp: {
-    parent: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRProgressiveWebAppParent.sys.mts",
-      ),
-    },
-    child: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRProgressiveWebAppChild.sys.mts",
-      ),
-      events: {
-        pageshow: {},
-      },
-    },
-    allFrames: true,
-  },
-  NRPwaManager: {
-    parent: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRPwaManagerParent.sys.mts",
-      ),
-    },
-    child: {
-      esModuleURI: localPathToResourceURI(
-        "../actors/NRPwaManagerChild.sys.mts",
-      ),
-      events: {
-        DOMDocElementInserted: {},
-      },
-    },
     matches: ["*://localhost/*", "chrome://noraneko-settings/*"],
   },
 };

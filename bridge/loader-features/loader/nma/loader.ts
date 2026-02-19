@@ -3,7 +3,7 @@
 /**
  * NMA Orchestrator (Loader)
  *
- * Facade that orchestrates data flow between IO, Verifier, and State.
+ * Facade that orchestrates data flow between Core, State, and types.
  * This is the high-level API exposed to the rest of the application.
  */
 
@@ -15,8 +15,7 @@ import {
 
 import { state, emitEvent, getNMATrustedConfig } from "./state.ts";
 
-import * as IO from "./io.ts";
-import * as Verifier from "./verifier.ts";
+import * as Core from "./core.ts";
 
 // ============================================================================
 // NMA Initialization
@@ -25,8 +24,7 @@ import * as Verifier from "./verifier.ts";
 export const initializeNMALoader = async (): Promise<boolean> => {
   console.log("[NMA] Initializing...");
 
-  // Locate NMA File
-  const nmaPath = await IO.resolveNMAPath();
+  const nmaPath = await Core.resolveNMAPath();
   if (!nmaPath) {
     console.log("[NMA] No NMA file found, using built-in modules");
     return false;
@@ -35,22 +33,14 @@ export const initializeNMALoader = async (): Promise<boolean> => {
   state.loader.nmaPath = nmaPath;
   console.log(`[NMA] Found archive: ${nmaPath}`);
 
-  // Verify NMA
   const verificationResult = await verifyNMA(nmaPath);
   if (!verificationResult.isValid) {
-    console.error(
-      "[NMA] Verification failed:",
-      verificationResult.errorMessage,
-    );
-    emitEvent("nma-error", {
-      error: verificationResult.errorMessage,
-      status: verificationResult.status,
-    });
+    console.error("[NMA] Verification failed:", verificationResult.errorMessage);
+    emitEvent("nma-error", { error: verificationResult.errorMessage, status: verificationResult.status });
     state.loader.nmaPath = null;
     return false;
   }
 
-  // Load Manifest
   const manifest = await readNMAManifest(nmaPath);
   if (!manifest) {
     console.error("[NMA] Failed to read manifest");
@@ -60,16 +50,10 @@ export const initializeNMALoader = async (): Promise<boolean> => {
 
   state.loader.currentNMA = manifest;
   state.loader.isActive = true;
+  Core.registerNMAResource(nmaPath);
 
-  // Register the NMA directory as resource://noraneko-nma/ so modules can be
-  // loaded via jar:resource://noraneko-nma/<file>!/ (a trusted scheme)
-  IO.registerNMAResource(nmaPath);
-
-  console.log(
-    `[NMA] Loaded: ${manifest.buildId} (v${manifest.noranekoVersion})`,
-  );
+  console.log(`[NMA] Loaded: ${manifest.buildId} (v${manifest.noranekoVersion})`);
   emitEvent("nma-loaded", { manifest });
-
   return true;
 };
 
@@ -77,77 +61,51 @@ export const initializeNMALoader = async (): Promise<boolean> => {
 // NMA Logic
 // ============================================================================
 
-export const verifyNMA = async (
-  path: string,
-): Promise<NMAVerificationResult> => {
+export const verifyNMA = async (path: string): Promise<NMAVerificationResult> => {
   try {
-    const rawManifest = await IO.readFromZip(path, "manifest.json");
+    const rawManifest = await Core.readFromZip(path, "manifest.json");
     const manifest = JSON.parse(rawManifest) as NMAManifest;
 
-    // Dev mode check
-    const isDev = isDevModeNMAAllowed();
-    if (isDev && !manifest.sigstoreBundle?.bundle) {
+    if (isDevModeNMAAllowed() && !manifest.sigstoreBundle?.bundle) {
       console.warn("[NMA] Allowing unsigned NMA in dev mode");
       return { isValid: true, status: NMAVerificationStatus.VALID, manifest };
     }
 
-    const result = await Verifier.verifyNMAManifest(manifest, rawManifest);
+    const result = await Core.verifyNMAManifest(manifest, rawManifest);
     state.loader.lastVerification = result;
     emitEvent("nma-verified", { result });
     return result;
   } catch (error) {
-    return {
-      isValid: false,
-      status: NMAVerificationStatus.UNKNOWN_ERROR,
-      errorMessage: String(error),
-    };
+    return { isValid: false, status: NMAVerificationStatus.UNKNOWN_ERROR, errorMessage: String(error) };
   }
 };
 
 const readNMAManifest = async (path: string): Promise<NMAManifest | null> => {
   try {
-    const raw = await IO.readFromZip(path, "manifest.json");
-    return JSON.parse(raw) as NMAManifest;
-  } catch {
-    return null;
-  }
+    return JSON.parse(await Core.readFromZip(path, "manifest.json")) as NMAManifest;
+  } catch { return null; }
 };
 
-export const verifyNMAModuleHash = async (
-  moduleUrl: string,
-  expectedHash: string,
-): Promise<boolean> => {
+export const verifyNMAModuleHash = async (moduleUrl: string, expectedHash: string): Promise<boolean> => {
   try {
-    let content: string;
-    if (moduleUrl.startsWith("jar:")) {
-      const response = await fetch(moduleUrl);
-      if (!response.ok) return false;
-      content = await response.text();
-    } else {
-      content = await IO.readTextFile(moduleUrl);
-    }
-    const hash = await Verifier.computeSha256(content);
-    return hash === expectedHash;
-  } catch {
-    return false;
-  }
+    const content = moduleUrl.startsWith("jar:")
+      ? await (await fetch(moduleUrl)).text()
+      : await Core.readTextFile(moduleUrl);
+    return (await Core.computeSha256(content)) === expectedHash;
+  } catch { return false; }
 };
 
 export const isDevModeNMAAllowed = (): boolean => {
   const config = getNMATrustedConfig();
   if (!config.allowUnsignedInDev) return false;
-  // Build-time flag injected via --env.MODE=dev (tsdown loader-features build, future direct loading)
   if (import.meta.env.MODE === "dev") return true;
   try {
     const { AppConstants } = ChromeUtils.importESModule(
       "resource://gre/modules/AppConstants.sys.mjs",
     ) as any;
-    const isDebug = AppConstants.DEBUG ?? false;
     const channel = (AppConstants.MOZ_UPDATE_CHANNEL || "").toLowerCase();
-    return isDebug || channel.includes("nightly") || channel === "default";
-  } catch {
-    return true;
-  }
+    return (AppConstants.DEBUG ?? false) || channel.includes("nightly") || channel === "default";
+  } catch { return true; }
 };
 
 // ============================================================================
@@ -159,34 +117,23 @@ export const getNMAModuleUrl = (modulePath: string): string => {
   return `resource://noraneko-nma/${modulePath}`;
 };
 
-export const hasNMAModule = (moduleName: string): boolean => {
-  return (
-    state.loader.currentNMA?.modules.some((m) => m.name === moduleName) ?? false
-  );
-};
+export const hasNMAModule = (moduleName: string): boolean =>
+  state.loader.currentNMA?.modules.some((m) => m.name === moduleName) ?? false;
 
-export const getNMAModule = (moduleName: string) => {
-  return (
-    state.loader.currentNMA?.modules.find((m) => m.name === moduleName) ?? null
-  );
-};
+export const getNMAModule = (moduleName: string) =>
+  state.loader.currentNMA?.modules.find((m) => m.name === moduleName) ?? null;
 
-export const loadNMAModule = (
-  moduleName: string,
-): Record<string, unknown> | null => {
+export const loadNMAModule = async (moduleName: string): Promise<Record<string, unknown> | null> => {
   const module = getNMAModule(moduleName);
   if (!module) return null;
-
-  // Skip empty modules (e.g. type-only stubs that compile to 0 bytes)
   if (module.size === 0) {
     console.debug(`[NMA] Skipping empty module: ${moduleName}`);
     return null;
   }
-
   try {
-    const url = getNMAModuleUrl(module.path);
-    const exports = IO.loadModule(url);
-    state.loader.loadedModules.push(moduleName);
+    const exports = await Core.loadModule(getNMAModuleUrl(module.path));
+    if (!state.loader.loadedModules.includes(moduleName))
+      state.loader.loadedModules.push(moduleName);
     return exports;
   } catch (e) {
     console.error(`[NMA] Failed to load module ${moduleName}:`, e);
@@ -196,14 +143,9 @@ export const loadNMAModule = (
 
 export const activateNMAModules = async (): Promise<string[]> => {
   if (!state.loader.currentNMA || !state.loader.isActive) return [];
-
   const activated: string[] = [];
-  const essential = state.loader.currentNMA.modules.filter((m) => m.essential);
-
-  for (const mod of essential) {
-    if (await loadNMAModule(mod.name)) {
-      activated.push(mod.name);
-    }
+  for (const mod of state.loader.currentNMA.modules.filter((m) => m.essential)) {
+    if (await loadNMAModule(mod.name)) activated.push(mod.name);
   }
   emitEvent("nma-activated", { modules: activated });
   return activated;
@@ -214,48 +156,29 @@ export const activateNMAModules = async (): Promise<string[]> => {
 // ============================================================================
 
 const getCoreLib = async () => {
-  try {
-    const url = getNMAModuleUrl("lib/core/mod.ts");
-    return await IO.loadModule(url);
-  } catch (e) {
-    console.error("[NMA] Failed to load Core Lib:", e);
-    return null;
-  }
+  try { return await Core.loadModule(getNMAModuleUrl("lib/core/mod.ts")); }
+  catch (e) { console.error("[NMA] Failed to load Core Lib:", e); return null; }
 };
 
 const cleanupModuleInstance = async (name: string): Promise<void> => {
   const core = await getCoreLib();
   if (core && typeof core.unregister === "function") {
-    try {
-      core.unregister(name);
-      emitEvent("nma-module-cleanup", { name });
-    } catch (e) {
-      console.error(`[NMA] Error cleaning up module ${name}:`, e);
-    }
+    try { core.unregister(name); emitEvent("nma-module-cleanup", { name }); }
+    catch (e) { console.error(`[NMA] Error cleaning up module ${name}:`, e); }
   }
 };
 
 export const hotswapModule = async (moduleName: string): Promise<boolean> => {
   const module = getNMAModule(moduleName);
-  if (!module) {
-    console.error(`[NMA] Module ${moduleName} not found in manifest`);
-    return false;
-  }
+  if (!module) { console.error(`[NMA] Module ${moduleName} not found in manifest`); return false; }
 
   console.log(`[NMA] Hotswapping module: ${moduleName}`);
-
   await cleanupModuleInstance(moduleName);
 
-  const moduleUrl = getNMAModuleUrl(module.path);
-  const bustUrl = `${moduleUrl}?t=${Date.now()}`;
-
   try {
-    await IO.loadModule(bustUrl);
-
-    if (!state.loader.loadedModules.includes(moduleName)) {
+    await Core.loadModule(`${getNMAModuleUrl(module.path)}?t=${Date.now()}`);
+    if (!state.loader.loadedModules.includes(moduleName))
       state.loader.loadedModules.push(moduleName);
-    }
-
     emitEvent("nma-module-reload", { name: moduleName });
     return true;
   } catch (e) {
@@ -269,10 +192,7 @@ export const hotswapByRecommendation = async (
 ): Promise<{ swapped: string[]; failed: string[] }> => {
   const { HotswapMode } = await import("./types.ts");
 
-  if (recommendation.mode === HotswapMode.NONE) {
-    return { swapped: [], failed: [] };
-  }
-
+  if (recommendation.mode === HotswapMode.NONE) return { swapped: [], failed: [] };
   if (recommendation.mode === HotswapMode.FULL) {
     console.warn(`[NMA] Full reload required: ${recommendation.reason}`);
     return { swapped: [], failed: [...state.loader.loadedModules] };
@@ -280,56 +200,28 @@ export const hotswapByRecommendation = async (
 
   const swapped: string[] = [];
   const failed: string[] = [];
-
   emitEvent("nma-hotswap-start", { modules: recommendation.modulesToReload });
 
   for (const moduleName of recommendation.modulesToReload) {
-    const success = await hotswapModule(moduleName);
-    if (success) {
-      swapped.push(moduleName);
-    } else {
-      failed.push(moduleName);
-    }
+    (await hotswapModule(moduleName) ? swapped : failed).push(moduleName);
   }
 
   emitEvent("nma-hotswap-complete", { swapped, failed });
-
-  if (swapped.length > 0) {
-    console.log(
-      `[NMA] Hotswapped ${swapped.length} modules: ${swapped.join(", ")}`,
-    );
-  }
-  if (failed.length > 0) {
-    console.error(
-      `[NMA] Failed to hotswap ${failed.length} modules: ${failed.join(", ")}`,
-    );
-  }
+  if (swapped.length > 0) console.log(`[NMA] Hotswapped ${swapped.length} modules: ${swapped.join(", ")}`);
+  if (failed.length > 0) console.error(`[NMA] Failed to hotswap ${failed.length} modules: ${failed.join(", ")}`);
 
   return { swapped, failed };
 };
 
-export const checkModuleChanges = async (): Promise<
-  import("./types.ts").HotswapRecommendation
-> => {
-  const { analyzeNMAChanges } = await import("./hashing.ts");
+export const checkModuleChanges = async (): Promise<import("./types.ts").HotswapRecommendation> => {
+  const { HotswapMode } = await import("./types.ts");
+  if (!state.loader.currentNMA)
+    return { mode: HotswapMode.NONE, modulesToReload: [], reason: "No NMA loaded" };
 
-  if (!state.loader.currentNMA) {
-    const { HotswapMode } = await import("./types.ts");
-    return {
-      mode: HotswapMode.NONE,
-      modulesToReload: [],
-      reason: "No NMA loaded",
-    };
-  }
-
-  const installDir = IO.getInstallDir();
-  const modulePaths = state.loader.currentNMA.modules.map((m) => m.path);
-  const analysis = await analyzeNMAChanges(
-    installDir,
+  const analysis = await Core.analyzeNMAChanges(
+    Core.getInstallDir(),
     state.loader.currentNMA.buildId,
-    modulePaths,
+    state.loader.currentNMA.modules.map((m) => m.path),
   );
-
   return analysis.recommendation;
 };
-

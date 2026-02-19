@@ -11,36 +11,30 @@
 // Result Type (Tuple-based)
 // ============================================================================
 
-export type Result<T, E extends Error = Error> = [T, null] | [null, E];
+import { R } from "@mobily/ts-belt";
 
-export const ok = <T>(value: T): [T, null] => [value, null];
+// Compatibility thin wrapper: previously the library used a tuple-based
+// Result type. Internally we now prefer ts-belt's `R.Result`. Export a few
+// helper functions matching the previous API backed by ts-belt.
 
-export const err = <T = never>(error: string | Error): Result<T, Error> =>
-  [null, typeof error === "string" ? new Error(error) : error];
+export type Result<T, E = Error> = R.Result<T, E>;
 
-export const isOk = <T, E extends Error>(
-  result: Result<T, E>,
-): result is [T, null] => result[1] === null;
+export const ok = <T>(value: T) => R.Ok(value);
 
-export const isErr = <T, E extends Error>(
-  result: Result<T, E>,
-): result is [null, E] => result[1] !== null;
+export const err = <E = Error>(error: string | E) =>
+  R.Error(error instanceof Error ? (error as E) : (new Error(String(error)) as unknown as E));
 
-export const unwrap = <T, E extends Error>(result: Result<T, E>): T => {
-  if (isErr(result)) throw result[1];
-  return result[0];
-};
+export const isOk = <T, E = Error>(result: Result<T, E>): result is R.Ok<T> => R.isOk(result as any);
 
-export const unwrapOr = <T, E extends Error>(
-  result: Result<T, E>,
-  defaultValue: T,
-): T => (isOk(result) ? result[0] : defaultValue);
+export const isErr = <T, E = Error>(result: Result<T, E>): result is R.Error<E> => R.isError(result as any);
 
-export const mapResult = <T, U, E extends Error>(
-  result: Result<T, E>,
-  fn: (v: T) => U,
-): Result<U, E> =>
-  isOk(result) ? [fn(result[0]), null] : [null, result[1]];
+export const unwrap = <T, E = Error>(result: Result<T, E>): T => R.unwrap(result as any) as T;
+
+export const unwrapOr = <T, E = Error>(result: Result<T, E>, defaultValue: T): T =>
+  R.match(result as any, (v) => v, () => defaultValue) as T;
+
+export const mapResult = <T, U, E = Error>(result: Result<T, E>, fn: (v: T) => U): Result<U, E> =>
+  R.match(result as any, (v) => R.Ok(fn(v)), (e) => R.Error(e)) as Result<U, E>;
 
 // ============================================================================
 // Event Dispatcher Registry

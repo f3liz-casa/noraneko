@@ -35,6 +35,8 @@ function buildFlatManifestContent(mode: string): string {
     "skin noraneko classic/1.0 skin/",
     "resource noraneko resource/ contentaccessible=yes",
     "resource noraneko-loader loader/ contentaccessible=yes",
+    "content noraneko-pages-aboutdialog aboutdialog/ contentaccessible=yes",
+    "override chrome://browser/content/aboutDialog.xhtml chrome://noraneko-pages-aboutdialog/content/aboutDialog.xhtml",
     mode !== "dev" ? "content noraneko-settings settings/ contentaccessible=yes" : "",
   ]
     .filter(Boolean)
@@ -54,6 +56,8 @@ function buildOmniManifestLines(mode: string): string[] {
     `skin noraneko classic/1.0 ${toUri("browser-features/skin")}`,
     `resource noraneko ${toUri("bridge/loader-modules/_dist")} contentaccessible=yes`,
     `resource noraneko-loader ${toUri("bridge/loader-features/_dist")} contentaccessible=yes`,
+    `content noraneko-pages-aboutdialog ${toUri("browser-features/pages-aboutDialog/_dist")} contentaccessible=yes`,
+    `override chrome://browser/content/aboutDialog.xhtml chrome://noraneko-pages-aboutdialog/content/aboutDialog.html`,
   ];
   if (mode !== "dev") {
     // Production adds a settings package; adjust the source path as needed.
@@ -143,6 +147,7 @@ function runFlat(mode: string, dirName: string): void {
     ["skin", "browser-features/skin"],
     ["resource", "bridge/loader-modules/_dist"],
     ["loader", "bridge/loader-features/_dist"],
+    ["aboutdialog", "browser-features/pages-aboutDialog/_dist"],
   ];
 
   for (const [subdir, target] of mounts) {

@@ -95,6 +95,7 @@ async function runStage(): Promise<void> {
   Symlinker.run();
   const buildid2 = Update.generateUuidV7();
   await Builder.run("stage", buildid2);
+  await Injector.run("stage");
   await Injector.injectXhtmlFromTs(true);
   DevEnvManager.setup();
 
