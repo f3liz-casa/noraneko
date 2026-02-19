@@ -21,8 +21,8 @@ export {
   selectedTab,
   orderedTabs,
   allGroups,
-  setSelectedTab,
   updateConfig,
+  send,
 } from "./state/store.ts";
 
 // Export Operations

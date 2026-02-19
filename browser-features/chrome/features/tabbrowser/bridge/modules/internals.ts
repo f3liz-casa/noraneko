@@ -3,7 +3,7 @@
 // Section: Internal URI/Load · Tab Move/Position · Group/SplitView · Tab State · Utility
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, selectedTab as selectedTabSignal, orderedTabs, updateState } from "../../state/store.ts";
+import { appState, selectedTab as selectedTabSignal, orderedTabs } from "../../state/store.ts";
 import * as TabOps from "../../ops/tab-ops.ts";
 import * as GroupOps from "../../ops/group-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";

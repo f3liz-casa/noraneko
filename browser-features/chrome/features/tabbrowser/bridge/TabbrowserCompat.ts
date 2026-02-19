@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { appState, selectedTab as selectedTabSignal, orderedTabs, setSelectedTab, updateState } from "../state/store.ts";
+import { appState, selectedTab as selectedTabSignal, orderedTabs, send } from "../state/store.ts";
 import * as TabOps from "../ops/tab-ops.ts";
 import * as GroupOps from "../ops/group-ops.ts";
 import { DOMRegistry } from "./DOMRegistry.ts";
@@ -81,7 +81,7 @@ export class TabbrowserCompat {
       // Rely on original TabStateFlusher to save data before discard
       (this as any).TabStateFlusher.flush(this.getBrowserForTab(tab));
       
-      updateState(state => TabOps.discardTab(state, id));
+      send({ type: "DISCARD_TAB", tabId: id });
       const browser = DOMRegistry.getBrowser(id);
       if (browser) {
           browser.parentNode?.parentNode?.parentNode?.remove();
@@ -120,11 +120,11 @@ export class TabbrowserCompat {
         break;
       case "DOMAudioPlaybackStarted":
         const startTab = this.getTabForBrowser(event.target);
-        if (startTab) updateState(s => TabOps.updateAudioState(s, startTab._tabId, { soundPlaying: true }));
+        if (startTab) send({ type: "UPDATE_AUDIO_STATE", tabId: startTab._tabId, soundPlaying: true });
         break;
       case "DOMAudioPlaybackStopped":
         const stopTab = this.getTabForBrowser(event.target);
-        if (stopTab) updateState(s => TabOps.updateAudioState(s, stopTab._tabId, { soundPlaying: false }));
+        if (stopTab) send({ type: "UPDATE_AUDIO_STATE", tabId: stopTab._tabId, soundPlaying: false });
         break;
     }
   }
@@ -159,7 +159,7 @@ export class TabbrowserCompat {
   set selectedTab(val: any) {
     if (val && (val as any)._tabId) {
       const oldTab = this.selectedTab;
-      setSelectedTab((val as any)._tabId);
+      send({ type: "SELECT_TAB", tabId: (val as any)._tabId });
       val.dispatchEvent(new CustomEvent("TabSelect", { bubbles: true, detail: { previousTab: oldTab } }));
       this._tabAttrModified(oldTab, ["selected"]);
       this._tabAttrModified(val, ["selected"]);
@@ -172,7 +172,7 @@ export class TabbrowserCompat {
     const id = crypto.randomUUID();
     const tabIndex = TabOps.calculateInsertionIndex(appState.value, { tabIndex: options.tabIndex, openerTabId: options.openerTabId, isPinned: options.pinned });
     const newTabData = TabOps.createTab(id, uri, options);
-    updateState(state => TabOps.addTab(state, newTabData, tabIndex));
+    send({ type: "ADD_TAB", tab: newTabData, index: tabIndex });
     if (!options.createLazyBrowser) this._insertBrowser(id, options);
     const tabEl = DOMRegistry.getTab(id);
     if (tabEl) tabEl.dispatchEvent(new CustomEvent("TabOpen", { bubbles: true, detail: options.eventDetail }));
@@ -190,7 +190,7 @@ export class TabbrowserCompat {
   _beginRemoveTab(tab: any, options: any = {}): boolean {
     const id = tab._tabId;
     if (appState.value.tabs[id]?.isClosing) return false;
-    updateState(s => TabOps.beginCloseTab(s, id));
+    send({ type: "BEGIN_CLOSE_TAB", tabId: id });
     tab.dispatchEvent(new CustomEvent("TabClose", { bubbles: true, detail: options }));
     return true;
   }
@@ -199,7 +199,7 @@ export class TabbrowserCompat {
     const id = tab._tabId;
     const browser = DOMRegistry.getBrowser(id);
     if (browser) { browser.parentNode?.parentNode?.parentNode?.remove(); DOMRegistry.unregisterBrowser(id); }
-    updateState(s => TabOps.endCloseTab(s, id));
+    send({ type: "END_CLOSE_TAB", tabId: id });
   }
 
   // Forwarded properties

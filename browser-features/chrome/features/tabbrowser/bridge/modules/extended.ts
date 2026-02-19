@@ -3,17 +3,15 @@
 // Section: Extended Ops · Tab Groups · Window Ops · Selection · UI · Progress Callbacks · Stubs · Sponsor
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState } from "../../state/store.ts";
+import { appState, send, orderedTabs } from "../../state/store.ts";
 import * as TabOps from "../../ops/tab-ops.ts";
 import * as GroupOps from "../../ops/group-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
 import { BrowserSystem } from "../BrowserSystem.ts";
 import type { TabId, GroupId, SplitViewId } from "../../types/TabState.ts";
-import { resolveTabId, dispatch } from "../compat-helpers.ts";
+import { resolveTabId, dispatch, createTabStub } from "../compat-helpers.ts";
 
 declare const SharingUtils: any;
-declare const orderedTabs: { value: any[] };
-declare const updateState: (fn: (d: any) => void) => void;
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
@@ -219,15 +217,8 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   /**
    * Create a new tab group from a set of tabs and/or split-view wrappers.
    *
-   * This is the canonical way to create groups in the browser UI — it
-   * creates the group state, assigns tabs, and fires `TabGroupCreated`.
-   *
    * @param tabsAndSplitViews - Tabs or split-view wrapper elements to group
-   * @param options.id        - Explicit group ID (generated if omitted)
-   * @param options.color     - Color token (default `"blue"`)
-   * @param options.label     - User-visible group label
    * @returns The new `TabGroupData` state object, or `null` on failure
-   * @throws When called with an empty array
    */
   addTabGroup(tabsAndSplitViews: any[], options: {
     id?: string | null;
@@ -251,8 +242,8 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     const groupId = options.id || GroupOps.generateLegacyId();
     const color = options.color || "blue";
 
-    appState.value = GroupOps.createGroup(appState.value, groupId, options.label || "", color);
-    appState.value = GroupOps.addTabsToGroup(appState.value, groupId, tabIds);
+    send({ type: "CREATE_GROUP", id: groupId, title: options.label || "", color });
+    send({ type: "ADD_TABS_TO_GROUP", groupId, tabIds });
 
     const groupData = appState.value.groups[groupId];
     if (!groupData) return null;
@@ -263,11 +254,6 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
 
   /**
    * Remove all tabs in a group and delete the group.
-   *
-   * Runs `beforeunload` handlers first; if any handler cancels, the removal
-   * is aborted.
-   *
-   * @param group - Group object or `{ id }` with the group ID
    */
   async removeTabGroup(group: MozTabbrowserTabGroup, options: {
     animate?: boolean;
@@ -282,62 +268,43 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     const groupData = appState.value.groups[groupId];
     if (!groupData) return;
 
-    const tabs = groupData.tabs.map((id: any) => (this as any)._tabStub(id));
+    const tabs = groupData.tabs.map((id: any) => this._tabStub(id));
     const cancel = await (this as any).runBeforeUnloadForTabs(tabs);
     if (cancel) return;
 
     (this as any).removeTabs(tabs, { ...options, skipGroupCheck: true });
   },
 
-  /** Remove a set of tabs from their groups (in reverse order for safe DOM mutation). */
+  /** Remove a set of tabs from their groups. */
   ungroupTabs(tabs: MozTabbrowserTab[]): void {
     for (let i = tabs.length - 1; i >= 0; i--) {
       (this as any).ungroupTab(tabs[i]);
     }
   },
 
-  /**
-   * Remove every tab in a split view from its tab group.
-   * Each tab is individually ungrouped via `ungroupSplitView`.
-   *
-   * @param splitView - The split-view-wrapper element or a split view data object
-   */
+  /** Remove every tab in a split view from its tab group. */
   ungroupSplitViews(splitView: MozSplitView): void {
     if (!splitView) return;
-    // Normalise to the wrapper element when given a state object
     const wrapper = (this as any).isSplitViewWrapper(splitView) ? splitView : null;
     if (!wrapper) return;
     (this as any).ungroupSplitView(wrapper);
   },
 
-  /**
-   * Create a new tab group that wraps all tabs in the given split view.
-   *
-   * @param splitView - The split-view-wrapper element to group
-   * @param options   - Forwarded to `addTabGroup` (color, label, isUserTriggered, …)
-   * @returns The new tab group data, or `null` if creation failed
-   */
+  /** Create a new tab group that wraps all tabs in the given split view. */
   moveSplitViewToNewGroup(splitView: any, options: any = {}): any {
     if (!splitView) return null;
     const svId: SplitViewId | undefined = splitView.splitViewId ?? splitView.id;
     const svData = svId ? appState.value.splitViews[svId] : null;
 
-    // Collect tabs from the split view wrapper or state
     const tabs: any[] = svData
-      ? svData.tabs.map((id: any) => DOMRegistry.getTab(id) ?? (this as any)._tabStub(id))
+      ? svData.tabs.map((id: any) => DOMRegistry.getTab(id) ?? this._tabStub(id))
       : (Array.isArray(splitView.tabs) ? Array.from(splitView.tabs) : []);
 
     if (!tabs.length) return null;
     return (this as any).addTabGroup(tabs, { ...options, isUserTriggered: true });
   },
 
-  /**
-   * Move multiple tabs into an existing tab group.
-   * Fires `TabGrouped` on each affected tab element.
-   *
-   * @param tabs  - Tabs to move
-   * @param group - Target group object (must have an `.id`)
-   */
+  /** Move multiple tabs into an existing tab group. */
   moveTabsToGroup(tabs: MozTabbrowserTab[], group: MozTabbrowserTabGroup): void {
     const groupId = group?.id;
     if (!groupId) return;
@@ -345,31 +312,19 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     const tabIds = tabs.map(t => resolveTabId(t)).filter((id): id is TabId => id !== null);
     if (!tabIds.length) return;
 
-    appState.value = GroupOps.addTabsToGroup(appState.value, groupId, tabIds);
+    send({ type: "ADD_TABS_TO_GROUP", groupId, tabIds });
     for (const id of tabIds) {
       const el = DOMRegistry.getTab(id);
       if (el) dispatch(el, "TabGrouped");
     }
   },
 
-  /**
-   * Create a brand-new group from the given tabs (user-triggered convenience
-   * wrapper around `addTabGroup`).
-   */
+  /** Create a brand-new group from the given tabs. */
   moveTabsToNewGroup(tabs: MozTabbrowserTab[], options: any = {}): any {
     return (this as any).addTabGroup(tabs, { ...options, isUserTriggered: true });
   },
 
-  /**
-   * Move tabs into an existing split view.
-   *
-   * Each pinned tab is skipped (split view does not support pinned tabs).
-   * State is updated via `GroupOps.addTabToSplitView` and the corresponding
-   * DOM element is moved into the wrapper if available.
-   *
-   * @param tabs      - Tabs to add to the split view
-   * @param splitView - The split-view-wrapper element or SplitViewData
-   */
+  /** Move tabs into an existing split view. */
   moveTabsToSplitView(tabs: MozTabbrowserTab[], splitView: any): void {
     if (!splitView || !tabs?.length) return;
     const svId: SplitViewId | undefined = splitView.splitViewId ?? splitView.id;
@@ -378,8 +333,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       if ((tab as any).pinned) continue;
       const tabId = resolveTabId(tab);
       if (!tabId) continue;
-      appState.value = GroupOps.addTabToSplitView(appState.value, svId, tabId);
-      // Move DOM element into the wrapper when available
+      send({ type: "ADD_TAB_TO_SPLIT_VIEW", splitViewId: svId, tabId });
       try {
         if ((this as any).isSplitViewWrapper(splitView)) {
           splitView.appendChild(tab);
@@ -389,11 +343,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     }
   },
 
-  /**
-   * Persists `tabs` into a previously saved tab group via SessionStore.
-   *
-   * @param groupId - ID of the saved group to add the tabs to.
-   */
+  /** Persists `tabs` into a previously saved tab group via SessionStore. */
   addTabsToSavedGroup(tabs: MozTabbrowserTab[], groupId: string): void {
     try {
       SessionStore?.addTabsToSavedGroup?.(groupId, tabs);
@@ -402,12 +352,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     }
   },
 
-  /**
-   * Reopens `tab` in a different container (user-context).
-   *
-   * Closes the original tab and opens the same URL in a new tab assigned to
-   * `userContextId`.
-   */
+  /** Reopens `tab` in a different container (user-context). */
   reopenInContainer(tab: MozTabbrowserTab, userContextId: number): void {
     const tabId = resolveTabId(tab);
     if (!tabId) return;
@@ -435,11 +380,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     }
   },
 
-  /**
-   * Populates the "Reopen in Container" context menu for `tab`.
-   *
-   * Excludes the container the tab is already using.
-   */
+  /** Populates the "Reopen in Container" context menu for `tab`. */
   createReopenInContainerMenu(tab: any): void {
     try {
       createUserContextMenu?.(event, {
@@ -451,9 +392,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     }
   },
 
-  /**
-   * Duplicates all currently selected tabs, placing each copy after the originals.
-   */
+  /** Duplicates all currently selected tabs. */
   duplicateSelectedTabs(): void {
     const tabs = (this as any).selectedTabs;
     let newIndex = tabs[tabs.length - 1]?._tPos + 1;
@@ -475,9 +414,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   // noraneko extension — no direct tabbrowser.js equivalent
   // ==========================================================================
 
-  /**
-   * Closes all currently multi-selected tabs after an optional close-warning dialog.
-   */
+  /** Closes all currently multi-selected tabs. */
   removeMultiSelectedTabs(options: { isUserTriggered?: boolean; telemetrySource?: string } = {}): void {
     const selectedTabs = (this as any).selectedTabs;
     if (!(this as any).warnAboutClosingTabs?.((selectedTabs as any[]).length, (this as any).closingTabsEnum?.MULTI_SELECTED)) {
@@ -491,12 +428,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   // noraneko extension — no direct tabbrowser.js equivalent
   // ==========================================================================
 
-  /**
-   * Returns the bounding rectangle of the tab strip adjusted for RTL layouts.
-   *
-   * @returns A `{ top, bottom, left, right }` rect, or `null` when layout
-   *          information is unavailable.
-   */
+  /** Returns the bounding rectangle of the tab strip. */
   getMouseTargetRect(): any {
     const container = (this as any).tabContainer?.parentNode;
     if (!container) return null;
@@ -522,9 +454,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   // noraneko extension — no direct tabbrowser.js equivalent
   // ==========================================================================
 
-  /**
-   * Adds a "new" badge attribute to the tab element for visual indication.
-   */
+  /** Adds a "new" badge attribute to the tab element. */
   addNewBadge(tab: MozTabbrowserTab): void {
     const tabEl = DOMRegistry.getTab(resolveTabId(tab) || "");
     if (tabEl) {
@@ -536,14 +466,8 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     }
   },
 
-  /**
-   * Resolves the context tab from the popup menu's trigger node.
-   *
-   * Sets `this.contextTab` to the nearest enclosing tab element, or falls
-   * back to the selected tab.
-   */
+  /** Resolves the context tab from the popup menu's trigger node. */
   updateContextMenu(popupMenu: any): void {
-    // Context menu handling - delegated to runtime
     try {
       const triggerTab = popupMenu?.triggerNode?.tab || popupMenu?.triggerNode?.closest?.("tab");
       (this as any).contextTab = triggerTab || (this as any).selectedTab;
@@ -582,26 +506,14 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     }
   },
 
-  /** Forwards a location-change progress event to all registered progress listeners. */
   onLocationChange(...a: any[]): void { (this as any)._forwardToProgressListeners("onLocationChange", a); },
-  /** Forwards a state-change progress event to all registered progress listeners. */
   onStateChange(...a: any[]): void { (this as any)._forwardToProgressListeners("onStateChange", a); },
-  /** Forwards a progress-change event to all registered progress listeners. */
   onProgressChange(...a: any[]): void { (this as any)._forwardToProgressListeners("onProgressChange", a); },
-  /** Forwards a 64-bit progress-change event; delegates to `onProgressChange`. */
   onProgressChange64(...a: any[]): void { (this as any).onProgressChange(...a); },
-  /** Forwards a status-change event to all registered progress listeners. */
   onStatusChange(...a: any[]): void { (this as any)._forwardToProgressListeners("onStatusChange", a); },
-  /** Forwards a security-state change event to all registered progress listeners. */
   onSecurityChange(...a: any[]): void { (this as any)._forwardToProgressListeners("onSecurityChange", a); },
-  /** Forwards a content-blocking event to all registered progress listeners. */
   onContentBlockingEvent(...a: any[]): void { (this as any)._forwardToProgressListeners("onContentBlockingEvent", a); },
 
-  /**
-   * Notifies progress listeners of a meta-refresh or `Refresh` header attempt.
-   *
-   * @returns `false` if any listener vetoes the refresh, `true` to allow it.
-   */
   onRefreshAttempted(...a: any[]): boolean {
     for (const l of (this as any).mProgressListeners) {
       try { if ((l as any).onRefreshAttempted?.(...a) === false) return false; }
@@ -615,24 +527,14 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   // noraneko extension — no direct tabbrowser.js equivalent
   // ==========================================================================
 
-  /**
-   * Handles pointer-enter events on the tab strip (delegated to the runtime).
-   */
   onMouseEnter(event: Event): void {
     // Mouse tracking - delegated to runtime
   },
 
-  /**
-   * Handles pointer-leave events on the tab strip (delegated to the runtime).
-   */
   onMouseLeave(event: Event): void {
     // Mouse tracking - delegated to runtime
   },
 
-  /**
-   * Closes the context tab, or all multi-selected tabs if the context tab is
-   * part of a multi-selection.
-   */
   closeContextTabs(button?: any, tab?: any): void {
     const tabs = (this as any).contextTab?.multiselected ? (this as any).selectedTabs : [(this as any).contextTab];
     (this as any).removeMultiSelectedTabs({
@@ -647,70 +549,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   // ==========================================================================
 
   _tabStub(id: TabId): any {
-    const self = this as any;
-    // Lazy tab element lookup to avoid stale references
-    const getTabEl = () => DOMRegistry.getTab(id);
-    
-    return {
-      _tabId: id,
-      get linkedBrowser() { return DOMRegistry.getBrowser(id); },
-      get permanentKey() { return appState.value.tabs[id]?.permanentKey ?? DOMRegistry.getBrowser(id)?.permanentKey ?? {}; },
-      set permanentKey(v: any) { 
-        const b = DOMRegistry.getBrowser(id);
-        if (b) b.permanentKey = v;
-        updateState(d => { if (d.tabs[id]) d.tabs[id].permanentKey = v; });
-      },
-      getAttribute: (n: string) => getTabEl()?.getAttribute?.(n) ?? null,
-      setAttribute: (n: string, v: any) => getTabEl()?.setAttribute?.(n, v),
-      removeAttribute: (n: string) => getTabEl()?.removeAttribute?.(n),
-      hasAttribute: (n: string) => getTabEl()?.hasAttribute?.(n) ?? false,
-      toggleAttribute: (n: string, force?: boolean) => getTabEl()?.toggleAttribute?.(n, force),
-      dispatchEvent: (e: Event) => getTabEl()?.dispatchEvent?.(e) ?? false,
-      get closing() { return appState.value.tabs[id]?.isClosing ?? false; },
-      get pinned() { return appState.value.tabs[id]?.isPinned ?? false; },
-      get hidden() { return appState.value.tabs[id]?.isHidden ?? false; },
-      get selected() { return appState.value.tabs[id]?.isSelected ?? false; },
-      get multiselected() { return appState.value.tabs[id]?.isMultiSelected ?? false; },
-      get label() { return appState.value.tabs[id]?.label ?? ""; },
-      get linkedPanel() { 
-        // Return null if browser not yet inserted, otherwise the actual panel ID
-        const b = DOMRegistry.getBrowser(id);
-        const panel = b?.parentNode?.parentNode;
-        return panel?.id || null;
-      },
-      get userContextId() { return appState.value.tabs[id]?.userContextId ?? 0; },
-      get _tPos() { return appState.value.tabOrder.indexOf(id); },
-      // Mutable fields: store directly on tab element to persist across stub re-creation
-      get _fullyOpen() { const el = getTabEl(); return el?._fullyOpen ?? true; },
-      set _fullyOpen(v: boolean) { const el = getTabEl(); if (el) el._fullyOpen = v; },
-      get owner() { const el = getTabEl(); return el?.owner ?? null; },
-      set owner(v: any) { const el = getTabEl(); if (el) el.owner = v; },
-      get _labelIsContentTitle() { const el = getTabEl(); return el?._labelIsContentTitle ?? false; },
-      set _labelIsContentTitle(v: boolean) { const el = getTabEl(); if (el) el._labelIsContentTitle = v; },
-      get _labelIsInitialTitle() { const el = getTabEl(); return el?._labelIsInitialTitle ?? false; },
-      set _labelIsInitialTitle(v: boolean) { const el = getTabEl(); if (el) el._labelIsInitialTitle = v; },
-      get _labelIsURL() { const el = getTabEl(); return el?._labelIsURL ?? false; },
-      set _labelIsURL(v: boolean) { const el = getTabEl(); if (el) el._labelIsURL = v; },
-      get _fullLabel() { const el = getTabEl(); return el?._fullLabel ?? ""; },
-      set _fullLabel(v: string) { const el = getTabEl(); if (el) el._fullLabel = v; },
-      get _findBar() { const el = getTabEl(); return el?._findBar ?? self.getCachedFindBar?.(this); },
-      set _findBar(v: any) { const el = getTabEl(); if (el) el._findBar = v; },
-      get _findBarFocused() { const el = getTabEl(); return el?._findBarFocused ?? false; },
-      set _findBarFocused(v: boolean) { const el = getTabEl(); if (el) el._findBarFocused = v; },
-      get _sharingState() { const el = getTabEl(); return el?._sharingState ?? null; },
-      set _sharingState(v: any) { const el = getTabEl(); if (el) el._sharingState = v; },
-      get muteReason() { const el = getTabEl(); return el?.muteReason ?? null; },
-      set muteReason(v: any) { const el = getTabEl(); if (el) el.muteReason = v; },
-      get _originalRegisteredOpenURI() { const el = getTabEl(); return el?._originalRegisteredOpenURI ?? null; },
-      set _originalRegisteredOpenURI(v: any) { const el = getTabEl(); if (el) el._originalRegisteredOpenURI = v; },
-      get initializingTab() { const el = getTabEl(); return el?.initializingTab ?? false; },
-      set initializingTab(v: boolean) { const el = getTabEl(); if (el) el.initializingTab = v; },
-      get isConnected() { const el = getTabEl(); return el?.isConnected ?? false; },
-      get group() { const gid = appState.value.tabs[id]?.groupId; return gid ? appState.value.groups[gid] ?? null : null; },
-      get attention() { const el = getTabEl(); return el?.hasAttribute?.("attention") ?? false; },
-      set attention(v: boolean) { const el = getTabEl(); if (v) el?.setAttribute?.("attention", "true"); else el?.removeAttribute?.("attention"); },
-      get isEmpty() { const t = appState.value.tabs[id]; return !t?.label && (!t?.url || t.url === "about:blank"); },
-    };
+    return createTabStub(id);
   },
 
   // ==========================================================================
@@ -730,7 +569,6 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
         }
 
         try {
-          // Fix up the sponsored URL to match what the browser will store
           const triggeringSponsoredURL = (Services as any).uriFixup.getFixupURIInfo(
             globalHistoryOptions.triggeringSponsoredURL,
             (this as any)._loadFlagsToFixupFlags(loadFlags)

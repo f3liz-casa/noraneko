@@ -3,7 +3,7 @@
 // Section: Split View Operations · Adjacent Tab Operations
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, updateState } from "../../state/store.ts";
+import { appState, send } from "../../state/store.ts";
 import * as GroupOps from "../../ops/group-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
 import type { TabId, SplitViewId } from "../../types/TabState.ts";
@@ -318,11 +318,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     const tabData = appState.value.tabs[id];
     if (!tabData?.groupId) return;
 
-    updateState(d => {
-      if (d.tabs[id]) {
-        d.tabs[id].groupId = null;
-      }
-    });
+    send({ type: "REMOVE_TAB_FROM_GROUP", tabId: id });
     dispatch(tab, "TabUngrouped");
   },
 

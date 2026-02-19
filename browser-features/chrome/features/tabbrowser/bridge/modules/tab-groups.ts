@@ -4,7 +4,7 @@
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
 import { pipe, A, O } from "@mobily/ts-belt";
-import { appState, updateState } from "../../state/store.ts";
+import { appState, send } from "../../state/store.ts";
 import * as TabOps from "../../ops/tab-ops.ts";
 import * as GroupOps from "../../ops/group-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
@@ -90,10 +90,10 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
    */
   createTabGroup(tabs: MozTabbrowserTab[] = [], options: any = {}): any {
     const id = options.id ?? GroupOps.generateLegacyId();
-    appState.value = GroupOps.createGroup(appState.value, id, options.title ?? "", options.color ?? "blue");
+    send({ type: "CREATE_GROUP", id, title: options.title ?? "", color: options.color ?? "blue" });
     for (const t of tabs) {
       const tid = resolveTabId(t);
-      if (tid) appState.value = GroupOps.addTabToGroup(appState.value, tid, id);
+      if (tid) send({ type: "ADD_TAB_TO_GROUP", tabId: tid, groupId: id });
     }
     return appState.value.groups[id];
   },
@@ -135,7 +135,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   moveTabToExistingGroup(tab: MozTabbrowserTab, groupId: GroupId) {
     const id = resolveTabId(tab);
     if (!id) return;
-    appState.value = GroupOps.addTabToGroup(appState.value, id, groupId);
+    send({ type: "ADD_TAB_TO_GROUP", tabId: id, groupId });
     const el = DOMRegistry.getTab(id);
     if (el) dispatch(el, "TabGrouped");
   },
@@ -147,7 +147,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   adoptTabGroup(group: MozTabbrowserTabGroup) {
     if (group?.ownerGlobal === (this as any).window) return;
     if (group?.id && !appState.value.groups[group.id]) {
-      appState.value = GroupOps.createGroup(appState.value, group.id, group.title, group.color);
+      send({ type: "CREATE_GROUP", id: group.id, title: group.title, color: group.color });
     }
   },
 
@@ -193,9 +193,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     if (!tab) return;
     const id = tab._tabId ?? tab.id;
     if (!id) return;
-    updateState(draft => {
-      if (draft.tabs[id]) draft.tabs[id].groupId = undefined;
-    });
+    send({ type: "REMOVE_TAB_FROM_GROUP", tabId: id });
     tab.removeAttribute?.("group-id");
     dispatch(tab, "TabUngrouped");
   },
@@ -242,7 +240,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   addToMultiSelectedTabs(tab: MozTabbrowserTab) {
     const id = resolveTabId(tab);
     if (!id) return;
-    appState.value = TabOps.setMultiSelection(appState.value, [id], true);
+    send({ type: "SET_MULTI_SELECTION", tabIds: [id], isSelected: true });
     this._multiSelectedTabsSet.add(tab);
     this.lastMultiSelectedTab = tab;
   },
@@ -253,7 +251,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   removeFromMultiSelectedTabs(tab: MozTabbrowserTab) {
     const id = resolveTabId(tab);
     if (!id) return;
-    appState.value = TabOps.setMultiSelection(appState.value, [id], false);
+    send({ type: "SET_MULTI_SELECTION", tabIds: [id], isSelected: false });
     this._multiSelectedTabsSet.delete(tab);
   },
 
@@ -269,7 +267,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       }
       return;
     }
-    appState.value = TabOps.clearMultiSelection(appState.value);
+    send({ type: "CLEAR_MULTI_SELECTION" });
     this._multiSelectedTabsSet = new WeakSet();
     this.lastMultiSelectedTab = null;
   },
@@ -278,11 +276,11 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
    * Adds all visible (non-hidden) tabs to the multi-selection.
    */
   selectAllTabs() {
-    appState.value = TabOps.setMultiSelection(
-      appState.value,
-      appState.value.tabOrder.filter(id => !appState.value.tabs[id].isHidden),
-      true,
-    );
+    send({
+      type: "SET_MULTI_SELECTION",
+      tabIds: appState.value.tabOrder.filter(id => !appState.value.tabs[id].isHidden),
+      isSelected: true,
+    });
   },
 
   _avoidSingleSelectedTab() {
@@ -685,10 +683,8 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       ? s.tabOrder.filter(i => s.tabs[i].isMultiSelected)
       : [id];
     const anyMuted = targets.some(i => s.tabs[i]?.isMuted);
-    updateState(d => {
-      for (const tid of targets) {
-        if (d.tabs[tid]) d.tabs[tid].isMuted = !anyMuted;
-      }
-    });
+    for (const tid of targets) {
+      send({ type: "SET_MUTED", tabId: tid, isMuted: !anyMuted });
+    }
   },
 };

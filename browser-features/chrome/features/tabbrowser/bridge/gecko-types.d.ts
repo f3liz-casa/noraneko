@@ -47,6 +47,8 @@ interface MozTabbrowserTab {
   selected: boolean;
   /** Visible to the user — `!hidden && !closing`. */
   visible: boolean;
+  /** Legacy property for tab selection state. */
+  _selected?: boolean;
 
   // ── Linked content ────────────────────────────────────────────────────────
   /**
@@ -61,6 +63,10 @@ interface MozTabbrowserTab {
    * @see https://bugzilla.mozilla.org/show_bug.cgi?id=1716788
    */
   permanentKey: object;
+  /** Tab that opened this one (for restoration). */
+  openerTab?: MozTabbrowserTab | null;
+  /** Tab selected before this one was opened. */
+  successor?: MozTabbrowserTab | null;
 
   // ── Labels / titles ───────────────────────────────────────────────────────
   /** Displayed label in the tab strip (may be truncated). */
@@ -95,8 +101,11 @@ interface MozTabbrowserTab {
   muteReason: string | null;
   /** Internal `audioMuted` attribute mirror. */
   audioMuted: boolean;
-  /** Timer that removes the `soundplaying` attribute after sound stops. */
-  _soundPlayingAttrRemovalTimer: nsITimer | null;
+  /**
+   * Timer that removes the `soundplaying` attribute after sound stops.
+   * In practice the code uses `setTimeout` (returns `number`), not nsITimer.
+   */
+  _soundPlayingAttrRemovalTimer: nsITimer | number | null;
 
   // ── Tab group membership ──────────────────────────────────────────────────
   /** The `<tab-group>` this tab belongs to, or `null`. */
@@ -136,7 +145,18 @@ interface MozTabbrowserTab {
   /** Whether this tab is part of the current multi-selection. */
   multiselected: boolean;
 
+  // ── Tab strip hover state ──────────────────────────────────────────────────
+  /** `true` while the pointer is over the audio-playing icon area. */
+  _overPlayingIcon?: boolean;
+  /** `true` while the pointer is over the mute/unmute audio button. */
+  _overAudioButton?: boolean;
+
+  // ── Activity tracking ─────────────────────────────────────────────────────
+  /** Updates the last-seen-active timestamp; called on window activate/deactivate. */
+  updateLastSeenActive?(): void;
+
   // ── Standard Element methods (re-declared for interface completeness) ──────
+  getAttribute(name: string): string | null;
   toggleAttribute(name: string, force?: boolean): boolean;
   hasAttribute(name: string): boolean;
   setAttribute(name: string, value: string): void;
@@ -172,6 +192,8 @@ interface MozTabbrowserTabGroup extends XULElement {
   color: string;
   /** User-visible group name shown in the tab strip. */
   label: string;
+  /** Alternate name property mirrored from the group's label attribute. */
+  name?: string;
   /** Whether the group's tabs are collapsed (hidden) in the strip. */
   collapsed: boolean;
   /** Live list of tabs belonging to this group. */
@@ -271,8 +293,113 @@ declare const handleDroppedLink: any;
 declare const URILoadingWrapper: any;
 declare const gBrowserInit: any;
 declare const gBrowserAllowScriptsToCloseInitialTabs: boolean;
-declare const createUserContextMenu: any;
-declare const Glean: any;
-declare const gReduceMotion: boolean;
-declare const gTabsPanel: any;
-declare const AddonManager: any;
+declare const gBrowser: TabbrowserCompat;
+declare const AsyncTabSwitcher: new (tabbrowser: TabbrowserCompat) => any;
+declare const Services: any;
+declare const GenAI: any;
+declare const TabStateFlusher: any;
+declare const UrlbarProviderOpenTabs: any;
+
+/** XULBrowserElement — alias for MozBrowser with additional tabbrowser-specific properties. */
+type XULBrowserElement = MozBrowser & {
+  _tabId?: string;
+  docShellIsActive?: boolean;
+  permanentKey?: object;
+  mIconURL?: string;
+  isDistinctProductPageVisit?: boolean;
+  registeredOpenURI?: nsIURI;
+  _cachedCurrentURI?: nsIURI | null;
+  docShell?: any;
+  webProgress?: any;
+  webNavigation?: any;
+  contentTitle?: string;
+  /** Per-browser lazy `NotificationBox` instance (created by `getNotificationBox`). */
+  _notificationBox?: any;
+  mute?(): void;
+  swapDocShells?(other: XULBrowserElement): void;
+  ownerDocument?: Document;
+};
+
+// ── MozBrowser augmentation ──────────────────────────────────────────────────
+/**
+ * Additional Gecko-specific properties on `MozBrowser` that are not (yet)
+ * declared in the upstream `lib.gecko.augmentations.d.ts`.
+ *
+ * Only properties directly accessed via `browser.X` (without an `as any`
+ * escape) in the tabbrowser bridge modules are listed here.
+ */
+interface MozBrowser {
+  /** Whether the browser's audio output is muted. */
+  audioMuted?: boolean;
+  /** Whether this browser is hosted in a remote (content) process. */
+  isRemoteBrowser?: boolean;
+  /** Current URI loaded in the browser's content. */
+  currentURI?: nsIURI;
+  /** `true` while this browser's docShell is considered active/visible. */
+  docShellIsActive?: boolean;
+  /** URI registered as the open-tab URI (used for deduplication). */
+  registeredOpenURI?: nsIURI;
+  /** Preserve compositor layers while the window is hidden or occluded. */
+  preserveLayers?(inactive: boolean): void;
+  /** Send a message to a JSWindowActor running in this browser's process. */
+  sendMessageToActor?(messageName: string, data?: any, actorName?: string): void;
+  /** Create an about:blank document viewer with the specified principals. */
+  createAboutBlankDocumentViewer?(principal: any, storagePrincipal: any): void;
+}
+
+// ── Document augmentation (Firefox Fluent l10n) ───────────────────────────────
+/**
+ * Firefox `DOMLocalization` API attached to every chrome document.
+ *
+ * NOTE: `document.l10n` is a Firefox-only extension to the Document interface
+ * with no upstream @types declarations. Only the methods used in the
+ * tabbrowser bridge are stubbed here.
+ */
+interface Document {
+  l10n?: {
+    setAttributes(element: Element, id: string, args?: Record<string, unknown>): void;
+    translateFragment(fragment: Node | null): Promise<void>;
+    formatValueSync?(id: string, args?: Record<string, unknown>): string | null;
+    [key: string]: unknown;
+  };
+}
+
+// ── Notes on unavoidable (as any) casts ──────────────────────────────────────
+//
+// NOTE: `(this.window as any).arguments` — Firefox chrome windows receive an
+//   `nsIArray`-like `arguments` object passed through `window.open()`; there
+//   are no upstream @types for it.
+//
+// NOTE: `(event as any).originalTarget` — Gecko-specific `originalTarget`
+//   property on DOM events (distinct from `target`); not in the standard
+//   EventTarget types.
+//
+// NOTE: `(event as any).target?.tabs` / `(event as any).target?.id` in
+//   TabGroupCollapse, TabGrouped, TabUngrouped handlers — the event target is
+//   a `MozTabbrowserTabGroup`, but EventTarget.target is typed as
+//   `EventTarget | null`. Proper fix requires typed CustomEvent<T> generics.
+//
+// NOTE: `(this.window as any).UserInteraction` — internal Firefox telemetry
+//   helper; not exposed via @types/gecko.
+//
+// NOTE: `(this.window as any).NewTabPagePreloading` — internal Firefox
+//   new-tab preloading service; not in @types/gecko.
+//
+// NOTE: `(this.window as any).doGetProtocolFlags` — internal chrome-window
+//   helper; not exposed via @types/gecko.
+//
+// NOTE: `(this.window as any).BrowserCommands` — browser chrome global;
+//   not in @types/gecko.
+//
+// NOTE: `(this.window as any).gDialogBox` — per-window dialog coordinator;
+//   not in @types/gecko.
+//
+// NOTE: `(browser as any).parentNode?.insertAdjacentElement?.(...)` —
+//   `Node.parentNode` is typed as `Node | null`; `insertAdjacentElement` is
+//   only on `Element`. Use `parentElement` for a properly typed alternative.
+//
+// NOTE: `(this as any).showPidAndActiveness`, `(this as any)._isFirstOrLastInTabGroup`,
+//   `(this as any)._showTabCardPreview`, `(this as any)._allowTransparentBrowser` —
+//   internal TabbrowserCompat fields declared in feature modules; cannot be
+//   added here without importing TabbrowserCompat.
+

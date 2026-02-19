@@ -12,54 +12,54 @@ export type SplitViewId = string;
 export type RemoteType = string;
 
 export interface TabData {
-  readonly id: TabId;
-  readonly index: number;
-  readonly uri: string;
-  readonly title: string;
-  readonly label: string;
-  readonly iconUrl?: string;
-  readonly description?: string;
+  id: TabId;
+  index: number;
+  uri: string;
+  title: string;
+  label: string;
+  iconUrl?: string;
+  description?: string;
   
   // State flags
-  readonly isPinned: boolean;
-  readonly isHidden: boolean;
-  readonly isSelected: boolean;
-  readonly isMultiSelected: boolean;
-  readonly isBusy: boolean;
-  readonly isMuted: boolean;
-  readonly isCrashed: boolean;
-  readonly isLazy: boolean;
-  readonly isDiscarded: boolean;
-  readonly isClosing: boolean;
+  isPinned: boolean;
+  isHidden: boolean;
+  isSelected: boolean;
+  isMultiSelected: boolean;
+  isBusy: boolean;
+  isMuted: boolean;
+  isCrashed: boolean;
+  isLazy: boolean;
+  isDiscarded: boolean;
+  isClosing: boolean;
   
   // Audio state (Lines 8250-8350)
-  readonly soundPlaying: boolean;
-  readonly soundPlayingScheduledRemoval: boolean;
-  readonly activeMediaBlocked: boolean;
+  soundPlaying: boolean;
+  soundPlayingScheduledRemoval: boolean;
+  activeMediaBlocked: boolean;
   
   // Context and grouping
-  readonly userContextId: number;
-  readonly groupId?: GroupId;
-  readonly splitViewId?: SplitViewId;
-  readonly permanentKey: any;
+  userContextId: number;
+  groupId?: GroupId;
+  splitViewId?: SplitViewId;
+  permanentKey: any;
   
   // Relationships
-  readonly ownerTabId?: TabId;
-  readonly openerTabId?: TabId;
-  readonly successorTabId?: TabId;
-  readonly predecessorTabIds: TabId[]; // New: for succession tracking
+  ownerTabId?: TabId;
+  openerTabId?: TabId;
+  successorTabId?: TabId;
+  predecessorTabIds: TabId[]; // New: for succession tracking
   
   // Metadata
-  readonly lastAccessed: number;
-  readonly createdTime: number;
-  readonly lastSeenActive: number;
+  lastAccessed: number;
+  createdTime: number;
+  lastSeenActive: number;
 
-  readonly labelIsContentTitle: boolean;
-  readonly labelDirection: "ltr" | "rtl";
-  readonly sharingState: {
-    readonly camera: boolean;
-    readonly microphone: boolean;
-    readonly screen: boolean;
+  labelIsContentTitle: boolean;
+  labelDirection: "ltr" | "rtl";
+  sharingState: {
+    camera: boolean;
+    microphone: boolean;
+    screen: boolean;
   };
 }
 

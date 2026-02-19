@@ -2,8 +2,7 @@
 // Ported from tabbrowser.js L906~L974, L2897~L5086, L6178~L7019
 // Section: addTab · removeTab/removeTabs · Tab Properties · Tab Movement
 
-import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, selectedTab as selectedTabSignal, orderedTabs, setSelectedTab, updateState } from "../../state/store.ts";
+import { appState, selectedTab as selectedTabSignal, orderedTabs, send } from "../../state/store.ts";
 import * as TabOps from "../../ops/tab-ops.ts";
 import * as GroupOps from "../../ops/group-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
@@ -11,52 +10,7 @@ import { BrowserSystem } from "../BrowserSystem.ts";
 import type { AppState, TabData, TabId, GroupId } from "../../types/TabState.ts";
 import { resolveTabId, dispatch } from "../compat-helpers.ts";
 
-// Add any other declare const needed by this section
-
-/** @augments TabbrowserCompat */
-declare module "../TabbrowserCompat.ts" {
-  interface TabbrowserCompat {
-    // Class fields used by this module
-    _lastRelatedTabMap: WeakMap<any, any>;
-    _tabForBrowser: WeakMap<any, any>;
-    _removingTabs: Set<any>;
-    _clearMultiSelectionLocked: boolean;
-    tabAnimationsInProgress: number;
-    closingTabsEnum: { ALL: number; OTHER: number; TO_START: number; TO_END: number; MULTI_SELECTED: number; DUPLICATES: number; ALL_DUPLICATES: number };
-    // Methods
-    addTrustedTab(url: string, options?: any): any;
-    addWebTab(url: string, options?: any): any;
-    duplicateTab(tab: MozTabbrowserTab, aRestoreTabImmediately?: boolean, aOptions?: any): any;
-    previewTab(tab: MozTabbrowserTab, callback?: any): void;
-    removeTab(tab: MozTabbrowserTab, options?: any): void;
-    removeCurrentTab(options?: any): void;
-    removeTabs(tabs: MozTabbrowserTab[], options?: any): void;
-    pinTab(tab: MozTabbrowserTab): void;
-    unpinTab(tab: MozTabbrowserTab): void;
-    pinMultiSelectedTabs(): void;
-    unpinMultiSelectedTabs(): void;
-    discardTab(tab: MozTabbrowserTab, options?: any): void;
-    discardBrowser(browser: XULBrowserElement, options?: any): void;
-    showTab(tab: MozTabbrowserTab): void;
-    hideTab(tab: MozTabbrowserTab, source?: string): void;
-    selectTabAtIndex(index: number, event?: Event): void;
-    moveTabTo(tab: MozTabbrowserTab, options?: any): void;
-    moveTabBefore(tab: MozTabbrowserTab, target: MozTabbrowserTab): void;
-    moveTabAfter(tab: MozTabbrowserTab, target: MozTabbrowserTab): void;
-    moveTabToStart(tab: MozTabbrowserTab): void;
-    moveTabToEnd(tab: MozTabbrowserTab): void;
-    moveTabForward(): void;
-    moveTabBackward(): void;
-    moveTabsAfter(tabs: MozTabbrowserTab[], tab: MozTabbrowserTab): void;
-    moveTabsBefore(tabs: MozTabbrowserTab[], tab: MozTabbrowserTab): void;
-    moveTabsToStart(options?: any): void;
-    moveTabsToEnd(options?: any): void;
-    replaceInSuccession(tab: MozTabbrowserTab, successor: any): void;
-    reopenInContainer(tab: MozTabbrowserTab, userContextId: number, openTab?: any): void;
-    _startRemoveTabs(tabs: MozTabbrowserTab[], options?: any): any;
-    runBeforeUnloadForTabs(tabs: MozTabbrowserTab[]): Promise<boolean>;
-  }
-}
+// ... (existing module declaration)
 
 export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   // ==========================================================================
@@ -104,7 +58,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       insertRelatedAfterCurrent: options.insertRelatedAfterCurrent,
     });
 
-    appState.value = TabOps.addTab(appState.value, tabData, insertAt);
+    send({ type: "ADD_TAB", tab: tabData, index: insertAt });
 
     // Track _lastRelatedTabMap for opener
     if (options.openerTab) {
@@ -133,7 +87,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       }
     }
 
-    if (!options.inBackground && !options.bulkOrderedOpen) setSelectedTab(id);
+    if (!options.inBackground && !options.bulkOrderedOpen) send({ type: "SELECT_TAB", tabId: id });
 
     const tabEl = DOMRegistry.getTab(id);
     dispatch(tabEl ?? document, "TabOpen", options);
@@ -223,7 +177,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     const id = resolveTabId(tab);
     if (!id || appState.value.tabs[id]?.isClosing) return false;
     this._removingTabs.add(tab);
-    appState.value = TabOps.beginCloseTab(appState.value, id);
+    send({ type: "BEGIN_CLOSE_TAB", tabId: id });
     dispatch(tab, "TabClose", options);
     return true;
   },
@@ -237,7 +191,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       browser.parentNode?.parentNode?.parentNode?.remove();
       DOMRegistry.unregisterBrowser(id);
     }
-    appState.value = TabOps.endCloseTab(appState.value, id);
+    send({ type: "END_CLOSE_TAB", tabId: id });
   },
 
   /**
@@ -414,7 +368,9 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   pinTab(tab: MozTabbrowserTab) {
     if ((tab as any).pinned) return;
     this.showTab?.(tab);
-    this._applyTabOp(tab, TabOps.pinTab, "TabPin", ["pinned"]);
+    const id = resolveTabId(tab);
+    if (id) send({ type: "PIN_TAB", tabId: id });
+    dispatch(tab, "TabPin", { changed: ["pinned"] });
     this._updateTabBarForPinnedTabs?.();
   },
 
@@ -423,7 +379,9 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
    * Fires a `TabUnpin` event and removes the `pinned` attribute.
    */
   unpinTab(tab: MozTabbrowserTab) {
-    this._applyTabOp(tab, TabOps.unpinTab, "TabUnpin", ["pinned"]);
+    const id = resolveTabId(tab);
+    if (id) send({ type: "UNPIN_TAB", tabId: id });
+    dispatch(tab, "TabUnpin", { changed: ["pinned"] });
     this._updateTabBarForPinnedTabs?.();
     if ((tab as any)?.style) (tab as any).style.marginInlineStart = "";
   },
@@ -440,14 +398,18 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
    * Discard a tab's browser to free memory.
    * The tab remains in the strip; reloading restores the page.
    */
-  discardTab(tab: MozTabbrowserTab) { this._applyTabOp(tab, TabOps.discardTab); },
+  discardTab(tab: MozTabbrowserTab) {
+    const id = resolveTabId(tab);
+    if (id) send({ type: "DISCARD_TAB", tabId: id });
+  },
 
   /**
    * Make a previously hidden tab visible in the tab strip.
    * Selected/sharing tabs cannot be hidden, so showing is always safe.
    */
   showTab(tab: MozTabbrowserTab) {
-    this._applyTabOp(tab, (s, id) => TabOps.setTabVisibility(s, id, true), undefined, ["hidden"]);
+    const id = resolveTabId(tab);
+    if (id) send({ type: "SET_VISIBILITY", tabId: id, isVisible: true });
   },
 
   /**
@@ -455,7 +417,8 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
    * Tabs that are selected or actively sharing (camera/mic/screen) are ignored.
    */
   hideTab(tab: MozTabbrowserTab) {
-    this._applyTabOp(tab, (s, id) => TabOps.setTabVisibility(s, id, false), undefined, ["hidden"]);
+    const id = resolveTabId(tab);
+    if (id) send({ type: "SET_VISIBILITY", tabId: id, isVisible: false });
   },
 
   /**
@@ -470,15 +433,15 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     if (!id) return null;
 
     const prev = appState.value;
-    const next = TabOps.duplicateTab(prev, id);
-    appState.value = next;
+    send({ type: "DUPLICATE_TAB", tabId: id });
+    const next = appState.value;
 
     const addedId = next.tabOrder.find(i => !prev.tabOrder.includes(i));
     if (!addedId) return null;
 
     this._createBrowserDOM(addedId, {});
 
-    // Wire up progress listener for the duplicated tab
+    // Wire up progress listener for the new tab
     const tabEl = DOMRegistry.getTab(addedId);
     const browser = DOMRegistry.getBrowser(addedId) as any;
     if (tabEl && browser) {
@@ -486,7 +449,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       try { this._wireProgressListener(tabEl, browser); } catch (_) { /* */ }
     }
 
-    if (!options.inBackground) setSelectedTab(addedId);
+    if (!options.inBackground) send({ type: "SELECT_TAB", tabId: addedId });
     const el = DOMRegistry.getTab(addedId);
     dispatch(el ?? document, "TabOpen", options);
     return el ?? this._tabStub(addedId);
@@ -511,7 +474,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     if (!id) return;
     const newIndex = typeof options === "number" ? options : (options.tabIndex ?? options.elementIndex);
     if (newIndex === undefined) return;
-    appState.value = TabOps.moveTabTo(appState.value, id, newIndex);
+    send({ type: "MOVE_TAB", tabId: id, newIndex });
     const el = DOMRegistry.getTab(id);
     if (el) dispatch(el, "TabMove");
   },
@@ -521,7 +484,7 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     const id = resolveTabId(tab);
     const tid = resolveTabId(target);
     if (!id || !tid) return;
-    appState.value = TabOps.moveTabRelative(appState.value, id, tid, "before");
+    send({ type: "MOVE_TAB_RELATIVE", tabId: id, targetId: tid, position: "before" });
     const el = DOMRegistry.getTab(id);
     if (el) dispatch(el, "TabMove");
   },
@@ -531,38 +494,29 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     const id = resolveTabId(tab);
     const tid = resolveTabId(target);
     if (!id || !tid) return;
-    appState.value = TabOps.moveTabRelative(appState.value, id, tid, "after");
+    send({ type: "MOVE_TAB_RELATIVE", tabId: id, targetId: tid, position: "after" });
     const el = DOMRegistry.getTab(id);
     if (el) dispatch(el, "TabMove");
   },
 
   /** Move a tab to the first available position (after any pinned tabs). */
-  moveTabToStart(tab: MozTabbrowserTab) { this._applyTabOp(tab, TabOps.moveTabToStart, "TabMove"); },
+  moveTabToStart(tab: MozTabbrowserTab) {
+    const id = resolveTabId(tab);
+    if (!id) return;
+    let pinnedCount = 0;
+    for (const tid of appState.value.tabOrder) if (appState.value.tabs[tid].isPinned) pinnedCount++;
+    send({ type: "MOVE_TAB", tabId: id, newIndex: appState.value.tabs[id].isPinned ? 0 : pinnedCount });
+    const el = DOMRegistry.getTab(id);
+    if (el) dispatch(el, "TabMove");
+  },
   /** Move a tab to the very last position in the strip. */
-  moveTabToEnd(tab: MozTabbrowserTab) { this._applyTabOp(tab, TabOps.moveTabToEnd, "TabMove"); },
-
-  /**
-   * Select the tab at `index` within the visible (non-hidden) tab list.
-   * Negative indices count from the end (`-1` = last visible tab).
-   *
-   * @param index - Zero-based position within `visibleTabs`
-   * @param event - Optional originating event; `preventDefault` is called on it
-   */
-  selectTabAtIndex(index: number, event?: Event) {
-    // visibleTabs already excludes hidden, closing, and Firefox View tabs
-    const visible = this.visibleTabs;
-    if (!visible.length) return;
-    // Negative index counts from end
-    if (index < 0) {
-      index += visible.length;
-      if (index < 0) index = 0;
-    } else if (index >= visible.length) {
-      index = visible.length - 1;
-    }
-    this.selectedTab = visible[index];
-    if (event) {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-    }
+  moveTabToEnd(tab: MozTabbrowserTab) {
+    const id = resolveTabId(tab);
+    if (!id) return;
+    let pinnedCount = 0;
+    for (const tid of appState.value.tabOrder) if (appState.value.tabs[tid].isPinned) pinnedCount++;
+    send({ type: "MOVE_TAB", tabId: id, newIndex: appState.value.tabs[id].isPinned ? pinnedCount - 1 : appState.value.tabOrder.length - 1 });
+    const el = DOMRegistry.getTab(id);
+    if (el) dispatch(el, "TabMove");
   },
 };

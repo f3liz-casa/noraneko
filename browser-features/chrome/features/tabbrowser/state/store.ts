@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { signal, computed } from "@preact/signals";
+import { createActor } from "xstate";
 import type { AppState, TabData, TabId, TabGroupData, BrowserEngineState } from "../types/TabState.ts";
+import { tabMachine } from "./tabMachine.ts";
 
 const initialState: AppState = {
   tabs: {},
   groups: {},
+  splitViews: {},
   engineStates: {},
   tabOrder: [],
   selectedTabId: null,
@@ -26,7 +29,17 @@ const initialState: AppState = {
   },
 };
 
+export const tabActor = createActor(tabMachine, {
+  input: initialState,
+});
+
 export const appState = signal<AppState>(initialState);
+
+tabActor.subscribe((state: any) => {
+  appState.value = state.context;
+});
+
+tabActor.start();
 
 export const selectedTab = computed<TabData | null>(() => {
   const state = appState.value;
@@ -36,7 +49,7 @@ export const selectedTab = computed<TabData | null>(() => {
 
 export const orderedTabs = computed<TabData[]>(() => {
   const state = appState.value;
-  return state.tabOrder.map(id => state.tabs[id]).filter(Boolean);
+  return state.tabOrder.map((id: string) => state.tabs[id]).filter(Boolean);
 });
 
 export const selectedEngineState = computed<BrowserEngineState | null>(() => {
@@ -49,27 +62,6 @@ export const allGroups = computed<TabGroupData[]>(() => {
   return Object.values(appState.value.groups);
 });
 
-export function updateState(updater: (state: AppState) => AppState): void {
-  appState.value = updater(appState.value);
-}
-
-export function setSelectedTab(tabId: TabId): void {
-  updateState(state => ({
-    ...state,
-    selectedTabId: tabId,
-    tabs: {
-      ...state.tabs,
-      [tabId]: { ...state.tabs[tabId], isSelected: true },
-      ...(state.selectedTabId && state.selectedTabId !== tabId && state.tabs[state.selectedTabId]
-        ? { [state.selectedTabId]: { ...state.tabs[state.selectedTabId], isSelected: false } }
-        : {}),
-    },
-  }));
-}
-
-export function updateConfig(partialConfig: Partial<AppState["config"]>): void {
-  updateState(state => ({
-    ...state,
-    config: { ...state.config, ...partialConfig },
-  }));
+export function send(event: any): void {
+  tabActor.send(event);
 }

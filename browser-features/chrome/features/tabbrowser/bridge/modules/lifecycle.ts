@@ -3,7 +3,7 @@
 // Section: Lifecycle · Tab Switcher · Progress Listeners
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, selectedTab as selectedTabSignal, orderedTabs, setSelectedTab, updateState } from "../../state/store.ts";
+import { appState, selectedTab as selectedTabSignal, orderedTabs, send } from "../../state/store.ts";
 import * as TabOps from "../../ops/tab-ops.ts";
 import * as GroupOps from "../../ops/group-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
@@ -102,8 +102,12 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     // Update DOP state
     const id = resolveTabId(tab);
     if (id) {
-      appState.value = TabOps.updateTabLabel(appState.value, id, {
-        label, isContentTitle: !!isContentTitle, direction: isRTL ? "rtl" : "ltr",
+      send({
+        type: "UPDATE_TAB_LABEL",
+        tabId: id,
+        label,
+        isContentTitle: !!isContentTitle,
+        direction: isRTL ? "rtl" : "ltr",
       });
     }
 
