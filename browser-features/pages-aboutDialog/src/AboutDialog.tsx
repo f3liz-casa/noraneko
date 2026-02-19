@@ -349,7 +349,6 @@ export function AboutDialog() {
               textAlign: "center",
               gap: "1.25rem",
               borderRight: "1px solid var(--muted-border-color)",
-              paddingRight: "2.5rem",
             }}
           >
             {/*
