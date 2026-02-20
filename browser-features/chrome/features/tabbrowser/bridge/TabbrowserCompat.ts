@@ -30,7 +30,7 @@ export class TabbrowserCompat {
     ALL: 0, OTHER: 1, TO_START: 2, TO_END: 3, MULTI_SELECTED: 4, DUPLICATES: 6, ALL_DUPLICATES: 7,
   };
 
-  constructor(private window: Window) {
+  constructor(protected window: Window) {
     // Define lazy module getters exactly like tabbrowser.js (Lines 105-130)
     ChromeUtils.defineESModuleGetters(this, {
       AsyncTabSwitcher: "moz-src:///browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs",
@@ -47,8 +47,25 @@ export class TabbrowserCompat {
     });
   }
 
+  // DOM elements set up in init() — matches original tabbrowser.js
+  tabContainer: any = null;
+  tabGroupMenu: any = null;
+  tabNoteMenu: any = null;
+  tabbox: any = null;
+  tabpanels: any = null;
+  pinnedTabsContainer: any = null;
+  splitViewCommandSet: any = null;
+
   init() {
     if (this._initialized) return;
+    const doc = (this.window as any).document;
+    this.tabContainer = doc.getElementById("tabbrowser-tabs");
+    this.tabGroupMenu = doc.getElementById("tab-group-editor");
+    this.tabNoteMenu = doc.getElementById("tab-note-menu");
+    this.tabbox = doc.getElementById("tabbrowser-tabbox");
+    this.tabpanels = doc.getElementById("tabbrowser-tabpanels");
+    this.pinnedTabsContainer = doc.getElementById("pinned-tabs-container");
+    this.splitViewCommandSet = doc.getElementById("splitViewCommands");
     this._setupEventListeners();
     this._initialized = true;
   }
@@ -207,19 +224,68 @@ export class TabbrowserCompat {
   get webNavigation() { return (this.selectedBrowser as any)?.webNavigation; }
   get webProgress() { return (this.selectedBrowser as any)?.webProgress; }
   get contentTitle() { return (this.selectedBrowser as any)?.contentTitle; }
-  
+
+  // Expose panel container for legacy direct DOM access
+  get mPanelContainer() { return this.tabpanels; }
+
   loadURI(uri: string, options: any = {}) { NavigationSystem.loadURI((this.selectedTab as any)._tabId, uri, options); }
-  
+
   getBrowserForTab(tab: any) { return DOMRegistry.getBrowser(tab?._tabId); }
   getTabForBrowser(browser: any) { return DOMRegistry.getTab(browser?._tabId); }
 
   _tabAttrModified(tab: any, changed: string[]) { if (tab) tab.dispatchEvent(new CustomEvent("TabAttrModified", { bubbles: true, detail: { changed } })); }
+
+  // Progress listener registration (gBrowser compatibility)
+  addProgressListener(listener: any) { if (!this.mProgressListeners.includes(listener)) this.mProgressListeners.push(listener); }
+  removeProgressListener(listener: any) { const i = this.mProgressListeners.indexOf(listener); if (i >= 0) this.mProgressListeners.splice(i, 1); }
+  addTabsProgressListener(listener: any) { if (!this.mTabsProgressListeners.includes(listener)) this.mTabsProgressListeners.push(listener); }
+  removeTabsProgressListener(listener: any) { const i = this.mTabsProgressListeners.indexOf(listener); if (i >= 0) this.mTabsProgressListeners.splice(i, 1); }
+
   _callProgressListeners(browser: any, method: string, args: any[]) {
     browser = browser || this.selectedBrowser;
     const tabsArgs = [browser, ...args];
     for (const l of (browser === this.selectedBrowser ? this.mProgressListeners : [])) if (method in l) l[method](...args);
     for (const l of this.mTabsProgressListeners) if (method in l) l[method](...tabsArgs);
   }
+
+  // Basic tab manipulation wrappers (compat)
+  pinTab(tab: any) { const id = tab?._tabId; if (id) send({ type: "PIN_TAB", tabId: id }); }
+  unpinTab(tab: any) { const id = tab?._tabId; if (id) send({ type: "UNPIN_TAB", tabId: id }); }
+  duplicateTab(tab: any) { const id = tab?._tabId; if (id) { send({ type: "DUPLICATE_TAB", tabId: id }); } }
+  moveTabTo(tab: any, index: number) { const id = tab?._tabId; if (id) send({ type: "MOVE_TAB", tabId: id, newIndex: index }); }
+  moveTabRelative(tab: any, target: any, position: "before" | "after" = "after") { const id = tab?._tabId; const targetId = target?._tabId; if (id && targetId) send({ type: "MOVE_TAB_RELATIVE", tabId: id, targetId, position }); }
+  swapBrowsersAndCloseOther(tabA: any, tabB: any) {
+    const idA = tabA?._tabId; const idB = tabB?._tabId;
+    if (!idA || !idB) return;
+    const uriB = appState.value.tabs[idB]?.uri;
+    if (uriB) send({ type: "UPDATE_LOCATION", tabId: idA, uri: uriB });
+    this.removeTab(tabB, { animate: false });
+  }
+
+  // Multi-select support (selectedTabs and range selection)
+  get selectedTabs() { return appState.value.tabOrder.filter(id => appState.value.tabs[id]?.isMultiSelected).map(id => DOMRegistry.getTab(id)).filter(Boolean) as Element[]; }
+  addRangeToSelection(start: number | any, end: number | any) {
+    const order = appState.value.tabOrder;
+    let s = typeof start === "number" ? start : order.indexOf(start?._tabId);
+    let e = typeof end === "number" ? end : order.indexOf(end?._tabId);
+    if (s === -1 || e === -1) return;
+    if (s > e) [s, e] = [e, s];
+    const tabIds = order.slice(s, e + 1);
+    send({ type: "SET_MULTI_SELECTION", tabIds, isSelected: true });
+  }
+  clearSelection() { send({ type: "CLEAR_MULTI_SELECTION" }); }
+
+  // Navigation helpers
+  reloadTab(tab: any, flags: any = {}) {
+    const browser = this.getBrowserForTab(tab);
+    if (!browser) return;
+    const b: any = browser;
+    if (typeof b.reload === "function") { try { b.reload(flags?.skipCache); } catch (e) { b.contentWindow?.location?.reload(flags?.skipCache); } }
+    else b.contentWindow?.location?.reload(flags?.skipCache);
+  }
+  reloadAllTabs(flags: any = {}) { for (const id of appState.value.tabOrder) { const tabEl = DOMRegistry.getTab(id); this.reloadTab(tabEl, flags); } }
+  goBack(tab: any) { const browser = this.getBrowserForTab(tab) as any; if (!browser) return; if (browser.webNavigation?.canGoBack) browser.webNavigation.goBack(); else browser.contentWindow?.history?.back(); }
+  goForward(tab: any) { const browser = this.getBrowserForTab(tab) as any; if (!browser) return; if (browser.webNavigation?.canGoForward) browser.webNavigation.goForward(); else browser.contentWindow?.history?.forward(); }
 
   private _setupEventListeners() {
     const doc = this.window.document;

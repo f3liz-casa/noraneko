@@ -21,7 +21,6 @@ export {
   selectedTab,
   orderedTabs,
   allGroups,
-  updateConfig,
   send,
 } from "./state/store.ts";
 
@@ -35,3 +34,18 @@ export { TabStrip } from "./ui/TabStrip.tsx";
 
 // Export Bridge
 export { initCompat } from "./bridge/TabbrowserCompat.ts";
+import { initCompat as _initCompat } from "./bridge/TabbrowserCompat.ts";
+
+// ============================================================================
+// Module lifecycle hook — called by loader/lifecycle.ts before SessionStore.
+// At this point gBrowser already exists (created in onDOMContentLoaded).
+// initCompat overrides window.gBrowser with TabbrowserCompat via
+// Object.defineProperty, replacing the API layer while keeping the existing
+// DOM structure in place.
+// ============================================================================
+export function initBeforeSessionStoreInit() {
+  // Skip if the before-tabbrowser category hook already installed our compat.
+  if ((window as any).__noranekoTabbrowserInstalled) return;
+  _initCompat(window as any);
+  (window as any).__noranekoTabbrowserInstalled = true;
+}
