@@ -8,6 +8,26 @@ import { BrowserSystem } from "./BrowserSystem.ts";
 import { NavigationSystem } from "./NavigationSystem.ts";
 import type { TabId } from "../types/TabState.ts";
 
+// Module method mixes (real implementations ported from Firefox tabbrowser.js)
+import * as internals from "./modules/internals.ts";
+import * as lifecycle from "./modules/lifecycle.ts";
+import * as tabCrud from "./modules/tab-crud.ts";
+import * as browserFindbar from "./modules/browser-findbar.ts";
+import * as browserSwap from "./modules/browser-swap.ts";
+import * as browserCreate from "./modules/browser-create.ts";
+import * as tabMisc from "./modules/tab-misc.ts";
+import * as tabEvents from "./modules/tab-events.ts";
+import * as tabInfo from "./modules/tab-info.ts";
+import * as browserDiscard from "./modules/browser-discard.ts";
+import * as titleIcon from "./modules/title-icon.ts";
+import * as extended from "./modules/extended.ts";
+import * as splitViewOps from "./modules/split-view-ops.ts";
+import * as tabDedup from "./modules/tab-dedup.ts";
+import * as tabCollection from "./modules/tab-collection.ts";
+import * as tabGroups from "./modules/tab-groups.ts";
+import * as browserPanel from "./modules/browser-panel.ts";
+import * as tabKeyboard from "./modules/tab-keyboard.ts";
+
 // Access globals available in the Chrome context
 declare const ChromeUtils: any;
 declare const Services: any;
@@ -45,6 +65,26 @@ export class TabbrowserCompat {
       GenAI: "resource:///modules/GenAI.sys.mjs",
       TabNotes: "moz-src:///browser/components/tabnotes/TabNotes.sys.mjs",
     });
+
+    // Initialize internal collections and state expected by module implementations.
+    // These mirror fields used extensively in the ported modules so they exist
+    // synchronously on the compat instance.
+    (this as any)._tabForBrowser = new Map();
+    (this as any)._tabFilters = new Map();
+    (this as any)._tabListeners = new Map();
+    (this as any)._removingTabs = new Set();
+    (this as any)._lastRelatedTabMap = new WeakMap();
+    (this as any)._taskbarTab = null;
+    (this as any)._taskbarTabTitle = null;
+    (this as any)._taskbarTabTitleLastProfile = null;
+    (this as any)._cachedTitleInfo = {};
+    (this as any)._tabSwitchTelemetry = new Map();
+    (this as any)._previousURL = null;
+    (this as any)._dataURLRegEx = /^data:/;
+    (this as any)._nonPrintingRegEx = /^(?:\s|\u00A0)*$/;
+    (this as any)._shouldExposeContentTitle = true;
+    (this as any)._shouldExposeContentTitlePbm = false;
+    (this as any)._tabpanelsSelectHandler = null;
   }
 
   // DOM elements set up in init() — matches original tabbrowser.js
@@ -324,6 +364,34 @@ export class TabbrowserCompat {
 }
 
 export function initCompat(window: any) {
+  // Merge canonical module implementations onto the compat prototype so
+  // the instance exposes full gBrowser behavior (modules may overwrite
+  // lightweight shim methods defined above).
+  const moduleMethods = [
+    internals.methods,
+    lifecycle.methods,
+    tabCrud.methods,
+    browserFindbar.methods,
+    browserSwap.swapBrowserMethods,
+    browserCreate.methods,
+    tabMisc.methods,
+    tabEvents.methods,
+    tabInfo.methods,
+    browserDiscard.methods,
+    titleIcon.methods,
+    extended.methods,
+    splitViewOps.methods,
+    tabDedup.methods,
+    tabCollection.methods,
+    tabGroups.methods,
+    browserPanel.methods,
+    tabKeyboard.methods,
+  ].filter(Boolean as any);
+
+  for (const m of moduleMethods) {
+    try { Object.assign(TabbrowserCompat.prototype, m); } catch (_) { /* best-effort merge */ }
+  }
+
   const compat = new TabbrowserCompat(window);
   compat.init();
   Object.defineProperty(window, "gBrowser", { get: () => compat, configurable: true });
