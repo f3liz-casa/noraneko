@@ -303,6 +303,88 @@ export class TabbrowserCompat {
     } catch (_) { /* swallow */ }
   }
 
+  // Synchronously create minimal XUL-like DOM elements for legacy modules.
+  _xulEl(tagName: string, attrs?: Record<string, any>) {
+    const doc = (this.window as any).document;
+    let el: Element;
+    try {
+      if (typeof doc.createXULElement === "function") {
+        el = doc.createXULElement(tagName);
+      } else {
+        el = doc.createElement(tagName);
+      }
+    } catch (_) {
+      el = doc.createElement(tagName);
+    }
+    if (attrs) {
+      if (attrs.is) el.setAttribute("is", attrs.is);
+      for (const k of Object.keys(attrs)) {
+        if (k === "is") continue;
+        const v = attrs[k];
+        if (k === "class" || k === "className") (el as any).className = v;
+        else el.setAttribute(k, String(v));
+      }
+    }
+    return el;
+  }
+
+  /**
+   * Create and insert browser/tab DOM elements synchronously for the given tab id.
+   * This ensures legacy callers get real elements immediately instead of stubs.
+   */
+  _createBrowserDOM(id: string, options: any = {}) {
+    try {
+      const state = appState.value.tabs[id];
+      const uri = state?.uri ?? "about:blank";
+
+      // Create tab element using module-provided helper if available.
+      const tabEl = (this as any)._createTab ? (this as any)._createTab({
+        uriString: uri,
+        userContextId: state?.userContextId,
+        openerTab: state?.openerTabId ? DOMRegistry.getTab(state.openerTabId) : null,
+        pinned: state?.isPinned,
+        noInitialLabel: false,
+        skipBackgroundNotify: false,
+        animate: false,
+      }) : this._xulEl("tab");
+
+      (tabEl as any)._tabId = id;
+      DOMRegistry.registerTab(id, tabEl);
+
+      // Insert tab into tabContainer in the correct order according to appState.
+      const order = appState.value.tabOrder;
+      const idx = order.indexOf(id);
+      const nextId = order[idx + 1];
+      const nextEl = nextId ? DOMRegistry.getTab(nextId) : null;
+      if (nextEl && this.tabContainer?.insertBefore) this.tabContainer.insertBefore(tabEl, nextEl);
+      else this.tabContainer?.appendChild?.(tabEl);
+
+      // Create actual browser element for the tab.
+      const res = (this as any)._createBrowserForTab ? (this as any)._createBrowserForTab(tabEl, {
+        uriString: uri,
+        userContextId: state?.userContextId,
+        remoteType: options.remoteType,
+      }) : { browser: null };
+      const browser = res?.browser;
+      if (browser) {
+        DOMRegistry.registerBrowser(id, browser);
+        // Append browser container (stack -> container) to tabpanels.
+        const browserContainer = (browser as any).parentNode?.parentNode;
+        if (browserContainer && this.tabpanels?.appendChild) this.tabpanels.appendChild(browserContainer);
+        this._tabForBrowser.set(browser, tabEl);
+        try { this._wireProgressListener(tabEl, browser); } catch (_) { /* best-effort */ }
+      }
+    } catch (e) {
+      console.error("Failed to synchronously create browser DOM for tab", id, e);
+    }
+  }
+
+  _insertBrowser(tabOrId: any, options: any = {}) {
+    const id = typeof tabOrId === "string" ? tabOrId : tabOrId?._tabId;
+    if (!id) return;
+    this._createBrowserDOM(id, options);
+  }
+
   // Basic tab manipulation wrappers (compat)
   pinTab(tab: any) { const id = tab?._tabId; if (id) send({ type: "PIN_TAB", tabId: id }); }
   unpinTab(tab: any) { const id = tab?._tabId; if (id) send({ type: "UNPIN_TAB", tabId: id }); }
