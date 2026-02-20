@@ -248,12 +248,28 @@ export class TabbrowserCompat {
     for (const l of this.mTabsProgressListeners) if (method in l) l[method](...tabsArgs);
   }
 
+  // Internal helper to attempt wiring into a browser's webProgress (best-effort)
+  _wireProgressListener(browser: any) {
+    try {
+      const wp = (browser as any)?.webProgress;
+      if (!wp || typeof wp.addProgressListener !== "function") return;
+      const listener = {
+        onStateChange: (...a: any[]) => this._callProgressListeners(browser, "onStateChange", a),
+        onLocationChange: (...a: any[]) => this._callProgressListeners(browser, "onLocationChange", a),
+        onProgressChange: (...a: any[]) => this._callProgressListeners(browser, "onProgressChange", a),
+        onStatusChange: (...a: any[]) => this._callProgressListeners(browser, "onStatusChange", a),
+      };
+      try { wp.addProgressListener(listener); } catch (_) { /* best-effort */ }
+    } catch (_) { /* swallow */ }
+  }
+
   // Basic tab manipulation wrappers (compat)
   pinTab(tab: any) { const id = tab?._tabId; if (id) send({ type: "PIN_TAB", tabId: id }); }
   unpinTab(tab: any) { const id = tab?._tabId; if (id) send({ type: "UNPIN_TAB", tabId: id }); }
   duplicateTab(tab: any) { const id = tab?._tabId; if (id) { send({ type: "DUPLICATE_TAB", tabId: id }); } }
   moveTabTo(tab: any, index: number) { const id = tab?._tabId; if (id) send({ type: "MOVE_TAB", tabId: id, newIndex: index }); }
   moveTabRelative(tab: any, target: any, position: "before" | "after" = "after") { const id = tab?._tabId; const targetId = target?._tabId; if (id && targetId) send({ type: "MOVE_TAB_RELATIVE", tabId: id, targetId, position }); }
+  moveTabToSplitView(tab: any, splitViewId: any) { const id = tab?._tabId; if (id && splitViewId) send({ type: "ADD_TAB_TO_SPLIT_VIEW", splitViewId, tabId: id }); }
   swapBrowsersAndCloseOther(tabA: any, tabB: any) {
     const idA = tabA?._tabId; const idB = tabB?._tabId;
     if (!idA || !idB) return;
@@ -286,6 +302,17 @@ export class TabbrowserCompat {
   reloadAllTabs(flags: any = {}) { for (const id of appState.value.tabOrder) { const tabEl = DOMRegistry.getTab(id); this.reloadTab(tabEl, flags); } }
   goBack(tab: any) { const browser = this.getBrowserForTab(tab) as any; if (!browser) return; if (browser.webNavigation?.canGoBack) browser.webNavigation.goBack(); else browser.contentWindow?.history?.back(); }
   goForward(tab: any) { const browser = this.getBrowserForTab(tab) as any; if (!browser) return; if (browser.webNavigation?.canGoForward) browser.webNavigation.goForward(); else browser.contentWindow?.history?.forward(); }
+
+  // Minimal compatibility helpers and no-op implementations for legacy callers
+  showFullScreenViewContextMenuItems(...args: any[]) { /* no-op compat */ }
+  getTabPids(tabs?: any) { const ids = Array.isArray(tabs) ? tabs.map(t => t?._tabId ?? t) : tabs ? [tabs?._tabId ?? tabs] : appState.value.tabOrder; return ids.map(id => appState.value.engineStates[id]?.processId ?? null); }
+  shouldActivateDocShell(browser?: any) { const b = browser || this.selectedBrowser; return !!(b && (b as any).docShell); }
+  _setupInitialBrowserAndTab() { try { if (!appState.value.tabOrder.length) { const el = this.addTab("about:blank", {}); if (el) this.selectedTab = el; } else { const selId = appState.value.selectedTabId; if (!selId && appState.value.tabOrder[0]) { const t = DOMRegistry.getTab(appState.value.tabOrder[0]); if (t) this.selectedTab = t; } } } catch (_) { /* swallow */ }
+  updateTitlebar() { try { if ((BrowserSystem as any)?.updateTitlebar) (BrowserSystem as any).updateTitlebar(this.window); } catch (_) { /* swallow */ } }
+  createUserContextMenu(menu: any) { // Minimal fallback used by some legacy callers
+    try { if ((this as any).createReopenInContainerMenu) return (this as any).createReopenInContainerMenu(menu); } catch (_) {}
+    return null;
+  }
 
   private _setupEventListeners() {
     const doc = this.window.document;
