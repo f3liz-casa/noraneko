@@ -59,7 +59,19 @@ export async function initScripts(): Promise<void> {
 
   // Initialize NMA (Noraneko Module Archive) system first
   // NMA provides omni.ja-like module distribution alongside installation
-  await initNMASystem();
+  // Allow toggling NMA at runtime via preference `noraneko.nma.enabled` (default: true)
+  try {
+    const nmaEnabled = Services.prefs.getBoolPref("noraneko.nma.enabled", true);
+    if (nmaEnabled) {
+      await initNMASystem();
+    } else {
+      console.log("[noraneko] NMA disabled by preference (noraneko.nma.enabled=false)");
+    }
+  } catch (e) {
+    // If prefs API is unavailable for any reason, fall back to initializing NMA
+    console.warn("[noraneko] Pref read failed, defaulting to enable NMA", e);
+    await initNMASystem();
+  }
 
   // Populate module registry from NMA manifest (replaces build-time #features-chrome dependency)
   const nmaManifest = getCurrentNMAManifest();

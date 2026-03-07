@@ -1,13 +1,11 @@
 {
-  "name": "noraneko-bin",
-  "version": "0.3.0",
-  "description": "",
-  "main": "index.js",
-  "type": "module",
-  "keywords": [],
-  "author": "",
+  "name": "noraneko",
+  "version": "0.0.0",
   "private": true,
   "license": "MPL-2.0",
+  "scripts": {
+    "dmg:insert": "deno run --allow-read --allow-write --allow-run ./tools/dmg.ts"
+  },
   "devDependencies": {
     "@bytecodealliance/preview2-shim": "^0.17.8",
     "@prettier/plugin-oxc": "^0.1.3",
