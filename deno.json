@@ -3,9 +3,9 @@
   "links": ["libs/@types/gecko"],
   "workspace": ["./libs/*", "./browser-features/*", "./bridge/*"],
   "imports": {
-    "@std/cli": "jsr:@std/cli@^1.0.27",
+    "@std/cli": "jsr:@std/cli@^1.0.28",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
-    "@std/fs": "jsr:@std/fs@^1.0.22",
+    "@std/fs": "jsr:@std/fs@^1.0.23",
     "@std/path": "jsr:@std/path@^1.1.4",
     "#i18n/": "./i18n/",
     "#chrome/": "./chrome/",
