@@ -17,13 +17,6 @@ export default defineConfig({
   publicDir: r("public"),
   server: { port: 5181, strictPort: true },
   define: { "import.meta.env.__BUILDID2__": '"placeholder"' },
-  "oxc": {
-    "jsx": {
-      "throwIfNamespace": false,
-      "runtime": "automatic",
-      "importSource": "preact",
-    }
-  },
 
   build: {
     sourcemap: true,
@@ -35,16 +28,10 @@ export default defineConfig({
     target: "esnext",
     outDir: r("_dist"),
     
-    rolldownOptions: {
-      transform: {
-        jsx: {
-          throwIfNamespace: false,
-        },
-      },
+    rollupOptions: {
       preserveEntrySignatures: "allow-extension",
       input: { core: r("main.ts") },
       output: {
-        esModule: true,
         entryFileNames: "[name].js",
 
         /**
@@ -61,7 +48,8 @@ export default defineConfig({
         manualChunks(id) {
           // Vendor/external dependencies - shared across all modules
           if (id.includes("node_modules")) {
-            const parts = id.split("node_modules/")[1].split("/");
+            const parts = id.split("node_modules/")[1]?.split("/");
+            if (!parts) return undefined;
             // .pnpm || .deno
             const pkg = parts[0].startsWith(".") ? parts[1] : parts[0];
             return `modules/external/${pkg}`;
@@ -90,7 +78,7 @@ export default defineConfig({
         },
 
         assetFileNames(info) {
-          const name = info.originalFileNames.at(0);
+          const name = (info as any).originalFileNames?.at(0) ?? info.name;
           if (name?.endsWith(".svg")) return "assets/svg/[name][extname]";
           if (name?.endsWith(".css")) return "assets/css/[name][extname]";
           return "assets/[name][extname]";

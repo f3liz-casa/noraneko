@@ -3,6 +3,7 @@
 import { signal, computed } from "@preact/signals";
 import { createActor } from "xstate";
 import type { AppState, TabData, TabId, TabGroupData, BrowserEngineState } from "../types/TabState.ts";
+
 import { tabMachine } from "./tabMachine.ts";
 
 const initialState: AppState = {
@@ -64,4 +65,12 @@ export const allGroups = computed<TabGroupData[]>(() => {
 
 export function send(event: any): void {
   tabActor.send(event);
+}
+
+export function setSelectedTab(tabId: TabId | null): void {
+  if (tabId === null) {
+    appState.value = { ...appState.value, selectedTabId: null };
+  } else {
+    tabActor.send({ type: "SELECT_TAB", tabId });
+  }
 }
