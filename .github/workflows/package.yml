@@ -169,6 +169,7 @@ jobs:
               echo "OUTPUT_INSTALLER_NAME=noraneko-windows-x86_64-installer.exe" >> $GITHUB_ENV
               ;;
             "Linux-x86_64")
+              echo "ARTIFACT_NAME=noraneko-linux-x86_64-moz-artifact" >> $GITHUB_ENV
               echo "ARTIFACT_FROM_RELEASE_NAME=noraneko-linux-x86_64-moz-artifact.tar.xz" >> $GITHUB_ENV
               echo "OUTPUT_NAME=linux-x86_64" >> $GITHUB_ENV
               echo "INSTALLER_PATH=noraneko*tar.xz" >> $GITHUB_ENV
@@ -201,7 +202,19 @@ jobs:
         run: |
           mkdir -p ~/artifacts
           cp -r ~/downloads/* ~/artifacts
+          echo "=== Artifact contents ==="
           ls -R ~/artifacts
+          # Validate artifact exists
+          if [ "${{inputs.platform}}" == "Windows-x86_64" ]; then
+            FOUND=$(find ~/artifacts -name "noraneko-*.zip" -type f | head -n 1)
+          elif [ "${{inputs.platform}}" == "Linux-x86_64" ]; then
+            FOUND=$(find ~/artifacts -name "noraneko-*.tar.xz" -type f | head -n 1)
+          fi
+          if [ -z "$FOUND" ]; then
+            echo "::error::No Mozilla artifact found in ~/artifacts for platform ${{inputs.platform}}"
+            exit 1
+          fi
+          echo "Found artifact: $FOUND"
 
       - name: Build Noraneko
         run: |
@@ -212,9 +225,9 @@ jobs:
         run: |
           ./mach configure
           if [ "${{inputs.platform}}" == "Windows-x86_64" ]; then
-            MOZ_ARTIFACT_FILE=$(find ~/artifacts/noraneko-windows-x86_64-moz-artifact -name "noraneko-*.zip" -type f | head -n 1) ./mach build
+            MOZ_ARTIFACT_FILE=$(find ~/artifacts -name "noraneko-*.zip" -type f | head -n 1) ./mach build
           elif [ "${{inputs.platform}}" == "Linux-x86_64" ]; then
-            MOZ_ARTIFACT_FILE=$(find ~/artifacts/noraneko-linux-x86_64-moz-artifact -name "noraneko-*.tar.xz" -type f | head -n 1) ./mach build
+            MOZ_ARTIFACT_FILE=$(find ~/artifacts -name "noraneko-*.tar.xz" -type f | head -n 1) ./mach build
           fi
 
       - name: Inject Noraneko
@@ -249,7 +262,7 @@ jobs:
       - name: Package noraneko
         if: ${{ inputs.platform == 'Linux-x86_64' }}
         run: |
-          ./mach repackage deb --input "$(echo obj-*/dist/$INSTALLER_PATH)" --output ~/noraneko-installer/noraneko.deb --arch x86_64 --version "0.2.0" --build-number 1 --templates browser/installer/linux/app/debian --release-type release --product noraneko
+          ./mach repackage deb --input "$(echo obj-*/dist/$INSTALLER_PATH)" --output ~/noraneko-installer/noraneko.deb --arch x86_64 --version "$(cat noraneko/static/gecko/config/version.txt || echo '0.3.0')" --build-number 1 --templates browser/installer/linux/app/debian --release-type release --product noraneko
 
       - name: Rename and move installer
         run: |
