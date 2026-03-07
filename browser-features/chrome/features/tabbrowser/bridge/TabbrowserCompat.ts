@@ -429,7 +429,7 @@ export class TabbrowserCompat {
   showFullScreenViewContextMenuItems(...args: any[]) { /* no-op compat */ }
   getTabPids(tabs?: any) { const ids = Array.isArray(tabs) ? tabs.map(t => t?._tabId ?? t) : tabs ? [tabs?._tabId ?? tabs] : appState.value.tabOrder; return ids.map(id => appState.value.engineStates[id]?.processId ?? null); }
   shouldActivateDocShell(browser?: any) { const b = browser || this.selectedBrowser; return !!(b && (b as any).docShell); }
-  _setupInitialBrowserAndTab() { try { if (!appState.value.tabOrder.length) { const el = this.addTab("about:blank", {}); if (el) this.selectedTab = el; } else { const selId = appState.value.selectedTabId; if (!selId && appState.value.tabOrder[0]) { const t = DOMRegistry.getTab(appState.value.tabOrder[0]); if (t) this.selectedTab = t; } } } catch (_) { /* swallow */ }
+  _setupInitialBrowserAndTab() { try { if (!appState.value.tabOrder.length) { const el = this.addTab("about:blank", {}); if (el) this.selectedTab = el; } else { const selId = appState.value.selectedTabId; if (!selId && appState.value.tabOrder[0]) { const t = DOMRegistry.getTab(appState.value.tabOrder[0]); if (t) this.selectedTab = t; } } } catch (_) { /* swallow */ } }
   updateTitlebar() { try { if ((BrowserSystem as any)?.updateTitlebar) (BrowserSystem as any).updateTitlebar(this.window); } catch (_) { /* swallow */ } }
   createUserContextMenu(menu: any) { // Minimal fallback used by some legacy callers
     try { if ((this as any).createReopenInContainerMenu) return (this as any).createReopenInContainerMenu(menu); } catch (_) {}
