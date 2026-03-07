@@ -7,7 +7,7 @@ export function genJarmnPlugin(
   prefix: string,
   namespace: string,
   register_type: "content" | "skin" | "resource",
-) {
+) : Plugin {
   return {
     name: "gen_jarmn",
     async generateBundle(options, bundle, _isWrite) {

@@ -118,6 +118,9 @@ async function runBuild(phase?: string): Promise<void> {
   } else if (optionsPhase === "after-mach") {
     // await Injector.createManifest("production", "_dist/noraneko");
     await Injector.injectXhtmlFromTs(false, true);
+    // Deploy the NMA that was built during before-mach, now that BIN_DIR exists.
+    const version = Builder.packageVersion();
+    await Builder.deployNMA(version);
   } else {
     console.error(`Unknown phase: ${optionsPhase}`);
     Deno.exit(1);

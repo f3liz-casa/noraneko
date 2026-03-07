@@ -5,7 +5,7 @@ import path from "node:path";
 import react from "@vitejs/plugin-react";
 // import istanbulPlugin from "vite-plugin-istanbul";
 import decorators from "../../libs/vite-oxc-decorator-stage-3/dist/index.js";
-// import { genJarmnPlugin } from "../../libs/vite-plugin-gen-jarmn/plugin.ts";
+import { genJarmnPlugin } from "../../libs/vite-plugin-gen-jarmn/plugin.ts";
 import deno from "@deno/vite-plugin";
 // import { hotfixPlugin } from "./vite-plugin-hotfix.ts";
 // import { moduleManifestPlugin } from "./vite-plugin-module-manifest.ts";
@@ -124,7 +124,7 @@ export default defineConfig({
     //   },
     // },
     // istanbulPlugin(),
-    // genJarmnPlugin("content", "noraneko", "content"),
+    genJarmnPlugin("content", "noraneko", "content"),
     // hotfixPlugin({ outputDir: "hotfixes/source", enableOnBuild: false }),
     // // Generate module manifest for hotfix hash tracking
     // moduleManifestPlugin(),
