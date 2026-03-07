@@ -127,7 +127,7 @@ jobs:
           ac_add_options --enable-artifact-builds
           mk_add_options MOZ_OBJDIR=./obj-artifact-build-output
           EOF
-          sed -i 's|ac_add_options --disable-updater||g; s|ac_add_options --enable-unverified-updates||g; s|ac_add_options --enable-chrome-format=flat||g; s|ac_add_options --enable-optimize[^ ]*||g; s|^export CC=.*||g; s|^export CXX=.*||g' ./mozconfig
+          sed -i 's|ac_add_options --disable-updater||g; s|ac_add_options --enable-unverified-updates||g; s|ac_add_options --enable-chrome-format=flat||g; s|ac_add_options --enable-optimize[^ ]*||g; s|^export CC=.*||g; s|^export CXX=.*||g; s|ac_add_options --enable-linker[^ ]*||g' ./mozconfig
           sed -i 's|MOZ_BRANDING_DIRECTORY=browser/branding/unofficial|MOZ_BRANDING_DIRECTORY=browser/branding/noraneko-unofficial|g' ./browser/confvars.sh
           if [ "$PLATFORM" = "macOS-x64" ]; then
             mkdir -p ~/tools
