@@ -134,7 +134,7 @@ jobs:
           if [ "$PLATFORM" = "macOS-aarch64" ]; then
             sudo apt install -y zstd
             mkdir -p ~/tools
-            curl -L "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-3.toolchains.v3.linux64-dmg.latest/artifacts/public/build/dmg.tar.zst" -o dmg.tar.zst
+            curl -L "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-3.toolchains.v3.linux64-libdmg.latest/artifacts/public/build/dmg.tar.zst" -o dmg.tar.zst
             curl -L "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-3.toolchains.v3.linux64-hfsplus.latest/artifacts/public/build/hfsplus.tar.zst" -o hfsplus.tar.zst
             tar --zstd -xf dmg.tar.zst -C ~/tools
             tar --zstd -xf hfsplus.tar.zst -C ~/tools
