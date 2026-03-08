@@ -221,7 +221,7 @@ jobs:
           elif [ "${{inputs.platform}}" == "Linux-x86_64" ]; then
             FOUND=$(find ~/artifacts -name "noraneko-*.tar.xz" -type f | head -n 1)
           elif [ "${{inputs.platform}}" == "macOS-aarch64" ]; then
-            FOUND=$(find ~/artifacts -name "noraneko-*.tar.gz" -type f | head -n 1)
+            FOUND=$(find ~/artifacts -name "noraneko-*.dmg" -type f | head -n 1)
           fi
           if [ -z "$FOUND" ]; then
             echo "::error::No Mozilla artifact found in ~/artifacts for platform ${{inputs.platform}}"
@@ -242,7 +242,7 @@ jobs:
           elif [ "${{inputs.platform}}" == "Linux-x86_64" ]; then
             MOZ_ARTIFACT_FILE=$(find ~/artifacts -name "noraneko-*.tar.xz" -type f | head -n 1) ./mach build
           elif [ "${{inputs.platform}}" == "macOS-aarch64" ]; then
-            MOZ_ARTIFACT_FILE=$(find ~/artifacts -name "noraneko-*.tar.gz" -type f | head -n 1) ./mach build
+            MOZ_ARTIFACT_FILE=$(find ~/artifacts -name "noraneko-*.dmg" -type f | head -n 1) ./mach build
           fi
 
       - name: Inject Noraneko
