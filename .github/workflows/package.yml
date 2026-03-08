@@ -128,6 +128,8 @@ jobs:
           ac_add_options --disable-tests
           ac_add_options --enable-artifact-builds
           mk_add_options MOZ_OBJDIR=./obj-artifact-build-output
+          # 0:33.47 FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/noraneko/noraneko/obj-artifact-build-output/dist/update_framework_artifacts/UpdateSettings-localbuild.framework/UpdateSettings'
+          ac_add_options --disable-updater
           EOF
           sed -i 's|ac_add_options --disable-updater||g; s|ac_add_options --enable-unverified-updates||g; s|ac_add_options --enable-chrome-format=flat||g; s|ac_add_options --enable-optimize[^ ]*||g; s|^export CC=.*||g; s|^export CXX=.*||g; s|ac_add_options --enable-linker[^ ]*||g; s|ac_add_options --enable-lto[^ ]*||g' ./mozconfig
           sed -i 's|MOZ_BRANDING_DIRECTORY=browser/branding/unofficial|MOZ_BRANDING_DIRECTORY=browser/branding/noraneko-unofficial|g' ./browser/confvars.sh
