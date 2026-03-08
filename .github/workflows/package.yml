@@ -132,11 +132,13 @@ jobs:
           sed -i 's|ac_add_options --disable-updater||g; s|ac_add_options --enable-unverified-updates||g; s|ac_add_options --enable-chrome-format=flat||g; s|ac_add_options --enable-optimize[^ ]*||g; s|^export CC=.*||g; s|^export CXX=.*||g; s|ac_add_options --enable-linker[^ ]*||g; s|ac_add_options --enable-lto[^ ]*||g' ./mozconfig
           sed -i 's|MOZ_BRANDING_DIRECTORY=browser/branding/unofficial|MOZ_BRANDING_DIRECTORY=browser/branding/noraneko-unofficial|g' ./browser/confvars.sh
           if [ "$PLATFORM" = "macOS-aarch64" ]; then
+            sudo apt install -y zstd
             mkdir -p ~/tools
-            curl -L https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/ceSQWV1AS76UlhYJ0_PfJQ/artifacts/public/build/dmg.tar.zst -o dmg.tar.zst
-            curl -L https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/N2SwCRLrRw2l-UWP4N7dhQ/artifacts/public/build/hfsplus.tar.zst -o hfsplus.tar.zst
-            tar -I zstd -xf dmg.tar.zst -C ~/tools && tar -I zstd -xf hfsplus.tar.zst -C ~/tools
-            chmod 777 ~/tools/dmg ~/tools/hfsplus
+            curl -L "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-3.toolchains.v3.linux64-dmg.latest/artifacts/public/build/dmg.tar.zst" -o dmg.tar.zst
+            curl -L "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-3.toolchains.v3.linux64-hfsplus.latest/artifacts/public/build/hfsplus.tar.zst" -o hfsplus.tar.zst
+            tar --zstd -xf dmg.tar.zst -C ~/tools
+            tar --zstd -xf hfsplus.tar.zst -C ~/tools
+            chmod 755 ~/tools/dmg/dmg ~/tools/dmg/hfsplus ~/tools/hfsplus/newfs_hfs
             cat >> mozconfig << EOF
           DMG_TOOL=$HOME/tools/dmg/dmg
           HFS_TOOL=$HOME/tools/dmg/hfsplus
