@@ -13,6 +13,10 @@ on:
         description: "The workflow run ID for the Linux runtime artifact (leave empty for latest release)"
         required: false
         type: string
+      runtime_macos_artifact_workflow_run_id:
+        description: "The workflow run ID for the macOS runtime artifact (leave empty for latest release)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -34,9 +38,17 @@ jobs:
       runtime_artifact_workflow_run_id: ${{ inputs.runtime_linux_artifact_workflow_run_id }}
     secrets: inherit
 
+  package-macos:
+    uses: ./.github/workflows/package.yml
+    with:
+      platform: macOS-aarch64
+      runtime_artifact_workflow_run_id: ${{ inputs.runtime_macos_artifact_workflow_run_id }}
+    secrets: inherit
+
   publish:
-    needs: [package-windows, package-linux]
+    needs: [package-windows, package-linux, package-macos]
     uses: ./.github/workflows/publish_alpha.yml
     with:
       win_runtime_artifact_workflow_call: ${{ github.run_id }}
       linux_runtime_artifact_workflow_call: ${{ github.run_id }}
+      macos_runtime_artifact_workflow_call: ${{ github.run_id }}

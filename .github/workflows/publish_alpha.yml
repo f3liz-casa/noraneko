@@ -14,6 +14,10 @@ on:
         type: string
         required: false
         default: ""
+      macos_runtime_artifact_workflow_call:
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -49,6 +53,17 @@ jobs:
             echo "LINUX_RUN_ID=${{ inputs.linux_runtime_artifact_workflow_call }}" >> $GITHUB_ENV
           fi
 
+          if [ -z "${{ inputs.macos_runtime_artifact_workflow_call }}" ]; then
+            MACOS_ID=$(curl -s \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/package.yml/runs?branch=main&status=success" \
+            | jq -r '[.workflow_runs[] | select(.display_title | endswith("macOS-aarch64"))][0].id')
+            echo "MACOS_RUN_ID=$MACOS_ID" >> $GITHUB_ENV
+          else
+            echo "MACOS_RUN_ID=${{ inputs.macos_runtime_artifact_workflow_call }}" >> $GITHUB_ENV
+          fi
+
       - name: Download Windows installer
         uses: actions/download-artifact@v4
         with:
@@ -63,6 +78,14 @@ jobs:
           name: noraneko-linux-x86_64-installer
           run-id: ${{ env.LINUX_RUN_ID }}
           path: ~/noraneko-publish/linux
+          github-token: ${{ github.token }}
+
+      - name: Download macOS installer
+        uses: actions/download-artifact@v4
+        with:
+          name: noraneko-macOS-aarch64-installer
+          run-id: ${{ env.MACOS_RUN_ID }}
+          path: ~/noraneko-publish/macos
           github-token: ${{ github.token }}
 
       - name: Get version info
@@ -83,7 +106,7 @@ jobs:
             ~/noraneko-publish/win/*.nma.zip
             ~/noraneko-publish/linux/*.tar.xz
             ~/noraneko-publish/linux/*.deb
-            ~/noraneko-publish/linux/*.nma.zip
+            ~/noraneko-publish/macos/*.dmg
           tag_name: "alpha"
           name: "Alpha Release"
           body: |
@@ -91,10 +114,12 @@ jobs:
 
             ## Downloads
             - **Windows**: Use the installer (.exe) or extract and use noraneko-winupdater
-            - **Linux**: Use the tarball (.tar.xz) or deb package (.deb)
+            - **Linux**: Use the tarball (.tar.xz) or deb package (.deb) — NMA is included
+            - **macOS**: Use the disk image (.dmg) — NMA is included
 
             ## NMA (Noraneko Module Archive)
-            The NMA file contains the browser-features modules. For updates, use [noraneko-winupdater](https://github.com/f3liz-dev/noraneko-winupdater) or your package manager.
+            The NMA file contains the browser-features modules and is bundled inside the Linux deb and macOS dmg packages.
+            For Windows or standalone NMA updates, use [noraneko-winupdater](https://github.com/f3liz-dev/noraneko-winupdater) or place the NMA file in the browser installation directory.
           draft: false
           prerelease: true
           token: ${{ github.token }}
