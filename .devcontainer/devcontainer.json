@@ -1,5 +1,14 @@
 {
   "name": "noraneko",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-  "remoteUser": "vscode"
+  "runArgs": [
+    "--userns=keep-id",
+    "--mount", "type=bind,source=/tmp/wayland-0,target=/tmp/wayland-0"
+  ],
+  "containerEnv": {
+    "WAYLAND_DISPLAY": "wayland-0",
+    "XDG_RUNTIME_DIR": "/tmp"
+  },
+  "remoteUser": "vscode",
+  "containerUser": "vscode"
 }
