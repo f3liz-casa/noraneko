@@ -1,0 +1,5 @@
+{
+  "name": "noraneko",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "remoteUser": "vscode"
+}
