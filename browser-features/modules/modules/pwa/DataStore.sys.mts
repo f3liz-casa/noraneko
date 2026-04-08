@@ -26,7 +26,7 @@ export class DataManager {
 
     // Check if this is legacy format and migrate if needed
     if (this.isLegacyFormat(data)) {
-      console.log("Migrating from legacy PWA data format");
+      console.debug("Migrating from legacy PWA data format");
       const migratedData = this.migrateFromLegacyFormat(
         data as Record<string, LegacyPWAEntry>,
       );

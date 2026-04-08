@@ -379,9 +379,9 @@ export const analyzeNMAChanges = async (
 export const analyzeHotfixChanges = analyzeNMAChanges;
 
 export const logHashComparison = (comparison: HashComparisonResult): void => {
-  console.log("[Hash] Comparison results:");
-  console.log(`  - deno.lock changed: ${comparison.denoLockChanged}`);
-  console.log(`  - Changed: ${comparison.changedModules.join(", ") || "none"}`);
-  console.log(`  - New: ${comparison.newModules.join(", ") || "none"}`);
-  console.log(`  - Removed: ${comparison.removedModules.join(", ") || "none"}`);
+  console.debug("[Hash] Comparison results:");
+  console.debug(`  - deno.lock changed: ${comparison.denoLockChanged}`);
+  console.debug(`  - Changed: ${comparison.changedModules.join(", ") || "none"}`);
+  console.debug(`  - New: ${comparison.newModules.join(", ") || "none"}`);
+  console.debug(`  - Removed: ${comparison.removedModules.join(", ") || "none"}`);
 };

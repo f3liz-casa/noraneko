@@ -2,8 +2,7 @@
 
 import { Overrides } from "./overrides.js";
 
-// THIS CANNOT BE HOT RELOADED
-// TODO: REMOVE ALL CREATE_ROOT_HMR
+// This module cannot be hot reloaded
 
 export function init() {
   Overrides.getInstance();

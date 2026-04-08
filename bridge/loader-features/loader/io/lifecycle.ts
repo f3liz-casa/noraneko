@@ -141,7 +141,7 @@ export const cleanupAllModules = async (): Promise<void> => {
     await cleanupModule(name);
     unregisterModule(name);
   }
-  console.log("[noraneko] All modules cleaned up");
+  console.debug("[noraneko] All modules cleaned up");
 };
 
 export const cleanupSelectiveModules = async (
@@ -194,7 +194,7 @@ const isModuleHandle = (mod: LoadedModule): boolean =>
   typeof mod?.default?.create === "function";
 
 export const initModule = async (module: LoadedModule): Promise<void> => {
-  console.log("init " + module.name);
+  console.debug(`[noraneko] init ${module.name}`);
   for (const dep of module.metadata.dependencies) {
     await onModuleLoaded(dep);
   }
@@ -260,7 +260,7 @@ export const initializeModulesForHotswap = async (
 
   for (const module of sorted) {
     try {
-      console.log("[noraneko] Hotswap init: " + module.name);
+      console.debug("[noraneko] Hotswap init: " + module.name);
       const instance = !isModuleHandle(module) && module?.default
         ? new module.default()
         : null;
@@ -269,5 +269,5 @@ export const initializeModulesForHotswap = async (
       console.error(`[noraneko] Hotswap init failed for ${module.name}:`, e);
     }
   }
-  console.log("[noraneko] Hotswap initialization complete");
+  console.debug("[noraneko] Hotswap initialization complete");
 };

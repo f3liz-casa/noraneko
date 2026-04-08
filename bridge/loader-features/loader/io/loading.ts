@@ -41,14 +41,14 @@ export const initNMASystem = async (): Promise<void> => {
   try {
     const success = await initializeNMALoader();
     if (success) {
-      console.log("[noraneko] NMA system initialized successfully");
+      console.debug("[noraneko] NMA system initialized successfully");
       const manifest = getCurrentNMAManifest();
       if (manifest) {
-        console.log(`[noraneko] NMA build: ${manifest.buildId}`);
-        console.log(`[noraneko] NMA version: ${manifest.noranekoVersion}`);
+        console.debug(`[noraneko] NMA build: ${manifest.buildId}`);
+        console.debug(`[noraneko] NMA version: ${manifest.noranekoVersion}`);
       }
     } else {
-      console.log("[noraneko] NMA not found, using built-in modules");
+      console.debug("[noraneko] NMA not found, using built-in modules");
     }
   } catch (error) {
     console.error("[noraneko] Failed to initialize NMA system:", error);
@@ -104,5 +104,10 @@ export const loadEnabledModules = async (
   );
 
   const results = await Promise.all(promises);
-  return results.filter((m): m is LoadedModule => m !== null);
+  const loaded = results.filter((m): m is LoadedModule => m !== null);
+  const failedCount = results.length - loaded.length;
+  if (failedCount > 0) {
+    console.warn(`[noraneko] ${failedCount} module(s) failed to load out of ${results.length}`);
+  }
+  return loaded;
 };

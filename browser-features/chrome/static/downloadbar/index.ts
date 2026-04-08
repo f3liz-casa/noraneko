@@ -10,13 +10,11 @@ export function init() {
   manager = new DownloadBarManager();
 
   manager.init();
-  // console.log(manager.showDownloadBar());
   if (!manager.showDownloadBar()) {
     return;
   }
   document.getElementById("downloadsPanel")?.remove();
   render(DonwloadBar, document.getElementById("appcontent")!);
-  console.log("init download bar");
   window.DownloadsPanel.hidePanel = () => {
     return;
   };

@@ -32,7 +32,7 @@ import {
   getCurrentNMAManifest,
 } from "./nma/mod.ts";
 
-console.log("[noraneko] Initializing scripts...");
+console.debug("[noraneko] Initializing scripts...");
 
 // ============================================================================
 // Public API - Main Functions
@@ -65,7 +65,7 @@ export async function initScripts(): Promise<void> {
     if (nmaEnabled) {
       await initNMASystem();
     } else {
-      console.log("[noraneko] NMA disabled by preference (noraneko.nma.enabled=false)");
+      console.debug("[noraneko] NMA disabled by preference (noraneko.nma.enabled=false)");
     }
   } catch (e) {
     // If prefs API is unavailable for any reason, fall back to initializing NMA
@@ -91,18 +91,18 @@ export async function initScripts(): Promise<void> {
  * Side effect: cleans up and reloads all modules
  */
 export async function hotswapModules(): Promise<boolean> {
-  console.log("[noraneko] Starting module hotswap...");
+  console.debug("[noraneko] Starting module hotswap...");
 
   try {
     notifyHotswapStart();
     await cleanupAllModules();
-    console.log("[noraneko] All modules cleaned up");
+    console.debug("[noraneko] All modules cleaned up");
 
     const enabledFeatures = getEnabledFeatures();
     const modules = await loadEnabledModules(enabledFeatures);
     await initializeModulesForHotswap(modules);
 
-    console.log("[noraneko] Module hotswap complete");
+    console.debug("[noraneko] Module hotswap complete");
     notifyHotswapComplete(true);
     return true;
   } catch (error) {
@@ -119,7 +119,7 @@ export async function hotswapModules(): Promise<boolean> {
 export async function hotswapSelectiveModules(
   moduleNames: string[],
 ): Promise<boolean> {
-  console.log(
+  console.debug(
     `[noraneko] Starting selective hotswap for: ${moduleNames.join(", ")}`,
   );
 
@@ -128,7 +128,7 @@ export async function hotswapSelectiveModules(
 
     // Cleanup the specified modules and their dependents
     const cleanedUp = await cleanupSelectiveModules(moduleNames);
-    console.log(
+    console.debug(
       `[noraneko] Cleaned up ${cleanedUp.length} modules: ${cleanedUp.join(", ")}`,
     );
 
@@ -141,7 +141,7 @@ export async function hotswapSelectiveModules(
 
     await initializeModulesForHotswap(modulesToReload);
 
-    console.log(
+    console.debug(
       `[noraneko] Selective hotswap complete. Reloaded: ${modulesToReload.map((m) => m.name).join(", ")}`,
     );
     notifyHotswapComplete(true);
@@ -161,7 +161,7 @@ export async function hotswapWithHashDetection(
   buildId: string,
   modulePaths: string[],
 ): Promise<boolean> {
-  console.log(`[noraneko] Starting hash-based hotswap for NMA build: ${buildId}`);
+  console.debug(`[noraneko] Starting hash-based hotswap for NMA build: ${buildId}`);
 
   try {
     const installDir = Services.dirsvc.get("GreD", Ci.nsIFile).path;
@@ -174,7 +174,7 @@ export async function hotswapWithHashDetection(
     );
 
     logHashComparison(comparison);
-    console.log(
+    console.debug(
       `[noraneko] Hotswap recommendation: ${recommendation.mode} - ${recommendation.reason}`,
     );
 
@@ -182,17 +182,17 @@ export async function hotswapWithHashDetection(
 
     switch (recommendation.mode) {
       case HotswapMode.NONE:
-        console.log("[noraneko] No changes detected, skipping hotswap");
+        console.debug("[noraneko] No changes detected, skipping hotswap");
         success = true;
         break;
 
       case HotswapMode.FULL:
-        console.log("[noraneko] Full reload required, performing full hotswap");
+        console.debug("[noraneko] Full reload required, performing full hotswap");
         success = await hotswapModules();
         break;
 
       case HotswapMode.SELECTIVE:
-        console.log(
+        console.debug(
           `[noraneko] Selective hotswap for modules: ${recommendation.modulesToReload.join(", ")}`,
         );
         success = await hotswapSelectiveModules(recommendation.modulesToReload);
@@ -202,7 +202,7 @@ export async function hotswapWithHashDetection(
     // Save new hash state on success
     if (success) {
       saveHashState(newState);
-      console.log("[noraneko] Hash state saved");
+      console.debug("[noraneko] Hash state saved");
     }
 
     return success;

@@ -19,7 +19,6 @@ export class CustomShortcutKey {
     if (!CustomShortcutKey.windows.includes(window)) {
       CustomShortcutKey.instance.startHandleShortcut(window);
       CustomShortcutKey.windows.push(window);
-      console.log("add window");
     }
     Services.obs.addObserver(CustomShortcutKey.instance, "nora-csk");
     return CustomShortcutKey.instance;
@@ -43,7 +42,6 @@ export class CustomShortcutKey {
             break;
           case 'update-pref':
             this.initCSKData();
-            console.log(this.cskData);
             break;
         }
       }
@@ -54,7 +52,7 @@ export class CustomShortcutKey {
   private constructor() {
     this.initCSKData();
 
-    console.warn("CSK Init Completed");
+    console.debug("CSK Init Completed");
   }
 
   private initCSKData() {
@@ -78,7 +76,6 @@ export class CustomShortcutKey {
   private startHandleShortcut(_window: Window) {
     _window.addEventListener("keydown", (ev: KeyboardEvent) => {
       if (this.disable_csk) {
-        console.log("disable-csk");
         return;
       }
       if (

@@ -22,16 +22,16 @@ import * as Core from "./core.ts";
 // ============================================================================
 
 export const initializeNMALoader = async (): Promise<boolean> => {
-  console.log("[NMA] Initializing...");
+  console.debug("[NMA] Initializing...");
 
   const nmaPath = await Core.resolveNMAPath();
   if (!nmaPath) {
-    console.log("[NMA] No NMA file found, using built-in modules");
+    console.debug("[NMA] No NMA file found, using built-in modules");
     return false;
   }
 
   state.loader.nmaPath = nmaPath;
-  console.log(`[NMA] Found archive: ${nmaPath}`);
+  console.debug(`[NMA] Found archive: ${nmaPath}`);
 
   const verificationResult = await verifyNMA(nmaPath);
   if (!verificationResult.isValid) {
@@ -52,7 +52,7 @@ export const initializeNMALoader = async (): Promise<boolean> => {
   state.loader.isActive = true;
   Core.registerNMAResource(nmaPath);
 
-  console.log(`[NMA] Loaded: ${manifest.buildId} (v${manifest.noranekoVersion})`);
+  console.debug(`[NMA] Loaded: ${manifest.buildId} (v${manifest.noranekoVersion})`);
   emitEvent("nma-loaded", { manifest });
   return true;
 };
@@ -172,7 +172,7 @@ export const hotswapModule = async (moduleName: string): Promise<boolean> => {
   const module = getNMAModule(moduleName);
   if (!module) { console.error(`[NMA] Module ${moduleName} not found in manifest`); return false; }
 
-  console.log(`[NMA] Hotswapping module: ${moduleName}`);
+  console.debug(`[NMA] Hotswapping module: ${moduleName}`);
   await cleanupModuleInstance(moduleName);
 
   try {
@@ -207,7 +207,7 @@ export const hotswapByRecommendation = async (
   }
 
   emitEvent("nma-hotswap-complete", { swapped, failed });
-  if (swapped.length > 0) console.log(`[NMA] Hotswapped ${swapped.length} modules: ${swapped.join(", ")}`);
+  if (swapped.length > 0) console.debug(`[NMA] Hotswapped ${swapped.length} modules: ${swapped.join(", ")}`);
   if (failed.length > 0) console.error(`[NMA] Failed to hotswap ${failed.length} modules: ${failed.join(", ")}`);
 
   return { swapped, failed };

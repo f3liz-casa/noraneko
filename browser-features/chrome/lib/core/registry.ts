@@ -45,6 +45,9 @@ const registry: RegistryState = {
   urls: new Map(),
 };
 
+/** Module dependency metadata (stored separately from instances) */
+const moduleDeps: Map<string, { deps: string[]; softDeps: string[] }> = new Map();
+
 // ============================================================================
 // Pure Operations - Data Queries
 // ============================================================================
@@ -71,18 +74,38 @@ export const getModuleNames = (): string[] => {
 };
 
 /**
- * Get modules that depend on a given module
+ * Get modules that depend on a given module (direct dependents only)
  */
-export const getDependents = (_name: string): string[] => {
+export const getDependents = (name: string): string[] => {
   const dependents: string[] = [];
 
-  for (const [_moduleName, _instance] of registry.modules) {
-    // Note: We need to access metadata from the handle, not instance
-    // This is a limitation - we may need to store handle metadata separately
-    // For now, we'll return an empty array
+  for (const [moduleName, meta] of moduleDeps) {
+    if (meta.deps.includes(name) || meta.softDeps.includes(name)) {
+      dependents.push(moduleName);
+    }
   }
 
   return dependents;
+};
+
+/**
+ * Get all modules that transitively depend on a given module
+ */
+export const getTransitiveDependents = (name: string): string[] => {
+  const result = new Set<string>();
+  const queue = [name];
+
+  while (queue.length > 0) {
+    const current = queue.pop()!;
+    for (const dependent of getDependents(current)) {
+      if (!result.has(dependent)) {
+        result.add(dependent);
+        queue.push(dependent);
+      }
+    }
+  }
+
+  return Array.from(result);
 };
 
 /**
@@ -162,6 +185,14 @@ export const loadModule = async (
       const instance = handle.create();
       registry.modules.set(name, instance);
 
+      // Store dependency metadata for reverse lookups
+      if (handle.meta) {
+        moduleDeps.set(name, {
+          deps: handle.meta.deps ?? [],
+          softDeps: handle.meta.softDeps ?? [],
+        });
+      }
+
       // Add to load order
       if (!registry.order.includes(name)) {
         registry.order.push(name);
@@ -170,7 +201,7 @@ export const loadModule = async (
       // Initialize
       await instance.init();
 
-      console.log(`[registry] Loaded module: ${name}`);
+      console.debug(`[registry] Loaded module: ${name}`);
       return true;
     }
 
@@ -199,6 +230,7 @@ export const unloadModule = async (name: string): Promise<boolean> => {
     // Remove from registry
     registry.modules.delete(name);
     registry.urls.delete(name);
+    moduleDeps.delete(name);
 
     // Remove from load order
     const index = registry.order.indexOf(name);
@@ -206,7 +238,7 @@ export const unloadModule = async (name: string): Promise<boolean> => {
       registry.order.splice(index, 1);
     }
 
-    console.log(`[registry] Unloaded module: ${name}`);
+    console.debug(`[registry] Unloaded module: ${name}`);
     return true;
   } catch (error) {
     console.error(`[registry] Error unloading module "${name}":`, error);
@@ -228,7 +260,7 @@ export const hotswapModule = async (
     return false;
   }
 
-  console.log(`[registry] Hotswapping module: ${name}`);
+  console.debug(`[registry] Hotswapping module: ${name}`);
 
   // Unload old version
   await unloadModule(name);
@@ -272,7 +304,7 @@ export const hotswapModules = async (
  * Side effect: runs cleanup on all instances and clears registry
  */
 export const cleanupAll = async (): Promise<void> => {
-  console.log("[registry] Cleaning up all modules...");
+  console.debug("[registry] Cleaning up all modules...");
 
   // Cleanup in reverse load order
   const names = [...registry.order].reverse();
@@ -285,8 +317,9 @@ export const cleanupAll = async (): Promise<void> => {
   registry.modules.clear();
   registry.order = [];
   registry.urls.clear();
+  moduleDeps.clear();
 
-  console.log("[registry] All modules cleaned up");
+  console.debug("[registry] All modules cleaned up");
 };
 
 /**

@@ -224,7 +224,7 @@ export async function hotswap<S, E>(
  * Side effect: runs cleanup on all instances and clears registry
  */
 export async function cleanupAll(): Promise<void> {
-  console.log("[module] Cleaning up all modules...");
+  console.debug("[module] Cleaning up all modules...");
 
   for (const [name, instance] of _instances) {
     try {

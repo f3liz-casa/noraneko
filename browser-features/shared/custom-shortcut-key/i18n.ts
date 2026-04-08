@@ -3,11 +3,10 @@
 import { commands } from "./commands";
 import type { CSKData } from "./defines";
 
-export function getFluentLocalization(actionName: keyof CSKData) {
+export function getFluentLocalization(actionName: keyof CSKData): string | null {
   if (!commands[actionName]) {
     console.error(`actionName(${actionName}) do not exists.`);
     return null;
   }
-  //TODO:
-  //return `floorp-custom-actions-${commands[actionName][1]}`;
+  return `floorp-custom-actions-${actionName}`;
 }

@@ -1,13 +1,25 @@
 // SPDX-License-Identifier: MPL-2.0
 
+const ALLOWED_PREF_PREFIXES = ["noraneko.", "floorp."];
 
-
-//TODO: make reject when the name is invalid
 export class NRSettingsParent extends JSWindowActorParent {
   constructor() {
     super();
   }
+
+  private isAllowedPrefName(name: unknown): name is string {
+    if (typeof name !== "string" || name.length === 0) return false;
+    return ALLOWED_PREF_PREFIXES.some((prefix) => name.startsWith(prefix));
+  }
+
   receiveMessage(message) {
+    if (!this.isAllowedPrefName(message.data?.name)) {
+      console.warn(
+        `[NRSettingsParent] Rejected access to disallowed preference: ${message.data?.name}`,
+      );
+      return null;
+    }
+
     switch (message.name) {
       case "getBoolPref": {
         if (
