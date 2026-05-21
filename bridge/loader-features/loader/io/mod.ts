@@ -25,7 +25,6 @@ export {
 export {
   setPrefFeatures,
   getEnabledFeatures,
-  initNMASystem,
   loadSingleModule,
   loadEnabledModules,
 } from "./loading.ts";

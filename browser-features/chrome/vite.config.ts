@@ -6,7 +6,6 @@ import react from "@vitejs/plugin-react";
 import decorators from "../../libs/vite-oxc-decorator-stage-3/dist/index.js";
 import { genJarmnPlugin } from "../../libs/vite-plugin-gen-jarmn/plugin.ts";
 import deno from "@deno/vite-plugin";
-import { nmaPlugin } from "./vite-plugin-nma.ts";
 
 const r = (dir: string) => path.resolve(import.meta.dirname ?? ".", dir);
 
@@ -94,7 +93,6 @@ export default defineConfig({
       jsxRuntime: "automatic",
       jsxImportSource: "preact",
     }),
-    nmaPlugin(),
     genJarmnPlugin("content", "noraneko", "content"),
   ],
 

@@ -44,65 +44,6 @@ export async function runInParallel(commands: CommandTuple[]): Promise<void> {
   }
 }
 
-export function nmaFilename(version: string, channel = "nightly"): string {
-  const type = channel === "release" ? "stable" : channel;
-  return `${type}_${version}_noraneko.nma.zip`;
-}
-
-export async function buildNMA(version: string, channel = "nightly"): Promise<void> {
-  logger.info("Packaging browser-features/chrome to NMA...");
-
-  const filename = nmaFilename(version, channel);
-  const result = runCommandChecked(
-    "deno",
-    ["task", "nma:build", "--version", version, "--channel", channel, "--output", filename],
-    PROJECT_ROOT,
-  );
-
-  if (!result.success) {
-    logger.warn(`NMA build failed:\n${result.stderr}`);
-    return;
-  }
-
-  const srcPath = path.join(PROJECT_ROOT, filename);
-  if (!exists(srcPath)) {
-    logger.warn(`NMA build succeeded but output file not found at ${srcPath}`);
-    return;
-  }
-
-  logger.info(`NMA built: ${srcPath}`);
-}
-
-export async function deployNMA(version: string, channel = "nightly"): Promise<void> {
-  const filename = nmaFilename(version, channel);
-  const srcPath = path.join(PROJECT_ROOT, filename);
-
-  if (!exists(srcPath)) {
-    logger.warn(`NMA file not found at ${srcPath}, skipping deploy`);
-    return;
-  }
-
-  if (!exists(BIN_DIR)) {
-    logger.warn(`BIN_DIR not ready at ${BIN_DIR}, skipping deploy`);
-    return;
-  }
-
-  // Remove stale NMA files from BIN_DIR
-  for (const entry of Deno.readDirSync(BIN_DIR)) {
-    if (entry.name.match(/^[a-z0-9-]+_[a-z0-9.-]+_noraneko\.nma\.zip$/i)) {
-      safeRemove(path.join(BIN_DIR, entry.name));
-    }
-  }
-  Deno.copyFileSync(srcPath, path.join(BIN_DIR, filename));
-  safeRemove(srcPath);
-  logger.success(`NMA deployed: ${path.join(BIN_DIR, filename)}`);
-}
-
-export async function buildAndDeployNMA(version: string, channel = "nightly"): Promise<void> {
-  await buildNMA(version, channel);
-  await deployNMA(version, channel);
-}
-
 export async function run(mode = "dev", buildid2: string): Promise<void> {
   logger.info(`Building features with mode=${mode}`);
 
@@ -213,15 +154,6 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
     await runInParallel(devCommands);
   } else {
     await runInParallel(prodCommands);
-  }
-
-  if (mode.startsWith("production")) {
-    // In production builds, only build the NMA here (before-mach phase).
-    // Deployment to BIN_DIR happens in the after-mach phase once the binary exists.
-    await buildNMA(version);
-  } else {
-    // In dev/stage builds, BIN_DIR is already available so build and deploy immediately.
-    await buildAndDeployNMA(version);
   }
 
   if (mode.startsWith("production")) {

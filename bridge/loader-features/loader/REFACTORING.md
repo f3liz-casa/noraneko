@@ -24,14 +24,12 @@ loader/
 │   ├── modules.ts  # Module loading
 │   ├── registry.ts # Registry management
 │   ├── hooks.ts    # Hook state management
-│   ├── nma.ts      # NMA system initialization
 │   ├── init.ts     # Module initialization
 │   └── mod.ts      # Re-exports all IO
 ├── state/          # Module-level state management
 │   ├── registry.ts # Module registry state (_modules map)
 │   ├── hooks.ts    # Hooks state (_moduleLoadStates, _initCompleted)
 │   └── mod.ts      # Re-exports all state
-├── nma/            # Already refactored (NMA system)
 ├── try.ts          # Try/Success/Failure type (utility module)
 └── mod.ts          # Main entry point
 ```
@@ -97,8 +95,7 @@ loader/
 ├── modules.ts            # Module registry
 ├── module-registry.ts    # Registry management
 ├── modules-hooks.ts      # Hooks + re-exports
-├── try.ts                # Try type
-└── nma/                  # NMA system (already refactored)
+└── try.ts                # Try type
 ```
 
 ### After
@@ -111,8 +108,7 @@ loader/
 ├── io/        # Extracted I/O operations from index.ts, module-registry.ts, modules-hooks.ts
 ├── state/     # Extracted state management from module-registry.ts, modules-hooks.ts
 ├── mod.ts     # New entry point (replaces index.ts)
-├── try.ts     # Kept as-is (utility)
-└── nma/       # Kept as-is (already refactored)
+└── try.ts     # Kept as-is (utility)
 ```
 
 ## Key Changes

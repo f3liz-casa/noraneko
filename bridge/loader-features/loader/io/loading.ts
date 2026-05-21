@@ -3,18 +3,11 @@
 /**
  * Loading IO - Data-Oriented Programming Style
  *
- * Side-effectful operations for preferences, NMA initialization, and module loading.
+ * Side-effectful operations for preferences and module loading.
  */
 
 import { MODULES } from "../data/mod.ts";
 import { defaultMetadata } from "../ops/mod.ts";
-import {
-  isNMAActive,
-  hasNMAModule,
-  loadNMAModule,
-  initializeNMALoader,
-  getCurrentNMAManifest,
-} from "../nma/mod.ts";
 import type { LoadedModule, ModulesKeys } from "../types/mod.ts";
 
 // ============================================================================
@@ -34,28 +27,6 @@ export const getEnabledFeatures = (): ModulesKeys =>
   ) as ModulesKeys;
 
 // ============================================================================
-// NMA System
-// ============================================================================
-
-export const initNMASystem = async (): Promise<void> => {
-  try {
-    const success = await initializeNMALoader();
-    if (success) {
-      console.debug("[noraneko] NMA system initialized successfully");
-      const manifest = getCurrentNMAManifest();
-      if (manifest) {
-        console.debug(`[noraneko] NMA build: ${manifest.buildId}`);
-        console.debug(`[noraneko] NMA version: ${manifest.noranekoVersion}`);
-      }
-    } else {
-      console.debug("[noraneko] NMA not found, using built-in modules");
-    }
-  } catch (error) {
-    console.error("[noraneko] Failed to initialize NMA system:", error);
-  }
-};
-
-// ============================================================================
 // Module Loading
 // ============================================================================
 
@@ -63,20 +34,6 @@ export const loadSingleModule = async (
   categoryValue: Record<string, () => Promise<unknown>>,
   moduleName: string,
 ): Promise<LoadedModule | null> => {
-  if (isNMAActive() && hasNMAModule(moduleName)) {
-    try {
-      const exports = await loadNMAModule(moduleName);
-      if (exports) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const metadata = (exports as any).default?._metadata?.() ?? defaultMetadata(moduleName);
-        console.debug(`[noraneko] Loaded module from NMA: ${moduleName}`);
-        return { name: moduleName, metadata, ...(exports as any) };
-      }
-    } catch (e) {
-      console.warn(`[noraneko] Failed to load NMA module ${moduleName}, falling back:`, e);
-    }
-  }
-
   try {
     const exports = await categoryValue[moduleName]();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

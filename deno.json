@@ -39,8 +39,7 @@
     "node_modules/**/*"
   ],
   "tasks": {
-    "feles-build": "deno run -A tools/feles-build.ts",
-    "nma:build": "deno run --allow-read --allow-write --allow-env --allow-run tools/scripts/build-nma.ts"
+    "feles-build": "deno run -A tools/feles-build.ts"
   },
   "nodeModulesDir": "auto",
   "vendor": true
