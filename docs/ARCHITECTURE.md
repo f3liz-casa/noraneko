@@ -19,7 +19,7 @@ Noraneko is a Firefox-based browser (testbed for Floorp 12) that extends Firefox
 │  │  │     chrome/     │ │    modules/     │ │     shared/     │      │ │
 │  │  │   (UI/Content)  │ │ (System Modules)│ │  (Common Code)  │      │ │
 │  │  │                 │ │                 │ │                 │      │ │
-│  │  │ • Solid.js UI   │ │ • Actors        │ │ • CSK Commands  │      │ │
+│  │  │ • Preact UI     │ │ • Actors        │ │ • CSK Commands  │      │ │
 │  │  │ • Components    │ │ • Observers     │ │ • Type Defs     │      │ │
 │  │  │ • Sidebars      │ │ • Handlers      │ │ • Utilities     │      │ │
 │  │  └────────┬────────┘ └────────┬────────┘ └─────────────────┘      │ │
@@ -50,8 +50,9 @@ Noraneko is a Firefox-based browser (testbed for Floorp 12) that extends Firefox
 ```
 noraneko/
 ├── browser-features/          # Browser feature implementations
-│   ├── chrome/                # UI components (Solid.js + XUL)
-│   │   ├── common/            # Feature modules (sidebar, etc.)
+│   ├── chrome/                # UI components (Preact + XUL)
+│   │   ├── features/          # Feature modules (DOP structure)
+│   │   ├── lib/               # Shared chrome libraries
 │   │   ├── static/            # Static content
 │   │   ├── utils/             # Chrome utilities
 │   │   └── vite.config.ts     # Vite bundler config
@@ -69,16 +70,19 @@ noraneko/
 ├── bridge/                    # Bridges between Noraneko and Firefox
 │   ├── startup/               # Startup scripts (earliest execution)
 │   ├── loader-features/       # Feature loader and module system
-│   │   └── loader/
-│   │       ├── index.ts       # Main loader
-│   │       ├── modules.ts     # Module registry
-│   │       ├── modules-hooks.ts
-│   │       └── event-dispatcher-registry.ts
+│   │   └── loader/            # DOP structure
+│   │       ├── types/         # Type definitions
+│   │       ├── data/          # Module registry data
+│   │       ├── ops/           # Pure operations
+│   │       ├── io/            # Side-effectful operations
+│   │       ├── state/         # Module-level state
+│   │       └── mod.ts         # Main entry point
 │   └── loader-modules/        # System module loader
 │
 ├── libs/                      # Internal libraries
 │   ├── @types/gecko/          # Gecko/Firefox type definitions
-│   ├── solid-xul/             # Solid.js XUL integration
+│   ├── preact-xul/            # Preact XUL integration
+│   ├── solid-xul/             # Solid.js XUL integration (legacy)
 │   ├── vite-oxc-decorator-stage-3/
 │   └── vite-plugin-gen-jarmn/
 │
@@ -106,8 +110,8 @@ noraneko/
 **Purpose:** Implements the user-facing features and UI components.
 
 **Technology:** 
-- Solid.js for reactive UI
-- Custom XUL bindings (`@nora/solid-xul`)
+- Preact for reactive UI
+- Custom XUL bindings (`@nora/preact-xul`)
 - Vite for bundling
 
 **Key Features:**
@@ -142,7 +146,7 @@ noraneko/
 - Type definitions
 - Utility functions
 - Command definitions
-- Codecs (io-ts)
+- Codecs
 
 **Import Path:** `@nora/shared/`
 
@@ -193,14 +197,16 @@ noraneko/
 
 **Output:** `resource://noraneko/*`
 
-### libs/solid-xul
+### libs/preact-xul
 
-**Purpose:** Custom Solid.js integration for XUL elements.
+**Purpose:** Custom Preact integration for XUL elements.
 
 **Features:**
-- XUL element creation
-- Custom JSX runtime
+- XUL element creation via Preact's `options.vnode` hook
+- Standard Preact rendering retargeted to XUL elements
 - DOM manipulation utilities
+
+`libs/solid-xul` is the legacy Solid.js renderer — retained but no longer used by the chrome layer.
 
 ### tools/
 
@@ -212,46 +218,19 @@ See [BUILD_SYSTEM.md](./BUILD_SYSTEM.md) for detailed documentation.
 
 Noraneko uses an **EventDispatcher-based system** for inter-module communication:
 
-```typescript
-// Module A exposes methods with @eventMethod decorator
-import { component, eventMethod } from "#features-chrome/utils/base";
+Modules are defined with the `registerModule()` / `module()` factory in
+`lib/core/module_factory.ts`. A module declares:
 
-@component({
-  moduleName: "my-module",
-  hot: import.meta.hot,
-})
-export default class MyModule {
-  @eventMethod
-  getData(): string {
-    return this.data;
-  }
-}
+- `name` — module identifier
+- `deps` / `softDeps` — hard and soft dependencies on other modules
+- `events` — the interface this module exposes to other modules
+- `init(ctx)` / `cleanup(ctx)` — lifecycle hooks (`cleanup` is required for hotswap)
 
-// Module B calls methods via this.events
-import { component } from "#features-chrome/utils/base";
-import type { EventDispatcherDependencies } from "../event-dispatcher-interfaces.ts";
-import { pipe, Result as R } from "@mobily/ts-belt";
-
-@component({
-  moduleName: "other-module",
-  softDependencies: ["my-module"],
-  hot: import.meta.hot,
-})
-export default class OtherModule {
-  protected events!: EventDispatcherDependencies<["my-module"]>;
-
-  async init() {
-    const result = await this.events["my-module"].getData();
-    pipe(
-      result,
-      R.match(
-        (data) => console.log("Got data:", data),
-        (error) => console.error("Failed:", error)
-      )
-    );
-  }
-}
-```
+`init`/`cleanup` receive a `ctx` carrying a prefixed `log`, the module's `state`,
+and its `events`. Cross-module calls are routed through the EventDispatcher
+registry (`lib/core/event-dispatcher-registry.ts`): a module reaches another
+module's events only after declaring it as a (soft) dependency, so modules never
+import one another directly.
 
 **Benefits:**
 - No direct imports between modules
@@ -310,8 +289,8 @@ Noraneko integrates with Firefox through:
 |-------|------------|
 | Build Runner | Deno |
 | Build Tools | Vite, tsdown, Rolldown |
-| UI Framework | Solid.js |
-| XUL Binding | solid-xul |
+| UI Framework | Preact |
+| XUL Binding | preact-xul |
 | Type System | TypeScript |
 | Inter-module Communication | EventDispatcher with ts-belt Result |
 | Styling | CSS, Tailwind CSS |
@@ -327,7 +306,7 @@ Noraneko uses Firefox's artifact build system - a prebuilt binary is downloaded 
 Firefox uses `chrome.manifest` files to register content at chrome:// URLs. Noraneko creates its own manifest during build.
 
 ### Hot Module Replacement (HMR)
-During development, Vite provides HMR for instant updates without browser restart. The `@component` decorator enables HMR for module classes.
+During development, Vite provides HMR for instant updates without browser restart. Passing `import.meta` to `registerModule()` wires a module into Vite's HMR, so it can be hotswapped without a restart.
 
 ### Soft Dependencies
 Modules can declare soft dependencies that are optional. If a soft dependency isn't loaded, the module continues to work with degraded functionality.
