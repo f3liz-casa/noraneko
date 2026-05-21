@@ -22,10 +22,10 @@ export {
 } from "./module_factory.ts";
 
 export {
-  registerModuleEventDispatcher,
-  unregisterModuleEventDispatcher,
+  registerModuleEventBus,
+  unregisterModuleEventBus,
   isModuleRegistered,
-  getEventDispatcherInstance,
+  getModuleEventBus,
   ok,
   err,
   isOk,
@@ -34,5 +34,5 @@ export {
   unwrapOr,
   mapResult,
   type Result,
-} from "./event-dispatcher-registry.ts";
+} from "./module-event-bus.ts";
 

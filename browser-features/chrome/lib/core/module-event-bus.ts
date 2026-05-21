@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 /**
- * Event Dispatcher Registry
+ * Module Event Bus
  *
- * DOP-style module event dispatcher with tuple-based Result type.
+ * DOP-style per-module event bus with a tuple-based Result type.
  * Provides safe method dispatch across module boundaries.
  */
 
@@ -37,7 +37,7 @@ export const mapResult = <T, U, E = Error>(result: Result<T, E>, fn: (v: T) => U
   R.match(result as any, (v) => R.Ok(fn(v)), (e) => R.Error(e)) as Result<U, E>;
 
 // ============================================================================
-// Event Dispatcher Registry
+// Module Event Bus
 // ============================================================================
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -45,26 +45,26 @@ type EventMethods = Record<string, (...args: any[]) => unknown>;
 
 const _registry: Map<string, EventMethods> = new Map();
 
-export const registerModuleEventDispatcher = (
+export const registerModuleEventBus = (
   name: string,
   methods: EventMethods,
 ): void => {
   if (_registry.has(name)) {
     console.warn(
-      `[EventDispatcher] Module ${name} is already registered, replacing`,
+      `[ModuleEventBus] Module ${name} is already registered, replacing`,
     );
   }
   _registry.set(name, methods);
 };
 
-export const unregisterModuleEventDispatcher = (name: string): void => {
+export const unregisterModuleEventBus = (name: string): void => {
   _registry.delete(name);
 };
 
 export const isModuleRegistered = (name: string): boolean =>
   _registry.has(name);
 
-export const getEventDispatcherInstance = (
+export const getModuleEventBus = (
   name: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Record<string, (...args: any[]) => Promise<Result<unknown, Error>>> => {

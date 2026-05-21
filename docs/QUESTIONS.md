@@ -48,7 +48,7 @@ This document contains questions that would help future AI agents (or developers
 - **Q5.3:** Are there plans to make the module enable/disable functionality user-facing?
   Yes, kind of? currently the internal feature is for emergency disable if the module causes significant bug for experience and announce to use the pref.
 
-### 6. RPC System
+### 6. ModuleEventBus
 - **Q6.1:** The RPC system uses a 5-second timeout. Is this configurable per-module, and what happens if a module consistently times out?
   I have no idea for it. It's not important. you can change it.
 - **Q6.2:** How should large data transfers between modules be handled via RPC?
