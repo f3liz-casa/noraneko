@@ -3,6 +3,9 @@
     "lib": ["ESNext", "DOM"],
     "types": ["jsr:@types/gecko"]
   },
+  "imports": {
+    "valibot": "npm:valibot@^1.2.0"
+  },
   "lint": {
     "exclude": ["custom-shortcut-key/**/*"]
   }

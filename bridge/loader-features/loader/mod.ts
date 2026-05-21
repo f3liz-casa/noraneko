@@ -10,12 +10,11 @@
  * - Pipeline-style composition
  */
 
-import { MODULES_KEYS, buildModulesFromNMA } from "./data/mod.ts";
+import { MODULES_KEYS } from "./data/mod.ts";
 import {
   setPrefFeatures,
   getEnabledFeatures,
   loadEnabledModules,
-  initNMASystem,
   initializeModules,
   initializeModulesForHotswap,
   cleanupAllModules,
@@ -24,13 +23,6 @@ import {
   notifyHotswapComplete,
   getRegisteredModuleNames,
 } from "./io/mod.ts";
-import {
-  analyzeNMAChanges,
-  saveHashState,
-  logHashComparison,
-  HotswapMode,
-  getCurrentNMAManifest,
-} from "./nma/mod.ts";
 
 console.debug("[noraneko] Initializing scripts...");
 
@@ -56,28 +48,6 @@ export async function initScripts(): Promise<void> {
       ),
     ).toISOString()}`,
   );
-
-  // Initialize NMA (Noraneko Module Archive) system first
-  // NMA provides omni.ja-like module distribution alongside installation
-  // Allow toggling NMA at runtime via preference `noraneko.nma.enabled` (default: true)
-  try {
-    const nmaEnabled = Services.prefs.getBoolPref("noraneko.nma.enabled", true);
-    if (nmaEnabled) {
-      await initNMASystem();
-    } else {
-      console.debug("[noraneko] NMA disabled by preference (noraneko.nma.enabled=false)");
-    }
-  } catch (e) {
-    // If prefs API is unavailable for any reason, fall back to initializing NMA
-    console.warn("[noraneko] Pref read failed, defaulting to enable NMA", e);
-    await initNMASystem();
-  }
-
-  // Populate module registry from NMA manifest (replaces build-time #features-chrome dependency)
-  const nmaManifest = getCurrentNMAManifest();
-  if (nmaManifest) {
-    buildModulesFromNMA(nmaManifest.modules);
-  }
 
   setPrefFeatures(MODULES_KEYS);
 
@@ -154,65 +124,6 @@ export async function hotswapSelectiveModules(
 }
 
 /**
- * Hotswap modules with hash-based change detection
- * Determines whether to do full reload or selective reload based on what changed
- */
-export async function hotswapWithHashDetection(
-  buildId: string,
-  modulePaths: string[],
-): Promise<boolean> {
-  console.debug(`[noraneko] Starting hash-based hotswap for NMA build: ${buildId}`);
-
-  try {
-    const installDir = Services.dirsvc.get("GreD", Ci.nsIFile).path;
-
-    // Analyze changes
-    const { newState, comparison, recommendation } = await analyzeNMAChanges(
-      installDir,
-      buildId,
-      modulePaths,
-    );
-
-    logHashComparison(comparison);
-    console.debug(
-      `[noraneko] Hotswap recommendation: ${recommendation.mode} - ${recommendation.reason}`,
-    );
-
-    let success = false;
-
-    switch (recommendation.mode) {
-      case HotswapMode.NONE:
-        console.debug("[noraneko] No changes detected, skipping hotswap");
-        success = true;
-        break;
-
-      case HotswapMode.FULL:
-        console.debug("[noraneko] Full reload required, performing full hotswap");
-        success = await hotswapModules();
-        break;
-
-      case HotswapMode.SELECTIVE:
-        console.debug(
-          `[noraneko] Selective hotswap for modules: ${recommendation.modulesToReload.join(", ")}`,
-        );
-        success = await hotswapSelectiveModules(recommendation.modulesToReload);
-        break;
-    }
-
-    // Save new hash state on success
-    if (success) {
-      saveHashState(newState);
-      console.debug("[noraneko] Hash state saved");
-    }
-
-    return success;
-  } catch (error) {
-    console.error("[noraneko] Hash-based hotswap failed:", error);
-    return false;
-  }
-}
-
-/**
  * Get current registered module names (for external use)
  */
 export function getLoadedModuleNames(): string[] {
@@ -247,61 +158,6 @@ export {
   notifyHotswapStart,
   notifyHotswapComplete,
 } from "./io/mod.ts";
-
-// Re-export hash/hotswap utilities for external use
-export {
-  analyzeNMAChanges,
-  analyzeHotfixChanges,
-  compareHashStates,
-  getHotswapRecommendation,
-  getStoredHashState,
-  saveHashState,
-  clearHashState,
-  HotswapMode,
-  type HashState,
-  type HashComparisonResult,
-  type HotswapRecommendation,
-  type ModuleHashInfo,
-  computeFileHash,
-  extractModuleName,
-  computeNMAHashState,
-  computeHotfixHashState,
-  logHashComparison,
-} from "./nma/mod.ts";
-
-// Re-export NMA types and functions
-export type {
-  NMAManifest,
-  NMAModule,
-  NMAAsset,
-  NMAVerificationResult,
-  NMALoaderState,
-  NMATrustedConfig,
-  NMALoaderEvents,
-} from "./nma/mod.ts";
-
-export {
-  NMAVerificationStatus,
-  NMA_PATHS,
-  DEFAULT_NMA_TRUSTED_CONFIG,
-  UpdateChannel,
-} from "./nma/mod.ts";
-
-export {
-  initializeNMALoader,
-  isNMAActive,
-  hasNMAModule,
-  getNMAModule,
-  loadNMAModule,
-  getNMAModuleUrl,
-  activateNMAModules,
-  getCurrentNMAManifest,
-  verifyNMAIdentity,
-  verifyNMAManifest,
-  computeNMAHash,
-  findNMAFile,
-  readTextFile,
-} from "./nma/mod.ts";
 
 // Re-export module hooks
 export { onModuleLoaded } from "./io/mod.ts";

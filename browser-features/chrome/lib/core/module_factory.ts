@@ -263,13 +263,13 @@ export function registerModule<S = unknown, E = unknown>(
   register(handle);
 
   // Handle HMR (Vite)
-  // Note: In production NMA, this is ignored as import.meta.hot is undefined
+  // Note: In production builds this is ignored as import.meta.hot is undefined
   const hot = meta && "hot" in meta ? meta.hot : undefined;
 
   if (hot) {
     hot.accept(async (newModule: any) => {
       if (newModule && newModule.default) {
-        console.debug(`[NMA] HMR update for ${def.name}`);
+        console.debug(`[module] HMR update for ${def.name}`);
         const newHandle = newModule.default;
 
         // Ensure it's a valid handle

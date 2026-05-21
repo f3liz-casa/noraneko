@@ -299,7 +299,7 @@ The build system uses:
 - **Deno** - Runtime for build scripts
 - **Vite** - Frontend bundling (via rolldown-vite)
 - **tsdown** - TypeScript bundling for modules
-- **Solid.js** - UI framework for browser features
+- **Preact** - UI framework for browser features
 - **birpc** - Inter-module RPC communication
 
 ## Configuration Files

@@ -78,9 +78,8 @@ export const registerModule = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   instance: any,
   metadata: ModuleMetadata,
-  isNMAModule = true,
 ): void => {
-  getModulesMap().set(name, { name, instance, metadata, loadedAt: Date.now(), isNMAModule });
+  getModulesMap().set(name, { name, instance, metadata, loadedAt: Date.now() });
   console.debug(`[noraneko] Registered module: ${name}`);
 };
 

@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import * as t from 'io-ts';
-
 export const csk_category = [
   "tab-action",
   "history-action",
@@ -20,23 +18,8 @@ export const csk_category = [
   "split-view-action",
 ] as const;
 
-
-const CskCategoryCodec = t.keyof(
-  csk_category.reduce((acc, k) => {
-    acc[k] = null;
-    return acc;
-  }, {} as Record<typeof csk_category[number], null>)
-);
-
-const CommandsCodec = t.record(
-  t.refinement(t.string, (s) => s.startsWith('gecko-') || s.startsWith('floorp-')),
-  t.type({
-    command: t.refinement(t.unknown, (u): u is ((ev:Event) => void) => typeof u === 'function'),
-    type: CskCategoryCodec,
-  })
-);
-
-type Commands = t.TypeOf<typeof CommandsCodec>;
+type CskCategory = typeof csk_category[number];
+type Commands = Record<string, { command: (ev: Event) => void; type: CskCategory }>;
 
 export const commands: Commands = {
   "gecko-open-new-tab": {

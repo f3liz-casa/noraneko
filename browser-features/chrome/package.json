@@ -1,8 +1,7 @@
 {
   "name": "@nora/chrome",
   "scripts": {
-    "build": "vite build",
-    "build:nma": "npm run build && deno run --allow-all ../../tools/scripts/build-nma.ts --source ./_dist"
+    "build": "vite build"
   },
   "dependencies": {
     "@freedomofpress/crypto-browser": "^0.1.7",

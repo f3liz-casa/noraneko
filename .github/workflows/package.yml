@@ -266,24 +266,6 @@ jobs:
             done
           fi
 
-      - name: Build and inject NMA into installer
-        run: |
-          cd noraneko
-          NMA_VERSION=$(cat static/gecko/config/version.txt || echo "0.0.0")
-          deno task nma:build \
-            --source browser-features/chrome/_dist \
-            --version $NMA_VERSION \
-            --channel nightly \
-            --commit ${{ github.sha }}
-          NMA_FILE=$(ls *_noraneko.nma.zip | head -n 1)
-          if [ "${{inputs.platform}}" == "Linux-x86_64" ]; then
-            cp "$NMA_FILE" ../obj-artifact-build-output/dist/bin/
-          elif [ "${{inputs.platform}}" == "macOS-aarch64" ]; then
-            for macos_dir in ../obj-artifact-build-output/dist/*.app/Contents/MacOS; do
-              cp "$NMA_FILE" "$macos_dir/"
-            done
-          fi
-
       - name: Package noraneko
         run: |
           ./mach package
@@ -301,17 +283,6 @@ jobs:
       - name: Rename and move installer
         run: |
           mv obj-*/dist/$INSTALLER_PATH ~/noraneko-installer/$OUTPUT_INSTALLER_NAME
-
-      - name: Build NMA (Noraneko Module Archive)
-        if: ${{ inputs.platform == 'Windows-x86_64' }}
-        run: |
-          cd noraneko
-          deno task nma:build \
-            --source browser-features/chrome/_dist \
-            --output ~/noraneko-installer/noraneko.nma.zip \
-            --version $(cat static/gecko/config/version.txt || echo "0.0.0") \
-            --channel alpha \
-            --commit ${{ github.sha }}
 
       - name: Publish dist
         uses: actions/upload-artifact@v4
