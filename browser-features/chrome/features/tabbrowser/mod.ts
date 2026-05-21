@@ -6,10 +6,11 @@
  * Re-implementation of the core browser tabs system using Data-Oriented Programming.
  *
  * Structure:
- * - types/:  Immutable data schemas (The "Data")
- * - state/:  Reactive storage (The "Database")
- * - ops/:    Pure business logic (The "Behavior")
- * - ui/:     SolidJS components (The "View" - To Be Implemented)
+ * - types/:        Immutable data schemas (The "Data")
+ * - state/:        Reactive storage (The "Database")
+ * - ops/:          Pure business logic (The "Behavior")
+ * - ui/:           Preact components (The "View")
+ * - gecko-compat/: Bridges the DOP model to the real Gecko gBrowser/DOM
  */
 
 // Export Types
@@ -32,9 +33,9 @@ export * as GroupOps from "./ops/group-ops.ts";
 export { Tab } from "./ui/Tab.tsx";
 export { TabStrip } from "./ui/TabStrip.tsx";
 
-// Export Bridge
-export { initCompat } from "./bridge/TabbrowserCompat.ts";
-import { initCompat as _initCompat } from "./bridge/TabbrowserCompat.ts";
+// Export gecko-compat layer
+export { initCompat } from "./gecko-compat/TabbrowserCompat.ts";
+import { initCompat as _initCompat } from "./gecko-compat/TabbrowserCompat.ts";
 
 // ============================================================================
 // Module lifecycle hook — called by loader/lifecycle.ts before SessionStore.

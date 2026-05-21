@@ -4,7 +4,7 @@ import { h } from "#libs/preact-xul/index.ts";
 import { useEffect, useRef } from "preact/hooks";
 import { computed } from "@preact/signals";
 import { appState, send } from "../state/store.ts";
-import { DOMRegistry } from "../bridge/DOMRegistry.ts";
+import { DOMRegistry } from "../gecko-compat/DOMRegistry.ts";
 import type { TabId } from "../types/TabState.ts";
 
 interface TabProps {
