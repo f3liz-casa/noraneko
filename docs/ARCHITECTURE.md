@@ -178,7 +178,7 @@ noraneko/
 
 **Key Components:**
 - **Module Loader** - Loads modules based on preferences
-- **EventDispatcher Registry** - Inter-module communication with Result error handling
+- **ModuleEventBus** - Inter-module communication with Result error handling
 - **Event Dispatcher** - Event routing between modules
 - **Dependency Manager** - Handles module dependencies
 
@@ -216,7 +216,7 @@ See [BUILD_SYSTEM.md](./BUILD_SYSTEM.md) for detailed documentation.
 
 ## Module Communication
 
-Noraneko uses an **EventDispatcher-based system** for inter-module communication:
+Noraneko uses a **ModuleEventBus** for inter-module communication:
 
 Modules are defined with the `registerModule()` / `module()` factory in
 `lib/core/module_factory.ts`. A module declares:
@@ -227,8 +227,8 @@ Modules are defined with the `registerModule()` / `module()` factory in
 - `init(ctx)` / `cleanup(ctx)` — lifecycle hooks (`cleanup` is required for hotswap)
 
 `init`/`cleanup` receive a `ctx` carrying a prefixed `log`, the module's `state`,
-and its `events`. Cross-module calls are routed through the EventDispatcher
-registry (`lib/core/event-dispatcher-registry.ts`): a module reaches another
+and its `events`. Cross-module calls are routed through the ModuleEventBus
+(`lib/core/module-event-bus.ts`): a module reaches another
 module's events only after declaring it as a (soft) dependency, so modules never
 import one another directly.
 
@@ -237,8 +237,6 @@ import one another directly.
 - Graceful handling of missing modules
 - Clear API boundaries
 - Type-safe error handling with Result
-
-See [RPC_SYSTEM_README.md](./RPC_SYSTEM_README.md) for details.
 
 ## Chrome URLs
 
@@ -292,7 +290,7 @@ Noraneko integrates with Firefox through:
 | UI Framework | Preact |
 | XUL Binding | preact-xul |
 | Type System | TypeScript |
-| Inter-module Communication | EventDispatcher with ts-belt Result |
+| Inter-module Communication | ModuleEventBus with ts-belt Result |
 | Styling | CSS, Tailwind CSS |
 | Runtime | Firefox/Gecko |
 | Package Manager | Deno |
@@ -314,6 +312,4 @@ Modules can declare soft dependencies that are optional. If a soft dependency is
 ## Further Reading
 
 - [BUILD_SYSTEM.md](./BUILD_SYSTEM.md) - Detailed build system documentation
-- [RPC_SYSTEM_README.md](./RPC_SYSTEM_README.md) - Inter-module EventDispatcher system
-- [RPC_MIGRATION_GUIDE.md](./RPC_MIGRATION_GUIDE.md) - Migration guide for EventDispatcher
 - [SHARED_CODE_STRUCTURE.md](./SHARED_CODE_STRUCTURE.md) - Shared code organization
