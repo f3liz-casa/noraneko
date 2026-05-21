@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { commands } from "./commands";
-import { type CSKData, CSKCommandsCodec, CSKDataCodec } from "./defines";
+import { type CSKData, parseCSKCommands, parseCSKData } from "./defines";
 import { checkIsSystemShortcut } from "./utils";
-import { pipe } from '@mobily/ts-belt';
 
 export class CustomShortcutKey {
   private static instance: CustomShortcutKey;
@@ -26,26 +25,19 @@ export class CustomShortcutKey {
 
 
   observe(_subj:unknown, _topic:unknown, data: string) {
-    const decoded = CSKCommandsCodec.decode(JSON.parse(data));
-    
-    pipe(
-      decoded,
-      (either) => {
-        if (either._tag === 'Left') {
-          console.error('Failed to decode CSK command:', either.left);
-          return;
-        }
-        const d = either.right;
-        switch (d.type) {
-          case 'disable-csk':
-            this.disable_csk = d.data;
-            break;
-          case 'update-pref':
-            this.initCSKData();
-            break;
-        }
-      }
-    );
+    const d = parseCSKCommands(JSON.parse(data));
+    if (d === null) {
+      console.error('Failed to decode CSK command:', data);
+      return;
+    }
+    switch (d.type) {
+      case 'disable-csk':
+        this.disable_csk = d.data;
+        break;
+      case 'update-pref':
+        this.initCSKData();
+        break;
+    }
   }
 
   cskData: CSKData = {};
@@ -60,14 +52,7 @@ export class CustomShortcutKey {
       const prefData = JSON.parse(
         Services.prefs.getStringPref("floorp.browser.nora.csk.data", "{}"),
       );
-
-      this.cskData = pipe(
-        CSKDataCodec.decode(prefData),
-        (either) => {
-          if (either._tag === 'Right') return either.right;
-          throw new Error(`CSKData validation failed: ${JSON.stringify(either.left)}`);
-        }
-      );
+      this.cskData = parseCSKData(prefData);
     } catch (e) {
       console.error("Could not initialize CSKData, falling back to empty config.", e);
       this.cskData = {};
@@ -107,15 +92,17 @@ export class CustomShortcutKey {
 
 // Re-export public APIs for convenience
 export { commands } from "./commands";
-export { 
-  type CSKData, 
+export {
+  type CSKData,
   type CSKCommands,
   type FloorpCSKData,
-  CSKDataCodec, 
+  CSKDataCodec,
   CSKCommandsCodec,
   FloorpCSKData as FloorpCSKDataCodec,
   floorpCSKToNora,
-  keyCodesList 
+  parseCSKData,
+  parseCSKCommands,
+  keyCodesList,
 } from "./defines";
 export { checkIsSystemShortcut } from "./utils";
 export * from "./i18n";
