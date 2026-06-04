@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import * as path from "@std/path";
-import { runCommandChecked, exists } from "./utils.ts";
+import { runCommandChecked, exists, Logger } from "./utils.ts";
 import { PROJECT_ROOT } from "./defines.ts";
+
+const logger = new Logger("update");
 
 export function writeVersion(geckoDir: string): void {
   const pkgPath = path.join(PROJECT_ROOT, "package.json");
@@ -13,14 +15,14 @@ export function writeVersion(geckoDir: string): void {
   ["version.txt", "version_display.txt"].forEach((file) => {
     Deno.writeTextFileSync(path.join(configDir, file), String(version));
   });
-  console.log(`[update] Version files written to ${configDir}`);
+  logger.success(`Version files written to ${configDir}`);
 }
 
 export function writeBuildid2(pathBuildid2: string, buildid2: string): void {
   const dir = path.dirname(pathBuildid2);
   Deno.mkdirSync(dir, { recursive: true });
   Deno.writeTextFileSync(pathBuildid2, buildid2);
-  console.log(`[update] Build ID written to ${pathBuildid2}`);
+  logger.success(`Build ID written to ${pathBuildid2}`);
 }
 
 export function readBuildid2(pathBuildid2: string): string | null {
@@ -34,7 +36,7 @@ export function generateUuidV7(): string {
   if (!res.success) {
     throw new Error(`Failed to generate UUIDv7: ${res.stderr}`);
   }
-  console.log(res.stdout.trim());
+  logger.info(`Generated build id: ${res.stdout.trim()}`);
   return res.stdout.trim();
 }
 
@@ -50,5 +52,5 @@ export function generateUpdateXml(metaPath: string, outputPath: string): void {
 </updates>
 `;
   Deno.writeTextFileSync(outputPath, xml);
-  console.log(`[update] update.xml generated at ${outputPath}`);
+  logger.success(`update.xml generated at ${outputPath}`);
 }

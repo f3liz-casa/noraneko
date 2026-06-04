@@ -6,13 +6,19 @@ import {
   VERSION,
   BRANDING,
   PATHS,
+  APP_DIR,
   BIN_DIR,
   BIN_ROOT_DIR,
   BIN_PATH_EXE,
   BIN_VERSION,
+  STOCK_FIREFOX,
   getBinArchive,
+  getStockArchive,
 } from "./defines.ts";
 import { Logger, runCommand, exists, safeRemove } from "./utils.ts";
+
+const NORANEKO_RUNTIME_BASE =
+  "https://github.com/f3liz-dev/noraneko-runtime/releases/latest/download";
 
 const logger = new Logger("initializer");
 
@@ -169,12 +175,18 @@ async function extractNestedZip(
 }
 
 export async function decompressBin(): Promise<void> {
-  const binArchive = getBinArchive();
-  logger.info(`Binary extraction started: ${binArchive.filename}`);
+  const binArchive = STOCK_FIREFOX ? getStockArchive() : getBinArchive();
+  const downloadUrl = STOCK_FIREFOX
+    ? (binArchive as { url: string }).url
+    : `${NORANEKO_RUNTIME_BASE}/${binArchive.filename}`;
+  logger.info(
+    `Binary extraction started: ${binArchive.filename}` +
+      (STOCK_FIREFOX ? " (stock Firefox)" : ""),
+  );
 
   if (!exists(binArchive.filename)) {
-    // Try to find any DMG in root if we are on darwin
-    if (PLATFORM === "darwin") {
+    // For the noraneko-runtime path, accept any local DMG on darwin.
+    if (!STOCK_FIREFOX && PLATFORM === "darwin") {
       for (const entry of Deno.readDirSync(PATHS.root)) {
         if (entry.isFile && entry.name.endsWith(".dmg")) {
           logger.info(`Found local DMG: ${entry.name}. Using it.`);
@@ -185,10 +197,8 @@ export async function decompressBin(): Promise<void> {
     }
 
     if (!exists(binArchive.filename)) {
-      logger.warn(
-        `${binArchive.filename} not found. Downloading from GitHub release.`,
-      );
-      await downloadBin(binArchive.filename);
+      logger.warn(`${binArchive.filename} not found. Downloading.`);
+      await downloadBin(binArchive.filename, downloadUrl);
     }
   }
 
@@ -248,6 +258,10 @@ export async function decompressBin(): Promise<void> {
       }
     }
 
+    if (STOCK_FIREFOX) {
+      deoptimizeOmni(path.join(BIN_DIR, "browser", "omni.ja"));
+    }
+
     Deno.writeTextFileSync(BIN_VERSION, VERSION);
     logger.success("Extraction complete!");
   } catch (e: any) {
@@ -256,11 +270,66 @@ export async function decompressBin(): Promise<void> {
   }
 }
 
-export async function downloadBin(filename: string): Promise<void> {
-  const url = `https://github.com/f3liz-dev/noraneko-runtime/releases/latest/download/${filename}`;
-  logger.info(`Downloading binary from ${url}`);
+/**
+ * Stock Firefox ships an "optimized" omni.ja (central directory relocated for
+ * faster startup), which JSZip — used by the patcher/injector — can't read
+ * ("expected N records in central dir, got 0"). System unzip can read it, so we
+ * extract and repack as a standard STORE zip. Firefox loads a standard omni.ja
+ * fine (unoptimized builds ship one); this just makes it JSZip-editable.
+ */
+function deoptimizeOmni(omniPath: string): void {
+  if (!exists(omniPath)) {
+    logger.warn(`omni.ja not found for deoptimize: ${omniPath}`);
+    return;
+  }
+  logger.info(`Deoptimizing ${omniPath} (repack as standard zip)...`);
+  const tmpDir = `${omniPath}.unpacked`;
+  try {
+    safeRemove(tmpDir);
+  } catch {
+    // ignore
+  }
+  Deno.mkdirSync(tmpDir, { recursive: true });
 
-  const resp = await fetch(url);
+  // unzip exits non-zero on the "extra bytes" warning but still extracts.
+  new Deno.Command("unzip", {
+    args: ["-q", "-o", omniPath, "-d", tmpDir],
+    stdout: "null",
+    stderr: "null",
+  }).outputSync();
+
+  if (!exists(path.join(tmpDir, "modules"))) {
+    throw new Error(`Deoptimize failed: unzip did not extract ${omniPath}`);
+  }
+
+  Deno.removeSync(omniPath);
+
+  // Repack as a standard, uncompressed (STORE) zip with the same layout.
+  const zipRes = new Deno.Command("zip", {
+    args: ["-0", "-q", "-r", "-X", omniPath, "."],
+    cwd: tmpDir,
+    stdout: "null",
+    stderr: "piped",
+  }).outputSync();
+  if (zipRes.code !== 0) {
+    throw new Error(
+      `Deoptimize failed: zip exited ${zipRes.code}: ${new TextDecoder().decode(zipRes.stderr)}`,
+    );
+  }
+
+  try {
+    safeRemove(tmpDir);
+  } catch {
+    // ignore
+  }
+  logger.success("omni.ja deoptimized (standard zip).");
+}
+
+export async function downloadBin(filename: string, url?: string): Promise<void> {
+  const downloadUrl = url ?? `${NORANEKO_RUNTIME_BASE}/${filename}`;
+  logger.info(`Downloading binary from ${downloadUrl}`);
+
+  const resp = await fetch(downloadUrl);
   if (!resp.ok) {
     throw new Error(`HTTP error ${resp.status}`);
   }
@@ -268,4 +337,32 @@ export async function downloadBin(filename: string): Promise<void> {
   await Deno.writeFile(filename, data);
 
   logger.success(`Downloaded binary to ${filename}`);
+}
+
+/**
+ * Ad-hoc re-sign the app bundle on darwin after omni.ja was modified.
+ * Stock Firefox.app is signed/notarized; editing omni.ja breaks that seal and
+ * arm64 refuses to launch an invalidly-signed bundle. `codesign --force --deep
+ * --sign -` re-seals the (modified) bundle with an ad-hoc signature, so it must
+ * run after the last bundle modification (patcher + injector + xhtml).
+ * No-op unless darwin + STOCK_FIREFOX.
+ */
+export function resignMacApp(): void {
+  if (PLATFORM !== "darwin" || !STOCK_FIREFOX) {
+    return;
+  }
+  logger.info(`Ad-hoc re-signing ${APP_DIR} ...`);
+  try {
+    runCommand("codesign", ["--force", "--deep", "--sign", "-", APP_DIR]);
+    try {
+      runCommand("xattr", ["-rc", APP_DIR]);
+    } catch {
+      // quarantine attr may be absent; ignore
+    }
+    logger.success("Ad-hoc re-sign complete.");
+  } catch (e: any) {
+    logger.warn(
+      `Re-sign failed (bundle may not launch on Apple Silicon): ${e?.message ?? e}`,
+    );
+  }
 }

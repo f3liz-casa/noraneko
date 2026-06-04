@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import * as path from "@std/path";
-import { runCommandChecked, Logger, exists, safeRemove } from "./utils.ts";
+import {
+  runCommandChecked,
+  Logger,
+  exists,
+  safeRemove,
+  gitInitialized,
+} from "./utils.ts";
 import { BIN_DIR } from "./defines.ts";
 import JSZip from "jszip";
 import { applyPatch, parsePatch, reversePatch } from "diff";
-import type { ParsedDiff } from "diff";
+
+// `diff`'s ESM types don't export ParsedDiff; derive it from parsePatch.
+type ParsedDiff = ReturnType<typeof parsePatch>[number];
 
 const logger = new Logger("patcher");
 
@@ -98,10 +106,6 @@ async function applyPatchFileOmni(
     });
     await Deno.writeFile(jarPath, out);
   }
-}
-
-function gitInitialized(dir: string): boolean {
-  return exists(path.join(dir, ".git"));
 }
 
 export function initializeBinGit(): void {

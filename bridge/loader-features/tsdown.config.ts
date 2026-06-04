@@ -10,6 +10,9 @@ export default defineConfig({
   outDir: "_dist",
   format: "esm",
   target: "esnext",
+  // chrome_root imports "resource://noraneko-loader/mod.js"; pin the extension
+  // (tsdown's esm default would emit mod.mjs).
+  outputOptions: { entryFileNames: "[name].js" },
   external: /^resource:\/\/|^chrome:\/\//,
   dts: false,
   resolve: {

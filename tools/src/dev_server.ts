@@ -13,7 +13,6 @@ export async function run(writer: any): Promise<void> {
   const servers = [
     { name: "main", path: path.join(PROJECT_ROOT, "browser-features/chrome") },
     { name: "designs", path: path.join(PROJECT_ROOT, "browser-features/skin") },
-    // { name: "settings", path: path.join(PROJECT_ROOT, "src/ui/settings") },
   ];
 
   // Ensure logs directory exists

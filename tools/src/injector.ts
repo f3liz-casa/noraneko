@@ -6,7 +6,7 @@ import {
   Logger,
   exists,
   safeRemove,
-  createSymlink,
+  createFeatureSymlinks,
 } from "./utils.ts";
 import { BIN_DIR, PROD_BIN_DIR, PROJECT_ROOT } from "./defines.ts";
 // @ts-types="npm:@types/jszip"
@@ -28,23 +28,24 @@ const OMNI_SECTION_END = "# end noraneko";
  *    zip, but content/resource directives use NS_NewURI which accepts absolute
  *    URIs regardless of the jar base, and CanLoadResource passes for file://.)
  */
-function buildFlatManifestContent(mode: string): string {
+function buildFlatManifestContent(_mode: string): string {
   return [
     "content noraneko content/ contentaccessible=yes",
     "content noraneko-startup startup/ contentaccessible=yes",
     `content noraneko-newtab pages-newtab contentaccessible=yes`,
     "skin noraneko classic/1.0 skin/",
     "resource noraneko resource/ contentaccessible=yes",
+    "resource noraneko-builtin resource-builtin/ contentaccessible=yes",
     "resource noraneko-loader loader/ contentaccessible=yes",
     "content noraneko-pages-aboutdialog aboutdialog/ contentaccessible=yes",
     "override chrome://browser/content/aboutDialog.xhtml chrome://noraneko-pages-aboutdialog/content/aboutDialog.xhtml",
-    mode !== "dev" ? "content noraneko-settings settings/ contentaccessible=yes" : "",
+    "content noraneko-settings settings/ contentaccessible=yes",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-function buildOmniManifestLines(mode: string): string[] {
+function buildOmniManifestLines(_mode: string): string[] {
   // Convert project-relative source dirs to absolute file:// URIs.
   // toFileUrl handles the platform differences (Windows drive letters, etc.).
   const toUri = (rel: string) =>
@@ -57,16 +58,12 @@ function buildOmniManifestLines(mode: string): string[] {
     `content noraneko-newtab ${toUri("browser-features/pages-newtab/_dist")} contentaccessible=yes`,
     `skin noraneko classic/1.0 ${toUri("browser-features/skin")}`,
     `resource noraneko ${toUri("bridge/loader-modules/_dist")} contentaccessible=yes`,
+    `resource noraneko-builtin ${toUri("browser-features/webext-actors/_dist")} contentaccessible=yes`,
     `resource noraneko-loader ${toUri("bridge/loader-features/_dist")} contentaccessible=yes`,
     `content noraneko-pages-aboutdialog ${toUri("browser-features/pages-aboutDialog/_dist")} contentaccessible=yes`,
     `override chrome://browser/content/aboutDialog.xhtml chrome://noraneko-pages-aboutdialog/content/aboutDialog.html`,
+    `content noraneko-settings ${toUri("browser-features/settings/_dist")} contentaccessible=yes`,
   ];
-  if (mode !== "dev") {
-    // Production adds a settings package; adjust the source path as needed.
-    lines.push(
-      `content noraneko-settings ${toUri("browser-features/settings/_dist")} contentaccessible=yes`,
-    );
-  }
   lines.push(OMNI_SECTION_END);
   return lines;
 }
@@ -103,10 +100,66 @@ async function patchChromeManifestInOmni(
 
   zip.file("chrome.manifest", manifest, { compression: "STORE" });
 
+  await mergeBuiltinAddonsInOmni(zip);
+
   const updated = await zip.generateAsync({ type: "uint8array", compression: "STORE" });
   await Deno.writeFile(omniJaPath, updated);
 
   logger.success(`Patched chrome.manifest inside ${path.basename(omniJaPath)}.`);
+}
+
+/**
+ * Register noraneko's built-in WebExtensions the way Firefox registers its own:
+ * add them to built_in_addons.json inside omni.ja. This is build-time
+ * registration (no startup race for early pages like about:newtab), and is the
+ * upstream-faithful counterpart to the runtime maybeInstallBuiltinAddon
+ * fallback used in the flat dev layout.
+ *
+ * Idempotent: replaces any previously-added noraneko entries (matched by id).
+ */
+async function mergeBuiltinAddonsInOmni(zip: any): Promise<void> {
+  const builtinsPath = path.join(
+    PROJECT_ROOT,
+    "browser-features/webext-actors/_dist/builtins.json",
+  );
+  if (!exists(builtinsPath)) {
+    logger.warn("webext-actors builtins.json not found; skipping built-in registration.");
+    return;
+  }
+
+  const ours: Array<{ id: string; version: string; res_url: string }> =
+    JSON.parse(Deno.readTextFileSync(builtinsPath));
+  if (ours.length === 0) {
+    return;
+  }
+
+  // Find the built_in_addons.json entry by name (avoid hard-coding the jar path).
+  const entryName = Object.keys(zip.files).find((n) =>
+    n.endsWith("built_in_addons.json"),
+  );
+  if (!entryName) {
+    logger.warn("built_in_addons.json not found inside omni.ja; skipping.");
+    return;
+  }
+
+  const data = JSON.parse(await zip.file(entryName).async("string"));
+  const ourIds = new Set(ours.map((o) => o.id));
+  const builtins = (data.builtins ?? []).filter(
+    (b: { addon_id: string }) => !ourIds.has(b.addon_id),
+  );
+  for (const o of ours) {
+    builtins.push({
+      addon_id: o.id,
+      addon_version: o.version,
+      res_url: o.res_url,
+    });
+  }
+  data.builtins = builtins;
+
+  zip.file(entryName, JSON.stringify(data), { compression: "STORE" });
+  logger.success(
+    `Registered ${ours.length} noraneko built-in addon(s) in ${entryName}.`,
+  );
 }
 
 /**
@@ -143,34 +196,7 @@ function runFlat(mode: string, dirName: string): void {
     buildFlatManifestContent(mode),
   );
 
-  const mounts: Array<[string, string]> = [
-    ["content", "browser-features/chrome/_dist"],
-    ["startup", "bridge/startup/_dist"],
-    ["skin", "browser-features/skin"],
-    ["resource", "bridge/loader-modules/_dist"],
-    ["loader", "bridge/loader-features/_dist"],
-    ["aboutdialog", "browser-features/pages-aboutDialog/_dist"],
-    ["newtab","browser-features/pages-newtab/_dist"]
-  ];
-
-  for (const [subdir, target] of mounts) {
-    const linkPath = path.resolve(dirPath, subdir);
-    const targetPath = path.resolve(target);
-    try {
-      if (exists(linkPath)) {
-        safeRemove(linkPath);
-      }
-    } catch {
-      // ignore
-    }
-    try {
-      createSymlink(linkPath, targetPath);
-    } catch (e: any) {
-      logger.warn(
-        `Failed to create symlink ${linkPath} -> ${targetPath}: ${e?.message ?? e}`,
-      );
-    }
-  }
+  createFeatureSymlinks(dirPath);
 }
 
 export async function injectXhtmlFromTs(
@@ -188,13 +214,6 @@ export async function injectXhtmlFromTs(
     throw new Error(`Failed to inject XHTML: ${result.stderr}`);
   }
   logger.success("XHTML injection complete.");
-}
-
-export function createManifest(mode: string, dirPath: string) {
-  Deno.writeTextFileSync(
-    path.join(dirPath, "noraneko.manifest"),
-    buildFlatManifestContent(mode),
-  );
 }
 
 /**

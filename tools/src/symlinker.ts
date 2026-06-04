@@ -23,7 +23,7 @@ export function run(): void {
       }
       createSymlink(link, target);
     } catch (e: any) {
-      console.warn(
+      logger.warn(
         `Failed to create symlink ${link} -> ${target}: ${e?.message ?? e}`,
       );
     }

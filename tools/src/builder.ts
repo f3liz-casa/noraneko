@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import * as path from "@std/path";
-import { PROJECT_ROOT, PATHS, BIN_DIR } from "./defines.ts";
+import { PROJECT_ROOT, PATHS } from "./defines.ts";
 import {
-  createSymlink,
+  createFeatureSymlinks,
   exists,
   Logger,
   runCommandChecked,
@@ -88,12 +88,20 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
       path.join(PROJECT_ROOT, "bridge/loader-features"),
     ],
     [
+      ["deno", "task", "build", `--env.MODE=${mode}`],
+      path.join(PROJECT_ROOT, "browser-features/webext-actors"),
+    ],
+    [
       ["deno", "task", "build"],
       path.join(PROJECT_ROOT, "browser-features/pages-aboutDialog"),
     ],
     [
       ["deno", "task", "build"],
       path.join(PROJECT_ROOT, "browser-features/pages-newtab"),
+    ],
+    [
+      ["deno", "task", "build"],
+      path.join(PROJECT_ROOT, "browser-features/settings"),
     ],
   ];
 
@@ -129,6 +137,10 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
       path.join(PROJECT_ROOT, "bridge/loader-features"),
     ],
     [
+      ["deno", "task", "build", `--env.MODE=${mode}`],
+      path.join(PROJECT_ROOT, "browser-features/webext-actors"),
+    ],
+    [
       ["deno", "task", "build"],
       path.join(PROJECT_ROOT, "browser-features/pages-aboutDialog"),
     ],
@@ -136,18 +148,10 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
       ["deno", "task", "build"],
       path.join(PROJECT_ROOT, "browser-features/pages-newtab"),
     ],
-    // [
-    //   [
-    //     "deno",
-    //     "run",
-    //     "-A",
-    //     "vite",
-    //     "build",
-    //     "--base",
-    //     "chrome://noraneko-settings/content",
-    //   ],
-    //   path.join(PROJECT_ROOT, "src/ui/settings"),
-    // ],
+    [
+      ["deno", "task", "build"],
+      path.join(PROJECT_ROOT, "browser-features/settings"),
+    ],
   ];
 
   if (mode.startsWith("dev")) {
@@ -157,16 +161,6 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
   }
 
   if (mode.startsWith("production")) {
-    const mounts: Array<[string, string]> = [
-      ["content", "browser-features/chrome/_dist"],
-      ["startup", "bridge/startup/_dist"],
-      ["skin", "browser-features/skin"],
-      ["resource", "bridge/loader-modules/_dist"],
-      ["loader", "bridge/loader-features/_dist"],
-      ["aboutdialog", "browser-features/pages-aboutDialog/_dist"],
-      ["newtab", "browser-features/pages-newtab/_dist"],
-    ];
-
     const dirPath = "_dist/noraneko";
     try {
       if (exists(dirPath)) {
@@ -175,25 +169,7 @@ export async function run(mode = "dev", buildid2: string): Promise<void> {
     } catch {}
     Deno.mkdirSync(dirPath);
 
-    for (const [subdir, target] of mounts) {
-      const linkPath = path.resolve(dirPath, subdir);
-      const targetPath = path.resolve(target);
-      try {
-        if (exists(linkPath)) {
-          safeRemove(linkPath);
-        }
-      } catch {
-        // ignore
-      }
-
-      try {
-        createSymlink(linkPath, targetPath);
-      } catch (e: any) {
-        logger.warn(
-          `Failed to create symlink ${linkPath} -> ${targetPath}: ${e?.message ?? e}`,
-        );
-      }
-    }
+    createFeatureSymlinks(dirPath);
   }
 
   logger.success("Build complete.");

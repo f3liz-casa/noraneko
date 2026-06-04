@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
-import { BIN_PATH_EXE, PATHS } from "./defines.ts";
-import { ProcessUtils } from "./utils.ts";
+import { BIN_PATH_EXE, PATHS, STOCK_FIREFOX } from "./defines.ts";
+import { ProcessUtils, safeRemove } from "./utils.ts";
+import * as path from "@std/path";
 
 /**
  * Minimal port of tools/lib/browser_launcher.rb
@@ -36,6 +37,14 @@ export async function browserCommand(port: number): Promise<string[]> {
 }
 
 export async function run(port = 5180): Promise<void> {
+  // Stock Firefox lacks the noraneko-runtime nsAppRunner buildid2 patch that
+  // invalidates the startup cache when the build changes, so the chrome
+  // registry (omni.ja chrome.manifest) can go stale across runs. Drop the
+  // profile's startup cache before launch to force a fresh read.
+  if (STOCK_FIREFOX) {
+    safeRemove(path.join(PATHS.profile_test, "startupCache"));
+  }
+
   const cmd = await browserCommand(port);
 
   console.log("[launcher] Launching browser with command: " + cmd.join(" "));

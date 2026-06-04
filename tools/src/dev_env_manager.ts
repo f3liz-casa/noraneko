@@ -20,6 +20,7 @@ user_pref("security.disallow_privileged_https_script_loads", false);
 user_pref("security.allow_parent_unrestricted_js_loads", true);
 user_pref("remote.active-protocols", 1);
 user_pref("browser.newtabpage.enabled", true);
+user_pref("devtools.console.stdout.chrome", true);
 `;
 
 export function savePrefs(profileDir: string): void {

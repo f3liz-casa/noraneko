@@ -1,0 +1,18 @@
+{
+  "name": "@nora/settings",
+  "imports": {
+    "@deno/vite-plugin": "npm:@deno/vite-plugin@^1.0.6",
+    "preact": "npm:preact@^10.28.4",
+    "preact/hooks": "npm:preact@^10.28.4/hooks",
+    "vite": "npm:vite@^7.3.1",
+    "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^5.1.4"
+  },
+  "tasks": {
+    "build": "deno run -A npm:vite build"
+  },
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
+  }
+}

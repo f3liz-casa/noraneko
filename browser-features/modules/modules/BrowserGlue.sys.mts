@@ -74,4 +74,19 @@ const JS_WINDOW_ACTORS: {
   },
 };
 
+// Mutually exclusive with the WebExtension-based actors: when a builtin
+// WebExtension version is enabled (see webext-actors), skip the JSActor so the
+// two don't both expose the same page API.
+const WEBEXT_REPLACED_ACTORS: { [actorName: string]: string } = {
+  NRSettings: "noraneko.webext-actors.settings-bridge.enabled",
+  NRAboutPreferences: "noraneko.webext-actors.about-preferences.enabled",
+  NRAboutNewTab: "noraneko.webext-actors.newtab.enabled",
+};
+
+for (const [actorName, pref] of Object.entries(WEBEXT_REPLACED_ACTORS)) {
+  if (Services.prefs.getBoolPref(pref, false)) {
+    delete JS_WINDOW_ACTORS[actorName];
+  }
+}
+
 ActorManagerParent.addJSWindowActors(JS_WINDOW_ACTORS);

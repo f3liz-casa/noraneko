@@ -1,35 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import * as path from "@std/path";
-import { PROJECT_ROOT as DEFINES_PROJECT_ROOT } from "./defines.ts";
+import {
+  PROJECT_ROOT as DEFINES_PROJECT_ROOT,
+  FEATURE_MOUNTS,
+} from "./defines.ts";
 
 export const PROJECT_ROOT = DEFINES_PROJECT_ROOT;
 
 const DECODER = new TextDecoder();
-
-/**
- * Resolve a path relative to the repository root
- */
-export function resolveFromRoot(p: string): string {
-  return path.resolve(PROJECT_ROOT, p);
-}
-
-export type Platform = "windows" | "darwin" | "linux";
-
-export function platform(): Platform {
-  switch (Deno.build.os) {
-    case "windows":
-      return "windows";
-    case "darwin":
-      return "darwin";
-    default:
-      return "linux";
-  }
-}
-
-export function arch(): "aarch64" | "x86_64" {
-  return Deno.build.arch === "aarch64" ? "aarch64" : "x86_64";
-}
 
 export function safeRemove(p: string): void {
   try {
@@ -67,6 +46,19 @@ export function exists(p: string): boolean {
 
 export function gitInitialized(p: string): boolean {
   return exists(path.join(p, ".git"));
+}
+
+/**
+ * Symlink each FEATURE_MOUNTS entry (subdir -> project-relative target) under
+ * `baseDir`. createSymlink removes any existing link and logs its own failures.
+ */
+export function createFeatureSymlinks(baseDir: string): void {
+  for (const [subdir, target] of FEATURE_MOUNTS) {
+    createSymlink(
+      path.resolve(baseDir, subdir),
+      path.resolve(PROJECT_ROOT, target),
+    );
+  }
 }
 
 export interface CommandResult {
@@ -108,19 +100,6 @@ export function runCommand(
     );
   }
   return result;
-}
-
-export function initializeDistDirectory(): void {
-  const distDir = resolveFromRoot("_dist");
-  const binDir = path.join(distDir, "bin");
-  const profileDir = path.join(distDir, "profile");
-  [distDir, binDir, profileDir].forEach((d) => {
-    try {
-      Deno.mkdirSync(d, { recursive: true });
-    } catch {
-      // ignore
-    }
-  });
 }
 
 /* Logger class similar to Ruby utils.Logger */

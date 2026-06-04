@@ -13,6 +13,9 @@ export default [
     outDir: "_dist",
     platform: "browser",
     treeshake: false,
+    // Consumers load these by ".js" (browser.xhtml <script>, loadSubScript);
+    // tsdown's esm default emits ".mjs", so pin the extension.
+    outputOptions: { entryFileNames: "[name].js" },
     plugins: [genJarmnPlugin("startup", "noraneko-startup", "content")],
     external: /^resource:\/\/|^chrome:\/\//g,
   }),

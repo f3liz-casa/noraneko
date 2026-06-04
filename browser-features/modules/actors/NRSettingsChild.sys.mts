@@ -14,6 +14,11 @@ export class NRSettingsChild extends JSWindowActorChild {
   constructor() {
     super();
   }
+  // Registered for DOMDocElementInserted only to force actorCreated to run.
+  // Without a handleEvent, the dispatch throws ("not callable") during early
+  // parsing, which can blank the page (e.g. when chrome://noraneko-settings is
+  // the top-level document via nora:settings).
+  handleEvent(_event: Event) {}
   actorCreated() {
     console.debug("NRSettingsChild created!");
     const window = this.contentWindow;

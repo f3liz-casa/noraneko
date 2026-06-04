@@ -78,6 +78,8 @@ async function runDev(): Promise<void> {
   await Builder.run("dev", buildid2);
   await Injector.run("dev");
   await Injector.injectXhtmlFromTs(true);
+  // Re-seal the bundle after the last omni.ja modification (stock Firefox / darwin).
+  Initializer.resignMacApp();
   DevEnvManager.setup();
 
   setupDevServerAndBrowser();
@@ -97,6 +99,7 @@ async function runStage(): Promise<void> {
   await Builder.run("stage", buildid2);
   await Injector.run("stage");
   await Injector.injectXhtmlFromTs(true);
+  Initializer.resignMacApp();
   DevEnvManager.setup();
 
   setupDevServerAndBrowser();
@@ -116,7 +119,6 @@ async function runBuild(phase?: string): Promise<void> {
     const buildid2 = Update.generateUuidV7();
     await Builder.run("production", buildid2);
   } else if (optionsPhase === "after-mach") {
-    // await Injector.createManifest("production", "_dist/noraneko");
     await Injector.injectXhtmlFromTs(false, true);
   } else {
     console.error(`Unknown phase: ${optionsPhase}`);
