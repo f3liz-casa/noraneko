@@ -36,10 +36,15 @@
     "chrome/**/*",
     "modules/**/*",
     "src/**/*",
-    "node_modules/**/*"
+    "node_modules/**/*",
+    "workflows/**/*",
+    "generated/**/*",
+    "gaji.config.ts"
   ],
   "tasks": {
-    "feles-build": "deno run -A tools/feles-build.ts"
+    "feles-build": "deno run -A tools/feles-build.ts",
+    "gha:dev": "gaji dev",
+    "gha:build": "gaji build"
   },
   "nodeModulesDir": "auto",
   "vendor": true

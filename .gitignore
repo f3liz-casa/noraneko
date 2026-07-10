@@ -16,6 +16,12 @@ logs/
 .serena/
 vendor/
 
+# gaji (GitHub Actions authored in TypeScript). The generated/ types and the
+# compiled .github YAML are committed on purpose; only the cache and local
+# secrets are ignored.
+.gaji-cache.json
+gaji.config.local.ts
+
 # Hotfix source files (except .gitkeep)
 hotfixes/source/*
 !hotfixes/source/patches/
