@@ -31,7 +31,8 @@ export async function browserCommand(port: number): Promise<string[]> {
     PATHS.profile_test,
     "--remote-debugging-port",
     String(port),
-    "--wait-for-browser",
+    // Lets Marionette/WebDriver run chrome-context scripts (screenshots etc.).
+    "--remote-allow-system-access",
     "--jsdebugger",
   ];
 }

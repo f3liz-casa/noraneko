@@ -51,10 +51,16 @@ function setupDevServerAndBrowser(): void {
       s.includes("nora-")
     ) {
       logger.success("Dev servers are ready.");
-      // Launch browser
-      BrowserLauncher.run().catch((e: any) => {
-        logger.error(`Browser launcher failed: ${e?.message ?? e}`);
-      });
+      // Launch browser; when it exits, take the Vite servers down with it so
+      // they don't linger and squat on ports for the next run.
+      BrowserLauncher.run()
+        .catch((e: any) => {
+          logger.error(`Browser launcher failed: ${e?.message ?? e}`);
+        })
+        .finally(() => {
+          DevServer.shutdown();
+          Deno.exit(0);
+        });
     }
   });
 

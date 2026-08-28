@@ -23,6 +23,8 @@ export async function run(writer: any): Promise<void> {
     logger.warn(`Failed to create logs dir ${logsDir}: ${e?.message ?? e}`);
   }
 
+  const readyPromises: Promise<void>[] = [];
+
   for (const server of servers) {
     const port = getPortFor(server.name).toString();
     // Run Vite via Deno's npm compatibility (Deno-only)
@@ -49,18 +51,27 @@ export async function run(writer: any): Promise<void> {
       logger.warn(`Failed to open log file ${logFilePath}: ${e?.message ?? e}`);
     }
 
+    // Resolves once Vite prints its ready banner ("Local:" / "ready in").
+    let markReady: () => void = () => {};
+    const ready = new Promise<void>((res) => {
+      markReady = res;
+    });
+
     const pipeToFile = async (
       stream: ReadableStream<Uint8Array> | null,
       file: Deno.FsFile | null,
     ) => {
       if (!stream || !file) return;
       const reader = stream.getReader();
+      const decoder = new TextDecoder();
       try {
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
           if (value) {
             await file.write(value);
+            const text = decoder.decode(value, { stream: true });
+            if (/Local:|ready in/.test(text)) markReady();
           }
         }
       } catch (e: any) {
@@ -73,6 +84,7 @@ export async function run(writer: any): Promise<void> {
     pipeToFile(child.stderr, fh);
 
     viteProcesses.push(child);
+    readyPromises.push(ready);
 
     logger.info(
       `Started Vite dev server for ${server.name} with PID: ${child.pid}, logging to ${logFilePath}`,
@@ -80,8 +92,13 @@ export async function run(writer: any): Promise<void> {
   }
 
   logger.info("All Vite dev servers started.");
-  // Wait a short time for servers to start (parity with original sleep 5)
-  await new Promise((res) => setTimeout(res, 5000));
+  // Wait until every Vite reports ready, or give up after 30s and go anyway.
+  await Promise.race([
+    Promise.all(readyPromises),
+    new Promise((res) => setTimeout(res, 30_000)).then(() =>
+      logger.warn("Vite ready banner not seen within 30s; continuing."),
+    ),
+  ]);
 
   try {
     if (typeof writer?.write === "function") {
