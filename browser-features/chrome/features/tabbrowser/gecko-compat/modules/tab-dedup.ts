@@ -15,7 +15,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   /**
    * Returns all unpinned tabs that share the same URL as `tab`, excluding
    * `tab` itself.
@@ -85,4 +85,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     }
     this.removeTabs(tabs, options);
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

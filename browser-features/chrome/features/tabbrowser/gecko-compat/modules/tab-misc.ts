@@ -15,7 +15,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   /**
    * Opens a new tab on middle-click of a new-tab button, unless the button
    * is disabled.
@@ -104,4 +104,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       return false;
     }
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

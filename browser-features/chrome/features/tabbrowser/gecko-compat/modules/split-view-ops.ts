@@ -33,7 +33,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   // ==========================================================================
   // Split View & Adjacent Tab Operations
   // tabbrowser.js L3218~L3367
@@ -474,4 +474,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
 
     return tabs;
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

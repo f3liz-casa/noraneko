@@ -2,6 +2,7 @@
 // Ported from tabbrowser.js L906~L974, L2897~L5086, L6178~L7019
 // Section: addTab · removeTab/removeTabs · Tab Properties · Tab Movement
 
+import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
 import { appState, selectedTab as selectedTabSignal, orderedTabs, send } from "../../state/store.ts";
 import * as TabOps from "../../ops/tab-ops.ts";
 import * as GroupOps from "../../ops/group-ops.ts";
@@ -10,9 +11,40 @@ import { BrowserSystem } from "../BrowserSystem.ts";
 import type { AppState, TabData, TabId, GroupId } from "../../types/TabState.ts";
 import { resolveTabId, dispatch } from "../compat-helpers.ts";
 
-// ... (existing module declaration)
+/** @augments TabbrowserCompat */
+declare module "../TabbrowserCompat.ts" {
+  interface TabbrowserCompat {
+    // Class fields used by this module
+    _tabForBrowser: Map<any, any>;
+    _removingTabs: Set<any>;
+    tabAnimationsInProgress: number;
+    // Methods
+    addTab(uri: nsIURI | string, options?: any): any;
+    addTrustedTab(uri: nsIURI | string, options?: any): any;
+    addWebTab(uri: string, options?: any): any;
+    loadTabs(uris: string[], options?: any): any;
+    _beginRemoveTab(tab: MozTabbrowserTab, options?: any): boolean;
+    _endRemoveTab(tab: MozTabbrowserTab): void;
+    removeTab(tab: MozTabbrowserTab, options?: any): void;
+    removeCurrentTab(options?: any): void;
+    removeTabs(tabs: MozTabbrowserTab[], options?: any): void;
+    removeAllTabsBut(keepTab: any, options?: any): void;
+    closeTabsByURI(urisToClose: string[]): Promise<any>;
+    pinTab(tab: MozTabbrowserTab): void;
+    unpinTab(tab: MozTabbrowserTab): void;
+    discardTab(tab: MozTabbrowserTab): void;
+    showTab(tab: MozTabbrowserTab): void;
+    hideTab(tab: MozTabbrowserTab): void;
+    duplicateTab(tab: MozTabbrowserTab, options?: any): any;
+    moveTabTo(tab: MozTabbrowserTab, options?: any): void;
+    moveTabBefore(tab: MozTabbrowserTab, target: MozTabbrowserTab): void;
+    moveTabAfter(tab: MozTabbrowserTab, target: MozTabbrowserTab): void;
+    moveTabToStart(tab: MozTabbrowserTab): void;
+    moveTabToEnd(tab: MozTabbrowserTab): void;
+  }
+}
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   // ==========================================================================
   // addTab
   // tabbrowser.js L2897~L5086
@@ -516,4 +548,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     const el = DOMRegistry.getTab(id);
     if (el) dispatch(el, "TabMove");
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

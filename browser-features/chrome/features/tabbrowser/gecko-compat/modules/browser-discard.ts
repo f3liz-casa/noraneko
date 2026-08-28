@@ -20,7 +20,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   // ==========================================================================
   // Notification & Dialog Boxes
   // tabbrowser.js L1000~L1053
@@ -220,4 +220,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
 
     return true;
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

@@ -73,7 +73,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   // ==========================================================================
   // Tab Groups (addTabGroup, removeTabGroup, etc.)
   // tabbrowser.js L3368~L5086
@@ -687,4 +687,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       send({ type: "SET_MUTED", tabId: tid, isMuted: !anyMuted });
     }
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

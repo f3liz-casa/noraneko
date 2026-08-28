@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+/// <reference path="./gecko-types.d.ts" />
 
 import { appState, selectedTab as selectedTabSignal, orderedTabs, send } from "../state/store.ts";
 import * as TabOps from "../ops/tab-ops.ts";
@@ -483,11 +484,8 @@ export class TabbrowserCompat {
   }
 }
 
-export function initCompat(window: any) {
-  // Merge canonical module implementations onto the compat prototype so
-  // the instance exposes full gBrowser behavior (modules may overwrite
-  // lightweight shim methods defined above).
-  const moduleMethods: Array<[string, object | undefined]> = [
+// Modules are merged in this order; later ones win on a name clash.
+const moduleMethods = [
     ["internals", internals.methods],
     ["lifecycle", lifecycle.methods],
     ["tab-crud", tabCrud.methods],
@@ -506,13 +504,30 @@ export function initCompat(window: any) {
     ["tab-groups", tabGroups.methods],
     ["browser-panel", browserPanel.methods],
     ["tab-keyboard", tabKeyboard.methods],
-  ];
+] as const;
 
+// Build-time twin of the runtime warning in initCompat(). Each module ends in
+// `satisfies` rather than a type annotation, so its member names survive as
+// literal types; fold the tuple once and collect every name seen twice.
+type MembersOf<T> = T extends readonly [string, infer M] ? keyof M : never;
+type DuplicateMembers<Ms, Seen = never, Out = never> =
+  Ms extends readonly [infer H, ...infer R]
+    ? DuplicateMembers<R, Seen | MembersOf<H>, Out | (MembersOf<H> & Seen)>
+    : Out;
+// Known, intentional clashes (see the analysis note); remove once merged.
+type KnownClash = "addTabGroup" | "removeTabGroup";
+type Duplicates = Exclude<DuplicateMembers<typeof moduleMethods>, KnownClash>;
+// A duplicate shows up here as `Type true is not assignable to { duplicate: "name" }`.
+const _noDuplicateMembers: [Duplicates] extends [never] ? true : { duplicate: Duplicates } = true;
+
+export function initCompat(window: any) {
+  // Merge canonical module implementations onto the compat prototype so
+  // the instance exposes full gBrowser behavior (modules may overwrite
+  // lightweight shim methods defined above).
   // Later modules win on name clashes. Say so out loud instead of silently
   // shadowing an earlier implementation.
   const owner = new Map<string, string>();
   for (const [name, m] of moduleMethods) {
-    if (!m) continue;
     for (const key of Object.keys(m)) {
       const prev = owner.get(key);
       if (prev) {

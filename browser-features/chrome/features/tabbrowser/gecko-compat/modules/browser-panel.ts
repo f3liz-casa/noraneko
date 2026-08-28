@@ -20,7 +20,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   _generateUniquePanelID(): string {
     if (!this._uniquePanelIDCounter) {
       this._uniquePanelIDCounter = 0;
@@ -177,4 +177,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   getBrowserContainer(browser: XULBrowserElement): any {
     return browser?.parentNode?.parentNode;
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

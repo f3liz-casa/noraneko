@@ -16,7 +16,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   /**
    * Toggles caret browsing mode, showing a confirmation prompt the first time
    * if the warning preference has not been permanently dismissed.
@@ -91,4 +91,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       dispatch(tab, "TabMove");
     }
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

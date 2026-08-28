@@ -18,7 +18,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   /**
    * Returns the content-process PIDs associated with the tab's browser,
    * including any remote subframe process PIDs sorted in ascending order.
@@ -327,4 +327,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       );
     } catch (_) { /* */ }
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

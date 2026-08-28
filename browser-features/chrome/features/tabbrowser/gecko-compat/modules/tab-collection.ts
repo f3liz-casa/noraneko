@@ -66,7 +66,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   // ==========================================================================
   // Forwarded browser properties
   // tabbrowser.js L361~L428
@@ -463,4 +463,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     const panels = document.getElementById("tabbrowser-tabpanels");
     return panels ? panels.dispatchEvent.apply(panels, args as any) : false;
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

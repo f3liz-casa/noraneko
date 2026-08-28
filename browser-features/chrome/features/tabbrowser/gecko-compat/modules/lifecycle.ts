@@ -36,7 +36,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
 
   // ==========================================================================
   // Lifecycle
@@ -270,4 +270,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
 
     return rv;
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

@@ -16,7 +16,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   _setFindbarData() {
     // Ensure content processes know the find bar keyboard shortcut
     try {
@@ -406,4 +406,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
 
     return b;
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

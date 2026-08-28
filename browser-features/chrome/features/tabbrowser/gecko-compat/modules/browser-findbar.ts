@@ -18,7 +18,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   /**
    * Returns the find bar for `tab`, creating it lazily if it has not been initialised yet.
    *
@@ -79,4 +79,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   isFindBarInitialized(tab: MozTabbrowserTab): boolean {
     return !!this.getCachedFindBar(tab);
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

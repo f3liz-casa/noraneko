@@ -33,7 +33,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const swapBrowserMethods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const swapBrowserMethods = {
   swapBrowsers(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab) {
     const id1 = resolveTabId(ourTab);
     const id2 = resolveTabId(otherTab);
@@ -235,4 +235,4 @@ export const swapBrowserMethods: Partial<TabbrowserCompat> & ThisType<Tabbrowser
     }
     if (tmp) (otherBrowser as any).registeredOpenURI = tmp;
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

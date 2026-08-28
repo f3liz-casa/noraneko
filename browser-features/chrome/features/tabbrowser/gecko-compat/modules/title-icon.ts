@@ -44,7 +44,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   // ==========================================================================
   // Title / Icon / Label (setTabTitle, _setTabLabel, updateTabIcon, etc.)
   // tabbrowser.js L1784~L2153, L1887~L1960, L1961~L2046
@@ -539,4 +539,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
 
     return title;
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

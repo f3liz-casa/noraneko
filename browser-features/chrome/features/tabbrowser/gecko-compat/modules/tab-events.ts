@@ -19,7 +19,7 @@ declare module "../TabbrowserCompat.ts" {
   }
 }
 
-export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
+export const methods = {
   _tabAttrModified(tab: MozTabbrowserTab, changed: string[]) {
     dispatch(tab, "TabAttrModified", { changed });
   },
@@ -235,4 +235,4 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
       );
     } catch (_) { /* */ }
   },
-};
+} satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;
