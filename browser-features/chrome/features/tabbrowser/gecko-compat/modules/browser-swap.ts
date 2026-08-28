@@ -16,17 +16,13 @@ declare module "../TabbrowserCompat.ts" {
     _tabListeners: Map<any, any>;
     swapBrowsers(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab): void;
     swapBrowsersAndCloseOther(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab): void;
-    _swapBrowserDocShells(browser: XULBrowserElement, otherBrowser: any): void;
+    _swapBrowserDocShells(ourTab: MozTabbrowserTab, otherBrowser: XULBrowserElement, stateFlags?: number): void;
     _swapRegisteredOpenURIs(browser: XULBrowserElement, otherBrowser: any): void;
-    getBrowserForTab(tab: MozTabbrowserTab): XULBrowserElement | null;
-    getTabForBrowser(browser: XULBrowserElement): MozTabbrowserTab | null;
-    selectedBrowser: XULBrowserElement;
-    selectedTab: MozTabbrowserTab | null;
     setIcon(tab: MozTabbrowserTab, iconUrl: string): void;
     _tabAttrModified(tab: MozTabbrowserTab, modifiedAttrs: string[]): void;
     setTabTitle(tab: MozTabbrowserTab): void;
     _endRemoveTab(tab: MozTabbrowserTab): void;
-    window: any;
+    window: Window;
     shouldActivateDocShell(browser: XULBrowserElement): boolean;
     updateCurrentBrowser(forceUpdate?: boolean): void;
     getFindBar(tab: MozTabbrowserTab): Promise<any>;
@@ -73,7 +69,7 @@ export const swapBrowserMethods = {
     const modifiedAttrs: string[] = [];
 
     if (otherTab._soundPlayingAttrRemovalTimer) {
-      otherTab._soundPlayingAttrRemovalTimer.cancel?.();
+      (otherTab._soundPlayingAttrRemovalTimer as any).cancel?.();
       otherTab._soundPlayingAttrRemovalTimer = null;
     }
 
@@ -200,8 +196,8 @@ export const swapBrowserMethods = {
 
     try { ourBrowser.swapDocShells?.(otherBrowser); } catch (e) { console.warn("swapDocShells failed", e); }
 
-    if (ourContainer) ourContainer.hidden = ourWasHidden;
-    if (otherContainer) otherContainer.hidden = otherWasHidden;
+    if (ourContainer) ourContainer.hidden = ourWasHidden ?? false;
+    if (otherContainer) otherContainer.hidden = otherWasHidden ?? false;
 
     const ourPermanentKey = ourBrowser.permanentKey;
     ourBrowser.permanentKey = otherBrowser.permanentKey;

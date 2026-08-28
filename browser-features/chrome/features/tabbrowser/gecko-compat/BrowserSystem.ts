@@ -49,17 +49,17 @@ export class BrowserSystem {
     // Nesting (Lines 2330-2350)
     const stack = doc.createXULElement("stack");
     stack.className = "browserStack";
-    stack.flex = "1";
+    stack.setAttribute("flex", "1");
     stack.appendChild(browser);
 
     const container = doc.createXULElement("vbox");
     container.className = "browserContainer";
-    container.flex = "1";
+    container.setAttribute("flex", "1");
     container.appendChild(stack);
 
     const sidebarContainer = doc.createXULElement("hbox");
     sidebarContainer.className = "browserSidebarContainer";
-    sidebarContainer.flex = "1";
+    sidebarContainer.setAttribute("flex", "1");
     sidebarContainer.appendChild(container);
 
     // Register with Bridge

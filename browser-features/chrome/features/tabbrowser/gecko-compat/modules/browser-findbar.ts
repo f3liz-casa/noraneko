@@ -10,6 +10,7 @@ declare const requestAnimationFrame: (cb: () => void) => void;
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
+    _lastFindValue: string;
     // Methods provided by this module
     getCachedFindBar(tab?: any): any;
     isFindBarInitialized(tab?: any): boolean;
@@ -24,7 +25,9 @@ export const methods = {
    *
    * Multiple concurrent calls are coalesced into a single creation promise.
    */
-  async getFindBar(tab: MozTabbrowserTab = this.selectedTab): Promise<any> {
+  async getFindBar(tab?: MozTabbrowserTab): Promise<any> {
+    tab ??= this.selectedTab;
+    if (!tab) return null;
     const cached = this.getCachedFindBar(tab);
     if (cached) return cached;
 
@@ -43,7 +46,7 @@ export const methods = {
 
       (browser as any).parentNode?.insertAdjacentElement?.("afterend", findBar);
 
-      await new Promise(r => requestAnimationFrame(r));
+      await new Promise<void>(r => requestAnimationFrame(() => r()));
       delete (tab as any)._pendingFindBar;
 
       if ((this.window as any).closed || (tab as any).closing) return null;

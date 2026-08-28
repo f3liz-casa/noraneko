@@ -10,6 +10,8 @@ import { resolveTabId, dispatch } from "../compat-helpers.ts";
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
+    handleEvent(event: Event): void;
+    _setupEventListeners(): void;
     // Class fields used by this module
     _tabpanelsSelectHandler: any;
     _switcher: any;
@@ -68,10 +70,10 @@ export const methods = {
   handleEvent(event: Event) {
     switch (event.type) {
       case "keydown":
-        this._handleKeyDownEvent(event);
+        this._handleKeyDownEvent(event as KeyboardEvent);
         break;
       case "keypress":
-        this._handleKeyPressEvent(event);
+        this._handleKeyPressEvent(event as KeyboardEvent);
         break;
       case "framefocusrequested": {
         const tab = this.getTabForBrowser(event.target);

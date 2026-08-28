@@ -7,6 +7,8 @@ import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
+    _generateUniquePanelID(): string;
+    getPanel(browser: XULBrowserElement): any;
     // Class fields used by this module
     _uniquePanelIDCounter: number;
     // Methods provided by this module
@@ -44,7 +46,7 @@ export const methods = {
     let openWindowInfo;
     try {
       openWindowInfo = this.window.docShell?.treeOwner
-        ?.QueryInterface(Ci.nsIInterfaceRequestor)
+        ?.QueryInterface?.(Ci.nsIInterfaceRequestor)
         ?.getInterface(Ci.nsIAppWindow)?.initialOpenWindowInfo;
     } catch (_) { /* */ }
 

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+/// <reference path="./jsx-runtime.d.ts" />
 import { options, VNode, Ref } from "preact";
 
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";

@@ -191,7 +191,7 @@ export const methods = {
    */
   openSplitViewMenu(anchorElement: any) {
     try {
-      const menu = this.window.document.getElementById("split-view-menu");
+      const menu = this.window.document.getElementById("split-view-menu") as XULPopupElement | null;
       menu?.openPopup?.(anchorElement, "after_start");
     } catch (_) { /* */ }
   },

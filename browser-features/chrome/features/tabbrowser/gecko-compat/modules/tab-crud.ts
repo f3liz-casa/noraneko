@@ -37,8 +37,8 @@ declare module "../TabbrowserCompat.ts" {
     hideTab(tab: MozTabbrowserTab): void;
     duplicateTab(tab: MozTabbrowserTab, options?: any): any;
     moveTabTo(tab: MozTabbrowserTab, options?: any): void;
-    moveTabBefore(tab: MozTabbrowserTab, target: MozTabbrowserTab): void;
-    moveTabAfter(tab: MozTabbrowserTab, target: MozTabbrowserTab): void;
+    moveTabBefore(tab: MozTabbrowserTab, target: MozTabbrowserTab, metricsContext?: any): void;
+    moveTabAfter(tab: MozTabbrowserTab, target: MozTabbrowserTab, metricsContext?: any): void;
     moveTabToStart(tab: MozTabbrowserTab): void;
     moveTabToEnd(tab: MozTabbrowserTab): void;
   }
@@ -97,17 +97,11 @@ export const methods = {
       this._lastRelatedTabMap.set(options.openerTab, DOMRegistry.getTab(id));
     }
 
-    if (options.createLazyBrowser) {
-      // Lazy browser — defer DOM creation; set up proxy properties
-      const tabEl = DOMRegistry.getTab(id);
-      if (tabEl) {
-        (tabEl as any)._browserParams = {
-          uriIsAboutBlank: uriStr === "about:blank",
-          usingPreloadedContent: false,
-        };
-        this._createLazyBrowser(tabEl);
-      }
-    } else {
+    // Lazy browsers (tabbrowser.js _createLazyBrowser: a <browser> whose
+    // docshell appears on first property access) are not ported yet, so
+    // `createLazyBrowser` tabs are created eagerly. Session restore still
+    // gets a tab; it just costs a docshell up front.
+    {
       this._createBrowserDOM(id, { remoteType: options.remoteType, userContextId: options.userContextId });
 
       // Wire up progress listener for the new tab
@@ -220,7 +214,7 @@ export const methods = {
     this._removingTabs.delete(tab);
     const browser = DOMRegistry.getBrowser(id);
     if (browser) {
-      browser.parentNode?.parentNode?.parentNode?.remove();
+      (browser.parentNode?.parentNode?.parentNode as Element | null | undefined)?.remove();
       DOMRegistry.unregisterBrowser(id);
     }
     send({ type: "END_CLOSE_TAB", tabId: id });
@@ -330,7 +324,7 @@ export const methods = {
       for (const t of tabs) this.removeTab(t, options);
     } finally {
       this._clearMultiSelectionLocked = false;
-      this._clearMultiSelection?.();
+      this._avoidSingleSelectedTab();
     }
   },
 
@@ -509,7 +503,7 @@ export const methods = {
   },
 
   /** Move a tab to appear immediately before `target` in the tab strip. */
-  moveTabBefore(tab: MozTabbrowserTab, target: MozTabbrowserTab) {
+  moveTabBefore(tab: MozTabbrowserTab, target: MozTabbrowserTab, _metricsContext?: any) {
     const id = resolveTabId(tab);
     const tid = resolveTabId(target);
     if (!id || !tid) return;
@@ -519,7 +513,7 @@ export const methods = {
   },
 
   /** Move a tab to appear immediately after `target` in the tab strip. */
-  moveTabAfter(tab: MozTabbrowserTab, target: MozTabbrowserTab) {
+  moveTabAfter(tab: MozTabbrowserTab, target: MozTabbrowserTab, _metricsContext?: any) {
     const id = resolveTabId(tab);
     const tid = resolveTabId(target);
     if (!id || !tid) return;

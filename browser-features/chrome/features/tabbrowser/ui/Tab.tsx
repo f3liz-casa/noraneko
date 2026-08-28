@@ -16,7 +16,7 @@ interface TabProps {
  * Binds to specific pieces of state to minimize re-renders.
  */
 export function Tab({ tabId }: TabProps) {
-  const tabRef = useRef<Element>(null);
+  const tabRef = useRef<HTMLElement>(null);
 
   // Bindings
   const tab = computed(() => appState.value.tabs[tabId]);
@@ -28,7 +28,7 @@ export function Tab({ tabId }: TabProps) {
 
   useEffect(() => {
     if (tabRef.current) {
-      DOMRegistry.registerTab(tabId, tabRef.current);
+      DOMRegistry.registerTab(tabId, tabRef.current as unknown as MozTabbrowserTab);
       (tabRef.current as any)._tabId = tabId;
     }
     return () => DOMRegistry.unregisterTab(tabId);

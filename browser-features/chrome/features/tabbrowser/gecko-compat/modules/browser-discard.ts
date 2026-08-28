@@ -7,6 +7,10 @@ import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
+    discardBrowser(aTab: MozTabbrowserTab, aForceDiscard?: boolean): boolean;
+    prepareDiscardBrowser(aTab: MozTabbrowserTab): Promise<void>;
+    /** Not ported yet: discarded browsers stay eager (see addTab in tab-crud). */
+    _createLazyBrowser?(aTab: MozTabbrowserTab): void;
     // Class fields used by this module
     _windowIsClosing: boolean;
     _nextNotificationBoxId: number;
@@ -30,12 +34,12 @@ export const methods = {
    * Return (lazily creating if necessary) the `NotificationBox` for `browser`.
    * Defaults to `selectedBrowser` when not provided.
    */
-  getNotificationBox(browser?: XULBrowserElement): any {
+  getNotificationBox(browser?: XULBrowserElement | null): any {
     browser = browser || this.selectedBrowser;
     if (!browser) return null;
     if (!(browser as any)._notificationBox) {
       try {
-        (browser as any)._notificationBox = new MozElements.NotificationBox((element: any) => {
+        (browser as any)._notificationBox = new (MozElements.NotificationBox as any)((element: any) => {
           element.setAttribute("notificationside", "top");
           element.setAttribute("name", `tab-notification-box-${this._nextNotificationBoxId++}`);
           this.getTabNotificationDeck()?.append?.(element);
@@ -61,7 +65,7 @@ export const methods = {
    * Used for per-tab modal dialogs (permissions, authentication, etc.).
    * Defaults to `selectedBrowser` when not provided.
    */
-  getTabDialogBox(browser?: XULBrowserElement): any {
+  getTabDialogBox(browser?: XULBrowserElement | null): any {
     browser = browser || this.selectedBrowser;
     if (!browser) return null;
     const container = this.getBrowserContainer(browser);

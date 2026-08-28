@@ -8,6 +8,8 @@ import { dispatch } from "../compat-helpers.ts";
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
+    updateBrowserRemotenessByURL(browser: XULBrowserElement, url: string, options?: any): boolean;
+    updateBrowserRemoteness?(browser: XULBrowserElement, options: any): boolean;
     // Class fields used by this module
     _lastRelatedTabMap: WeakMap<any, any>;
     // Methods
@@ -25,7 +27,7 @@ export const methods = {
       return;
     }
 
-    if (event.button === 1) {
+    if ((event as MouseEvent).button === 1) {
       (this.window as any).BrowserCommands?.openTab?.({ event });
       event.stopPropagation();
       event.preventDefault();
@@ -99,7 +101,8 @@ export const methods = {
         return false;
       }
 
-      return this.updateBrowserRemoteness(browser, { remoteType, ...options });
+      // updateBrowserRemoteness (tabbrowser.js process switching) is not ported yet.
+      return this.updateBrowserRemoteness?.(browser, { remoteType, ...options }) ?? false;
     } catch (_) {
       return false;
     }

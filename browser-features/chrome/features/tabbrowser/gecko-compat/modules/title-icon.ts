@@ -3,7 +3,7 @@
 // Section: Title · Icon · Label · Browser Sharing
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, selectedTab as selectedTabSignal } from "../../state/store.ts";
+import { appState, selectedTab as selectedTabSignal, send } from "../../state/store.ts";
 import * as TabOps from "../../ops/tab-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
 import type { TabId } from "../../types/TabState.ts";
@@ -12,6 +12,8 @@ import { resolveTabId, dispatch } from "../compat-helpers.ts";
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
+    _previewMode: boolean;
+    _cleanupTabSwitchTelemetry(now: number): void;
     // Class fields used by this module
     _dataURLRegEx: RegExp;
     _nonPrintingRegEx: RegExp;
@@ -169,7 +171,10 @@ export const methods = {
 
   /** Set the favicon URL for a tab. Pass `""` to clear it. */
   setIcon(tab: MozTabbrowserTab, iconUrl = "", _origUrl?: string, _clearFirst?: boolean) {
-    this._applyTabOp(tab, (s, id) => TabOps.setIcon(s, id, iconUrl), undefined, ["image"]);
+    const id = resolveTabId(tab);
+    if (!id) return;
+    send({ type: "SET_ICON", tabId: id, iconUrl });
+    this._tabAttrModified(tab, ["image"]);
   },
 
   /** Return the currently stored favicon URL for a tab (empty string if none). */
@@ -187,7 +192,7 @@ export const methods = {
   getTabSharingState(tab: MozTabbrowserTab) {
     const id = resolveTabId(tab);
     const state = id ? appState.value.tabs[id]?.sharingState : null;
-    const webRTC = state?.webRTC ?? {};
+    const webRTC = (state as any)?.webRTC ?? {};
     return {
       camera: !!webRTC.camera,
       microphone: !!webRTC.microphone,
@@ -248,8 +253,9 @@ export const methods = {
    */
   setDefaultIcon(tab: MozTabbrowserTab, uri: nsIURI | string) {
     try {
-      if (uri?.spec && uri.spec in FAVICON_DEFAULTS) {
-        this.setIcon(tab, FAVICON_DEFAULTS[uri.spec]);
+      const spec = typeof uri === "string" ? uri : uri?.spec;
+      if (spec && spec in FAVICON_DEFAULTS) {
+        this.setIcon(tab, FAVICON_DEFAULTS[spec]);
       }
     } catch (_) { /* */ }
   },
@@ -338,6 +344,13 @@ export const methods = {
     if (!(event as any).isTrusted) return null;
     const browser = (event as any).originalTarget;
     return this.getTabForBrowser(browser);
+  },
+
+  /** Forget URL-pair switch counts older than the 60 s trigger window. */
+  _cleanupTabSwitchTelemetry(now: number) {
+    for (const [key, entry] of this._tabSwitchTelemetry) {
+      if (now - entry.timestamp > 60_000) this._tabSwitchTelemetry.delete(key);
+    }
   },
 
   _checkIfShouldTriggerTabSelectMessage() {

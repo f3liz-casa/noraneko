@@ -14,6 +14,8 @@ import { resolveTabId, dispatch, advanceSelectedTab } from "../compat-helpers.ts
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
+    _isInCollapsedGroup(tabId: TabId): boolean;
+    _fallbackContainer(): any;
     readonly docShell: any;
     readonly webNavigation: any;
     readonly webProgress: any;
@@ -40,26 +42,27 @@ declare module "../TabbrowserCompat.ts" {
     reloadWithFlags(flags: number): void;
     stop(): void;
     gotoIndex(index: number): void;
-    readonly tabs: Element[];
-    readonly visibleTabs: Element[];
-    readonly openTabs: Element[];
-    readonly nonHiddenTabs: Element[];
+    readonly tabs: MozTabbrowserTab[];
+    readonly visibleTabs: MozTabbrowserTab[];
+    readonly openTabs: MozTabbrowserTab[];
+    readonly nonHiddenTabs: MozTabbrowserTab[];
     readonly pinnedTabCount: number;
     readonly tabGroups: any[];
-    readonly tabsInCollapsedTabGroups: Element[];
+    readonly tabsInCollapsedTabGroups: MozTabbrowserTab[];
     selectedTab: any;
-    readonly selectedBrowser: Element | null;
-    readonly selectedBrowsers: Element[];
-    _queryTabs(pred: (t: TabData) => boolean): Element[];
+    readonly selectedBrowser: XULBrowserElement | null;
+    readonly selectedBrowsers: XULBrowserElement[];
+    _queryTabs(pred: (t: TabData) => boolean): MozTabbrowserTab[];
     readonly activeSplitView: any;
-    readonly splitViewBrowsers: Element[];
+    readonly splitViewBrowsers: XULBrowserElement[];
     addTabSplitView(tab: MozTabbrowserTab, otherTab: any): void;
     unsplitTabs(svId?: SplitViewId): void;
     browsers: any;
-    getBrowserForTab(tab: MozTabbrowserTab): Element | undefined;
-    getTabForBrowser(browser: XULBrowserElement): any;
-    getBrowserAtIndex(index: number): Element | null;
+    getBrowserForTab(tab: MozTabbrowserTab): XULBrowserElement | undefined;
+    getTabForBrowser(browser: any): MozTabbrowserTab | undefined;
+    getBrowserAtIndex(index: number): XULBrowserElement | null;
     readonly tabContainer: any;
+    _selNav(): any;
     addEventListener(...args: any[]): void;
     removeEventListener(...args: any[]): void;
     dispatchEvent(...args: any[]): boolean;
@@ -67,6 +70,9 @@ declare module "../TabbrowserCompat.ts" {
 }
 
 export const methods = {
+  /** `nsIWebNavigation` of the selected browser; null before the first tab exists. */
+  _selNav(): any { return (this.selectedBrowser as any)?.webNavigation ?? null; },
+
   // ==========================================================================
   // Forwarded browser properties
   // tabbrowser.js L361~L428
@@ -198,12 +204,12 @@ export const methods = {
   // ==========================================================================
 
   /** Tab elements (in tab-order) whose state passes `pred`; tabs without a DOM node are skipped. */
-  _queryTabs(pred: (t: TabData) => boolean): Element[] {
+  _queryTabs(pred: (t: TabData) => boolean): MozTabbrowserTab[] {
     return pipe(
       orderedTabs.value,
       A.filter(pred),
       A.filterMap(t => O.fromNullable(DOMRegistry.getTab(t.id))),
-    ) as Element[];
+    ) as MozTabbrowserTab[];
   },
 
   /** All tab elements in the current window, in tab-order. */
@@ -253,12 +259,11 @@ export const methods = {
   /** All tab elements that belong to a currently collapsed tab group. */
   get tabsInCollapsedTabGroups() {
     const s = appState.value;
-    return pipe(
-      Object.values(s.groups),
-      A.filter(g => g.isCollapsed),
-      A.flatMap(g => g.tabs),
-      A.filterMap(id => O.fromNullable(DOMRegistry.getTab(id))),
-    ) as Element[];
+    return Object.values(s.groups)
+      .filter(g => g.isCollapsed)
+      .flatMap(g => g.tabs)
+      .map(id => DOMRegistry.getTab(id))
+      .filter((t): t is MozTabbrowserTab => !!t);
   },
 
   _isInCollapsedGroup(tabId: TabId): boolean {
@@ -317,12 +322,12 @@ export const methods = {
   get activeSplitView() { return appState.value.activeSplitViewId; },
 
   /** The browser elements for all panes in the active split view, or an empty array. */
-  get splitViewBrowsers(): Element[] {
+  get splitViewBrowsers(): XULBrowserElement[] {
     const svId = appState.value.activeSplitViewId;
     if (!svId) return [];
     const sv = appState.value.splitViews[svId];
     if (!sv) return [];
-    return pipe(sv.tabs, A.filterMap(id => O.fromNullable(DOMRegistry.getBrowser(id)))) as Element[];
+    return pipe(sv.tabs, A.filterMap(id => O.fromNullable(DOMRegistry.getBrowser(id)))) as XULBrowserElement[];
   },
 
   /**
@@ -410,7 +415,7 @@ export const methods = {
    */
   getBrowserAtIndex(index: number) {
     const id = appState.value.tabOrder[index];
-    return id ? DOMRegistry.getBrowser(id) : null;
+    return id ? (DOMRegistry.getBrowser(id) ?? null) : null;
   },
 
   // ==========================================================================

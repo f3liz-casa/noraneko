@@ -42,7 +42,7 @@ export type TabEvent =
   | { type: "UPDATE_CONFIG"; config: Partial<AppState["config"]> };
 
 const callOp = <T extends TabEvent["type"]>(op: (state: AppState, ...args: any[]) => AppState) =>
-  assign(({ context, event }: { context: AppState; event: Extract<TabEvent, { type: T }> }) => {
+  assign<AppState, Extract<TabEvent, { type: T }>, undefined, TabEvent, never>(({ context, event }) => {
     const { type, ...args } = event as any;
     return op(context, ...Object.values(args));
   });

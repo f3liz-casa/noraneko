@@ -11,10 +11,10 @@
 import type { TabId } from "../types/TabState.ts";
 
 export class DOMRegistry {
-  private static tabMap = new Map<TabId, Element>();
-  private static browserMap = new Map<TabId, Element>();
+  private static tabMap = new Map<TabId, MozTabbrowserTab>();
+  private static browserMap = new Map<TabId, XULBrowserElement>();
 
-  static registerTab(id: TabId, element: Element) {
+  static registerTab(id: TabId, element: MozTabbrowserTab) {
     this.tabMap.set(id, element);
   }
 
@@ -22,11 +22,11 @@ export class DOMRegistry {
     this.tabMap.delete(id);
   }
 
-  static getTab(id: TabId): Element | undefined {
+  static getTab(id: TabId): MozTabbrowserTab | undefined {
     return this.tabMap.get(id);
   }
 
-  static registerBrowser(id: TabId, element: Element) {
+  static registerBrowser(id: TabId, element: XULBrowserElement) {
     this.browserMap.set(id, element);
   }
 
@@ -34,7 +34,7 @@ export class DOMRegistry {
     this.browserMap.delete(id);
   }
 
-  static getBrowser(id: TabId): Element | undefined {
+  static getBrowser(id: TabId): XULBrowserElement | undefined {
     return this.browserMap.get(id);
   }
 }

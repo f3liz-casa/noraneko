@@ -4,7 +4,7 @@
  * Tab Operations - Pure Logic (Refactored with Immer)
  */
 
-import { produce } from "immer";
+import { produce, type Draft } from "immer";
 import type { AppState, TabData, TabId } from "../types/TabState.ts";
 
 const SHORTEN_URL_REGEX = /^[^:]+:\/\/(?:www\.)?/;
@@ -39,13 +39,13 @@ export const createTab = (id: TabId, uri: string, options: Partial<TabData> = {}
   ...options,
 });
 
-const updateTabIndices = (draft: AppState) => {
+const updateTabIndices = (draft: Draft<AppState>) => {
   draft.tabOrder.forEach((id, idx) => {
     if (draft.tabs[id]) draft.tabs[id].index = idx;
   });
 };
 
-export const addTab = produce((draft: AppState, tab: TabData, index?: number) => {
+export const addTab = produce((draft: Draft<AppState>, tab: TabData, index?: number) => {
   draft.tabs[tab.id] = tab;
   if (index !== undefined && index >= 0 && index <= draft.tabOrder.length) {
     draft.tabOrder.splice(index, 0, tab.id);
@@ -55,7 +55,7 @@ export const addTab = produce((draft: AppState, tab: TabData, index?: number) =>
   updateTabIndices(draft);
 });
 
-export const removeTab = produce((draft: AppState, tabId: TabId) => {
+export const removeTab = produce((draft: Draft<AppState>, tabId: TabId) => {
   if (!draft.tabs[tabId]) return;
   const oldIndex = draft.tabOrder.indexOf(tabId);
   draft.tabOrder = draft.tabOrder.filter(id => id !== tabId);
@@ -70,7 +70,7 @@ export const removeTab = produce((draft: AppState, tabId: TabId) => {
   updateTabIndices(draft);
 });
 
-export const beginCloseTab = produce((draft: AppState, tabId: TabId) => {
+export const beginCloseTab = produce((draft: Draft<AppState>, tabId: TabId) => {
   const tab = draft.tabs[tabId];
   if (tab && !tab.isClosing) {
     Object.assign(tab, { isClosing: true, isBusy: false, isMuted: true });
@@ -79,21 +79,21 @@ export const beginCloseTab = produce((draft: AppState, tabId: TabId) => {
 
 export const endCloseTab = removeTab;
 
-export const discardTab = produce((draft: AppState, tabId: TabId) => {
+export const discardTab = produce((draft: Draft<AppState>, tabId: TabId) => {
   const tab = draft.tabs[tabId];
   if (tab) Object.assign(tab, { isDiscarded: true, isBusy: false, isMuted: false });
 });
 
-export const setIcon = produce((draft: AppState, tabId: TabId, iconUrl: string) => {
+export const setIcon = produce((draft: Draft<AppState>, tabId: TabId, iconUrl: string) => {
   if (draft.tabs[tabId]) draft.tabs[tabId].iconUrl = iconUrl;
 });
 
-export const updateActivity = produce((draft: AppState, tabId: TabId) => {
+export const updateActivity = produce((draft: Draft<AppState>, tabId: TabId) => {
   const tab = draft.tabs[tabId];
   if (tab) Object.assign(tab, { lastAccessed: Date.now(), lastSeenActive: Date.now() });
 });
 
-export const pinTab = produce((draft: AppState, tabId: TabId) => {
+export const pinTab = produce((draft: Draft<AppState>, tabId: TabId) => {
   const tab = draft.tabs[tabId];
   if (!tab || tab.isPinned) return;
   tab.isPinned = true;
@@ -103,7 +103,7 @@ export const pinTab = produce((draft: AppState, tabId: TabId) => {
   updateTabIndices(draft);
 });
 
-export const unpinTab = produce((draft: AppState, tabId: TabId) => {
+export const unpinTab = produce((draft: Draft<AppState>, tabId: TabId) => {
   const tab = draft.tabs[tabId];
   if (!tab || !tab.isPinned) return;
   tab.isPinned = false;
@@ -113,7 +113,7 @@ export const unpinTab = produce((draft: AppState, tabId: TabId) => {
   updateTabIndices(draft);
 });
 
-export const updateTabLabel = produce((draft: AppState, tabId: TabId, params: { label: string; isContentTitle: boolean; direction: "ltr" | "rtl" }) => {
+export const updateTabLabel = produce((draft: Draft<AppState>, tabId: TabId, params: { label: string; isContentTitle: boolean; direction: "ltr" | "rtl" }) => {
   const tab = draft.tabs[tabId];
   if (!tab) return;
   Object.assign(tab, {
@@ -123,12 +123,12 @@ export const updateTabLabel = produce((draft: AppState, tabId: TabId, params: { 
   });
 });
 
-export const updateSharingState = produce((draft: AppState, tabId: TabId, sharing: Partial<TabData["sharingState"]>) => {
+export const updateSharingState = produce((draft: Draft<AppState>, tabId: TabId, sharing: Partial<TabData["sharingState"]>) => {
   const tab = draft.tabs[tabId];
   if (tab) Object.assign(tab.sharingState, sharing);
 });
 
-const _moveTabMutation = (draft: AppState, tabId: TabId, newIndex: number) => {
+const _moveTabMutation = (draft: Draft<AppState>, tabId: TabId, newIndex: number) => {
   const oldIndex = draft.tabOrder.indexOf(tabId);
   if (oldIndex === -1 || oldIndex === newIndex) return;
   draft.tabOrder.splice(oldIndex, 1);
@@ -138,7 +138,7 @@ const _moveTabMutation = (draft: AppState, tabId: TabId, newIndex: number) => {
 
 export const moveTab = produce(_moveTabMutation);
 
-export const moveTabTo = produce((draft: AppState, tabId: TabId, newIndex: number) => {
+export const moveTabTo = produce((draft: Draft<AppState>, tabId: TabId, newIndex: number) => {
   const tab = draft.tabs[tabId];
   if (!tab) return;
   const pinnedCount = draft.tabOrder.filter(id => draft.tabs[id].isPinned).length;
@@ -146,7 +146,7 @@ export const moveTabTo = produce((draft: AppState, tabId: TabId, newIndex: numbe
   _moveTabMutation(draft, tabId, finalIdx);
 });
 
-export const moveTabRelative = produce((draft: AppState, tabId: TabId, targetId: TabId, position: "before" | "after") => {
+export const moveTabRelative = produce((draft: Draft<AppState>, tabId: TabId, targetId: TabId, position: "before" | "after") => {
   const oldIdx = draft.tabOrder.indexOf(tabId);
   let targetIdx = draft.tabOrder.indexOf(targetId);
   if (oldIdx === -1 || targetIdx === -1) return;
@@ -155,7 +155,7 @@ export const moveTabRelative = produce((draft: AppState, tabId: TabId, targetId:
   _moveTabMutation(draft, tabId, position === "before" ? targetIdx : targetIdx + 1);
 });
 
-export const setTabVisibility = produce((draft: AppState, tabId: TabId, isVisible: boolean) => {
+export const setTabVisibility = produce((draft: Draft<AppState>, tabId: TabId, isVisible: boolean) => {
   const tab = draft.tabs[tabId];
   if (tab && (isVisible || (!tab.isSelected && !Object.values(tab.sharingState).some(Boolean)))) {
     tab.isHidden = !isVisible;
@@ -184,15 +184,15 @@ export function findTabToBlurTo(state: AppState, tabId: TabId, excludeIds: TabId
   return visibleTabs[0] || null;
 }
 
-export const updateAudioState = produce((draft: AppState, tabId: TabId, update: Partial<TabData>) => {
+export const updateAudioState = produce((draft: Draft<AppState>, tabId: TabId, update: Partial<TabData>) => {
   if (draft.tabs[tabId]) Object.assign(draft.tabs[tabId], update);
 });
 
-export const setTabBusy = produce((draft: AppState, tabId: TabId, isBusy: boolean) => {
+export const setTabBusy = produce((draft: Draft<AppState>, tabId: TabId, isBusy: boolean) => {
   if (draft.tabs[tabId]) draft.tabs[tabId].isBusy = isBusy;
 });
 
-export const updateTabLocation = produce((draft: AppState, tabId: TabId, uri: string, options: { isSameDocument?: boolean } = {}) => {
+export const updateTabLocation = produce((draft: Draft<AppState>, tabId: TabId, uri: string, options: { isSameDocument?: boolean } = {}) => {
   const tab = draft.tabs[tabId];
   if (tab) {
     tab.uri = uri;
@@ -202,11 +202,11 @@ export const updateTabLocation = produce((draft: AppState, tabId: TabId, uri: st
   }
 });
 
-export const setMultiSelection = produce((draft: AppState, tabIds: TabId[], isSelected: boolean) => {
+export const setMultiSelection = produce((draft: Draft<AppState>, tabIds: TabId[], isSelected: boolean) => {
   tabIds.forEach(id => { if (draft.tabs[id]) draft.tabs[id].isMultiSelected = isSelected; });
 });
 
-export const clearMultiSelection = produce((draft: AppState) => {
+export const clearMultiSelection = produce((draft: Draft<AppState>) => {
   draft.tabOrder.forEach(id => { draft.tabs[id].isMultiSelected = false; });
 });
 

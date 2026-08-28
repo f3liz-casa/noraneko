@@ -7,6 +7,9 @@ import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
+    _createBrowserForTab(tab: any, options?: any): any;
+    _createTab(options: any): any;
+    createBrowser(options?: any): any;
     // Methods provided by this module
     _setFindbarData(findBar: any, tab: MozTabbrowserTab): void;
     // Methods called by this module but defined elsewhere
@@ -234,7 +237,7 @@ export const methods = {
       originStoragePrincipal &&
       uriString
     ) {
-      const { URI_INHERITS_SECURITY_CONTEXT } = Ci.nsIProtocolHandler;
+      const { URI_INHERITS_SECURITY_CONTEXT } = Ci.nsIProtocolHandler as Required<typeof Ci.nsIProtocolHandler>;
       try {
         if (!uri || ((this.window as any).doGetProtocolFlags?.(uri) & URI_INHERITS_SECURITY_CONTEXT)) {
           browser.createAboutBlankDocumentViewer?.(
@@ -258,13 +261,13 @@ export const methods = {
       }
 
       const LOAD_FLAGS_NONE = 0;
-      const LOAD_FLAGS_FROM_EXTERNAL = Ci.nsIWebNavigation.LOAD_FLAGS_FROM_EXTERNAL;
-      const LOAD_FLAGS_FIRST_LOAD = Ci.nsIWebNavigation.LOAD_FLAGS_FIRST_LOAD;
-      const LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL = Ci.nsIWebNavigation.LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
-      const LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP = Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP;
-      const LOAD_FLAGS_FIXUP_SCHEME_TYPOS = Ci.nsIWebNavigation.LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
-      const LOAD_FLAGS_DISABLE_TRR = Ci.nsIWebNavigation.LOAD_FLAGS_DISABLE_TRR;
-      const LOAD_FLAGS_FORCE_ALLOW_DATA_URI = Ci.nsIWebNavigation.LOAD_FLAGS_FORCE_ALLOW_DATA_URI;
+      const LOAD_FLAGS_FROM_EXTERNAL = Ci.nsIWebNavigation.LOAD_FLAGS_FROM_EXTERNAL!;
+      const LOAD_FLAGS_FIRST_LOAD = Ci.nsIWebNavigation.LOAD_FLAGS_FIRST_LOAD!;
+      const LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL = Ci.nsIWebNavigation.LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL!;
+      const LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP = Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP!;
+      const LOAD_FLAGS_FIXUP_SCHEME_TYPOS = Ci.nsIWebNavigation.LOAD_FLAGS_FIXUP_SCHEME_TYPOS!;
+      const LOAD_FLAGS_DISABLE_TRR = Ci.nsIWebNavigation.LOAD_FLAGS_DISABLE_TRR!;
+      const LOAD_FLAGS_FORCE_ALLOW_DATA_URI = Ci.nsIWebNavigation.LOAD_FLAGS_FORCE_ALLOW_DATA_URI!;
 
       let loadFlags = LOAD_FLAGS_NONE;
       if (allowThirdPartyFixup) {
@@ -343,8 +346,8 @@ export const methods = {
       manualactiveness: "true",
     };
 
-    for (const attribute in defaultBrowserAttributes) {
-      b.setAttribute(attribute, defaultBrowserAttributes[attribute]);
+    for (const [attribute, value] of Object.entries(defaultBrowserAttributes)) {
+      b.setAttribute(attribute, value);
     }
 
     if (gMultiProcessBrowser || remoteType) {

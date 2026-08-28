@@ -14,6 +14,7 @@ import { resolveTabId, dispatch } from "../compat-helpers.ts";
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
+    createTabGroup(tabs?: MozTabbrowserTab[], options?: any): any;
     // Class fields used by this module
     _lastMultiSelectedTabRef: WeakRef<any> | null;
     _multiSelectedTabsSet: WeakSet<any>;
@@ -31,7 +32,7 @@ declare module "../TabbrowserCompat.ts" {
     getAllTabGroups(options?: any): any[];
     moveTabToExistingGroup(tab: MozTabbrowserTab, groupId: GroupId): void;
     adoptTabGroup(group: MozTabbrowserTabGroup): void;
-    selectedTabs: Element[];
+    selectedTabs: MozTabbrowserTab[];
     multiSelectedTabsCount: number;
     lastMultiSelectedTab: MozTabbrowserTab | null;
     addToMultiSelectedTabs(tab: MozTabbrowserTab): void;
@@ -147,7 +148,7 @@ export const methods = {
   adoptTabGroup(group: MozTabbrowserTabGroup) {
     if (group?.ownerGlobal === (this as any).window) return;
     if (group?.id && !appState.value.groups[group.id]) {
-      send({ type: "CREATE_GROUP", id: group.id, title: group.title, color: group.color });
+      send({ type: "CREATE_GROUP", id: group.id, title: group.label, color: group.color });
     }
   },
 
@@ -204,13 +205,13 @@ export const methods = {
   // ==========================================================================
 
   /** Returns all currently selected tabs — the active tab plus any multi-selected tabs. */
-  get selectedTabs(): Element[] {
+  get selectedTabs(): MozTabbrowserTab[] {
     const s = appState.value;
     return pipe(
       s.tabOrder,
       A.filter(id => s.tabs[id].isMultiSelected || id === s.selectedTabId),
       A.filterMap(id => O.fromNullable(DOMRegistry.getTab(id))),
-    ) as Element[];
+    ) as MozTabbrowserTab[];
   },
 
   /** Replaces the multi-selection with the given set of tabs. */
@@ -347,7 +348,7 @@ export const methods = {
     }
 
     if (this._multiSelectChangeSelected) {
-      this._handleTabSelect();
+      this.tabContainer?._handleTabSelect?.();
     }
 
     this._multiSelectChangeAdditions.clear();

@@ -56,7 +56,7 @@ export function createTabStub(id: TabId): any {
     get openerTab() { const tid = state()?.openerTabId ?? state()?.ownerTabId; return tid ? DOMRegistry.getTab(tid) ?? null : null; },
     get successor() { const tid = state()?.successorTabId; return tid ? DOMRegistry.getTab(tid) ?? null : null; },
     
-    get linkedPanel() { return DOMRegistry.getBrowser(id)?.parentNode?.parentNode?.id || null; },
+    get linkedPanel() { return (DOMRegistry.getBrowser(id)?.parentNode?.parentNode as Element | null | undefined)?.id || null; },
     get userContextId() { return state()?.userContextId ?? 0; },
     get _fullyOpen() { return (getTabEl() as any)?._fullyOpen ?? true; },
     set _fullyOpen(v: boolean) { const el = getTabEl() as any; if (el) el._fullyOpen = v; },

@@ -134,18 +134,20 @@ export const methods = {
    */
   createTooltip(event: Event) {
     event.stopPropagation();
-    let tab = event.target?.triggerNode?.closest?.("tab");
+    const tooltip = event.target as XULPopupElement;
+    const trigger = tooltip.triggerNode as Element | null;
+    let tab: any = trigger?.closest?.("tab");
     if (!tab) {
-      if (event.target?.triggerNode?.getRootNode?.()?.host?.closest?.("tab")) {
+      const host = (trigger?.getRootNode?.() as ShadowRoot | null)?.host;
+      if (host?.closest?.("tab")) {
         // Check if triggerNode is within shadowRoot
-        tab = event.target.triggerNode.getRootNode().host.closest("tab");
+        tab = host.closest("tab");
       } else {
         event.preventDefault();
         return;
       }
     }
 
-    const tooltip = event.target;
     tooltip.removeAttribute?.("data-l10n-id");
 
     const tabCount = this.selectedTabs.includes(tab)

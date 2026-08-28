@@ -19,6 +19,10 @@ declare const LOAD_FLAGS_FIXUP_SCHEME_TYPOS: number;
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
+    observe(subject: any, topic: string): void;
+    _createTabGroupMenuItem(group: MozTabbrowserTabGroup, isSaved?: boolean): any;
+    _handleKeyDownEvent(event: KeyboardEvent): void;
+    _handleKeyPressEvent(event: KeyboardEvent): void;
     // Class fields used by this module
     _taskbarTabTitle: string | null;
     tabLocalization: any;
@@ -26,26 +30,25 @@ declare module "../TabbrowserCompat.ts" {
     loadURI(uri: string, params?: any): void;
     fixupAndLoadURIString(uri: string, params?: any): void;
     loadTabs(uris: string[], options?: any): void;
-    _determineURIToLoad(browser: XULBrowserElement, uriString: string, triggeringPrincipal?: any): string;
-    _fixupURIString(uri: string): string;
-    _isForInitialAboutBlank(browser: XULBrowserElement, uriString: string): boolean;
-    _internalMaybeFixupLoadURI(browser: XULBrowserElement, uri: string, options?: any): any;
-    _loadFlagsToFixupFlags(loadFlags: number): number;
-    _normalizeLoadURIOptions(options: any): any;
+    _fixupURIString(browser: XULBrowserElement, uriString: string, loadURIOptions: any): any;
+    _isForInitialAboutBlank(webProgress: any, stateFlags: number, location?: any): boolean;
+    _internalMaybeFixupLoadURI(browser: XULBrowserElement, uriString: string, uri: any, loadURIOptions: any): void;
+    _loadFlagsToFixupFlags(browser: XULBrowserElement, loadFlags: number): number;
+    _normalizeLoadURIOptions(browser: XULBrowserElement, loadURIOptions: any): void;
     _handleUriInChrome(browser: XULBrowserElement, uri: any): boolean;
     _kickOffBrowserLoad(browser: XULBrowserElement, uri: string, options?: any): void;
     _getTriggeringPrincipalFromHistory(browser: XULBrowserElement, uri: any): any;
-    _maybeRequestReplyFromRemoteContent(browser: XULBrowserElement): void;
+    _maybeRequestReplyFromRemoteContent(event: KeyboardEvent): boolean;
     _updateTriggerMetadataForLoad(browser: XULBrowserElement, options: any): void;
     // Internal tab ops
     _insertTabAtIndex(tab: MozTabbrowserTab, options?: any): void;
     _tabAttrModified(tab: MozTabbrowserTab, changed: string[]): void;
     _updateTabsAfterInsert(options?: any): void;
     _updateTabBarForPinnedTabs(): void;
-    _notifyOnTabMove(tab: MozTabbrowserTab): void;
+    _notifyOnTabMove(tab: MozTabbrowserTab, previousTabState: any, currentTabState: any, metricsContext?: any): void;
     _getTabMoveState(tab: MozTabbrowserTab): any;
-    _handleTabMove(tab: MozTabbrowserTab, oldIndex: number): void;
-    _moveTabNextTo(tab: MozTabbrowserTab, referenceTab: any, options?: any): void;
+    _handleTabMove(element: any, moveCallback: () => void, metricsContext?: any): void;
+    _moveTabNextTo(element: any, targetElement: any, moveBefore?: boolean, metricsContext?: any): void;
     _isLastTabInWindow(): boolean;
     _isFirstOrLastInTabGroup(tab: MozTabbrowserTab): boolean;
     _elementIndexToTabIndex(elementIndex: number): number;
@@ -56,24 +59,21 @@ declare module "../TabbrowserCompat.ts" {
     ungroupSplitView(splitView: any): void;
     moveSplitViewToExistingGroup(splitView: any, group: MozTabbrowserTabGroup): void;
     openSplitViewMenu(event: Event): void;
-    hideSplitViewPanels(): void;
     showSplitViewPanels(splitView: any): void;
     // Tab state/event
-    _fireTabOpen(tab: MozTabbrowserTab): void;
+    _fireTabOpen(tab: MozTabbrowserTab, eventDetail?: any): void;
     _beginRemoveTab(tab: MozTabbrowserTab, options?: any): any;
     _endRemoveTab(tab: MozTabbrowserTab, options?: any): void;
     _blurTab(tab: MozTabbrowserTab): void;
-    _findTabToBlurTo(tab: MozTabbrowserTab): any;
     _avoidSingleSelectedTab(tab: MozTabbrowserTab): void;
     _adjustFocusBeforeTabSwitch(tab: MozTabbrowserTab, newTab: any): void;
     _adjustFocusAfterTabSwitch(newTab: any): void;
     _onTransitionEnd(event: TransitionEvent): void;
-    _moveTabsNextTo(tab: MozTabbrowserTab, referenceTab: any, options?: any): void;
+    _moveTabsNextTo(tabs: MozTabbrowserTab[], targetTab: any, relation: string): void;
     // Utility
     _mirror(source?: any, dest?: any, properties?: string[]): void;
     _notifyPinnedStatus(tab: MozTabbrowserTab, options?: any): void;
     _separateWholeGroups(tabs: MozTabbrowserTab[]): any[];
-    _tabStub: never; // defined in TabbrowserCompat.ts extended section
   }
 }
 
@@ -133,10 +133,10 @@ export const methods = {
           ?.getTypeFromURI?.(uri);
         if (mimeType === "application/x-xpinstall") {
           const systemPrincipal = Services.scriptSecurityManager?.getSystemPrincipal?.();
-          AddonManager?.getInstallForURL?.(uri.spec, {
+          (AddonManager as any)?.getInstallForURL?.(uri.spec, {
             telemetryInfo: { source: "file-url" },
           }).then((install: any) => {
-            AddonManager?.installAddonFromWebpage?.(
+            (AddonManager as any)?.installAddonFromWebpage?.(
               mimeType,
               browser,
               systemPrincipal,
@@ -168,7 +168,7 @@ export const methods = {
       return;
     }
 
-    if (loadURIOptions.isCaptivePortalTab) {
+    if (loadURIOptions.isCaptivePortalTab && browser.browsingContext) {
       browser.browsingContext.isCaptivePortalTab = true;
     }
 
@@ -190,7 +190,7 @@ export const methods = {
     }
 
     if (
-      stateFlags & Ci.nsIWebProgressListener?.STATE_STOP &&
+      stateFlags & Ci.nsIWebProgressListener.STATE_STOP! &&
       (this as any).mRequestCount === 0 &&
       !location
     ) {
@@ -405,7 +405,7 @@ export const methods = {
 
   _createTabGroup(options: any): any {
     const { id, color, collapsed, label = "", isAdoptingGroup = false } = options;
-    const group = this.window.document.createXULElement?.("tab-group", { is: "tab-group" });
+    const group = this.window.document.createXULElement?.("tab-group", { is: "tab-group" }) as MozTabbrowserTabGroup | undefined;
     if (group) {
       group.id = id;
       group.collapsed = collapsed;

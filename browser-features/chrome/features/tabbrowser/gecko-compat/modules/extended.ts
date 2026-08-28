@@ -3,7 +3,7 @@
 // Section: Extended Ops · Tab Groups · Window Ops · Selection · UI · Progress Callbacks · Stubs · Sponsor
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, send, orderedTabs } from "../../state/store.ts";
+import { appState, send } from "../../state/store.ts";
 import * as TabOps from "../../ops/tab-ops.ts";
 import * as GroupOps from "../../ops/group-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
@@ -16,6 +16,17 @@ declare const SharingUtils: any;
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
+    duplicateSelectedTabs(): void;
+    getMouseTargetRect(): any;
+    updateContextMenu(popupMenu: any): void;
+    _updateToggleMuteMenuItems(tabs: MozTabbrowserTab[]): void;
+    onMouseEnter(event: Event): void;
+    onMouseLeave(event: Event): void;
+    closeContextTabs(button?: any, tab?: any): void;
+    reopenInContainer(tab: MozTabbrowserTab, userContextId: number): void;
+    adoptTab(tab: MozTabbrowserTab, options?: any): any;
+    explicitUnloadTabs(tabs: MozTabbrowserTab[]): Promise<void>;
+    removeMultiSelectedTabs(options?: { isUserTriggered?: boolean; telemetrySource?: string }): any;
     // Extended Tab Operations
     _startRemoveTabs(tabs: MozTabbrowserTab[], options?: any): any;
     runBeforeUnloadForTabs(tabs: MozTabbrowserTab[]): Promise<boolean>;
@@ -32,11 +43,10 @@ declare module "../TabbrowserCompat.ts" {
     // Extended selection
     selectAllTabs(): void;
     multiselected: boolean;
-    selectedTabs: any[];
     visibleTabsCount: number;
     // Extended window ops
     replaceGroupWithWindow(group: MozTabbrowserTabGroup): void;
-    handleNewTabMiddleClick(event: Event): void;
+    handleNewTabMiddleClick(node: any, event: Event): void;
     // Progress callbacks
     onStateChange(browser: XULBrowserElement, webProgress: any, request: any, stateFlags: number, status: number): void;
     onLocationChange(browser: XULBrowserElement, webProgress: any, request: any, location: any, flags: number): void;
@@ -53,15 +63,14 @@ declare module "../TabbrowserCompat.ts" {
     // Stubs & sponsor
     _tabStub(id: TabId): any;
     createUserContextMenu(event: Event, options?: any): any;
-    createReopenInContainerMenu(tab: MozTabbrowserTab): any;
+    createReopenInContainerMenu(event: Event): void;
     showFullScreenViewContextMenuItems(menu: any): void;
     getTabPids(tab: MozTabbrowserTab): number[];
     shouldActivateDocShell(browser: XULBrowserElement): boolean;
-    addNewBadge: any;
     moveTabToSplitView(tab: MozTabbrowserTab, svId?: SplitViewId): void;
-    _wireProgressListener: any;
-    _setupInitialBrowserAndTab: any;
-    updateTitlebar: any;
+    _wireProgressListener(tab: any, browser: any): void;
+    _setupInitialBrowserAndTab(): void;
+    updateTitlebar(): void;
   }
 }
 
@@ -159,7 +168,7 @@ export const methods = {
     let unloadSelectedTab = false;
     if (tabs.some((t: any) => resolveTabId(t) === appState.value.selectedTabId)) {
       unloadSelectedTab = true;
-      const tabsToExclude = tabs.concat(orderedTabs.value.filter(t => !(t as any).linkedPanel));
+      const tabsToExclude = tabs.concat(this.tabs.filter(t => !t.linkedPanel));
       const newTab = (this as any)._findTabToBlurTo?.((this as any).selectedTab, tabsToExclude);
       if (newTab) {
         (this as any).selectedTab = newTab;
@@ -381,11 +390,11 @@ export const methods = {
   },
 
   /** Populates the "Reopen in Container" context menu for `tab`. */
-  createReopenInContainerMenu(tab: any): void {
+  createReopenInContainerMenu(event: Event): void {
     try {
-      createUserContextMenu?.(event, {
+      (this.window as any).createUserContextMenu?.(event, {
         isContextMenu: true,
-        excludeUserContextId: tab?.getAttribute?.("usercontextid"),
+        excludeUserContextId: (this.window as any).TabContextMenu?.contextTab?.userContextId,
       });
     } catch (e) {
       console.error("createReopenInContainerMenu failed:", e);

@@ -30,7 +30,8 @@
     "@lib/ui": "./lib/ui/mod.ts"
   },
   "tasks": {
-    "build": "deno run -A npm:vite build"
+    "build": "deno run -A npm:vite build",
+    "check": "deno check main.ts features/tabbrowser/mod.ts"
   },
   "compilerOptions": {
     "lib": [
