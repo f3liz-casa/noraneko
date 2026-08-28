@@ -4,7 +4,7 @@
 
 // More specific types for parent process browsing contexts.
 interface CanonicalBrowsingContext extends LoadContextMixin {
-  embedderElement: XULBrowserElement;
+  embedderElement: MozBrowser;
   currentWindowContext: WindowGlobalParent;
   parent: CanonicalBrowsingContext;
   parentWindowContext: WindowGlobalParent;
@@ -12,12 +12,37 @@ interface CanonicalBrowsingContext extends LoadContextMixin {
   topWindowContext: WindowGlobalParent;
 }
 
+declare namespace ChromeUtils {
+  type Modules = import("./generated/lib.gecko.modules.d.ts").Modules;
+
+  function importESModule<T extends keyof Modules>(
+    aResourceURI: T,
+    aOptions?: ImportESModuleOptionsDictionary
+  ): Modules[T];
+}
+
 interface ChromeWindow extends Window {
   isChromeWindow: true;
 }
 
+interface XULElementTagNameMap {
+  browser: MozBrowser;
+  iframe: XULFrameElement;
+  label: XULTextElement;
+  menu: XULMenuElement;
+  menupopup: XULPopupElement;
+  tree: XULTreeElement;
+}
+
 interface Document {
-  createXULElement(name: "browser"): XULBrowserElement;
+  createXULElement<K extends keyof XULElementTagNameMap>(
+    localName: K,
+    options?: string | ElementCreationOptions
+  ): XULElementTagNameMap[K];
+  createXULElement(
+    localName: string,
+    options?: string | ElementCreationOptions
+  ): XULElement;
 }
 
 type nsIGleanPingNoReason = {
@@ -36,11 +61,11 @@ interface MessageListenerManagerMixin {
   // Overloads that define `data` arg as required, since it's ~always expected.
   addMessageListener(
     msg: string,
-    listener: { receiveMessage(_: ReceiveMessageArgument & { data }) },
+    listener: { receiveMessage(_: ReceiveMessageArgument & { data }) }
   );
   removeMessageListener(
     msg: string,
-    listener: { receiveMessage(_: ReceiveMessageArgument & { data }) },
+    listener: { receiveMessage(_: ReceiveMessageArgument & { data }) }
   );
 }
 
@@ -65,7 +90,7 @@ interface nsIXPCComponents_Constructor {
   <const T, IIDs = nsIXPCComponents_Interfaces>(
     cid,
     id: T,
-    init?,
+    init?
   ): {
     new (...any): nsQIResult<T extends keyof IIDs ? IIDs[T] : T>;
     (...any): nsQIResult<T extends keyof IIDs ? IIDs[T] : T>;
@@ -85,7 +110,7 @@ interface nsIXPCComponents_Exception {
     message?: string,
     resultOrOptions?: number | ComponentsExceptionOptions,
     stack?: nsIStackFrame,
-    data?: object,
+    data?: object
   ): nsIException;
 }
 
@@ -119,14 +144,6 @@ interface WindowGlobalParent extends WindowContext {
   readonly browsingContext: CanonicalBrowsingContext;
 }
 
-// Hand-crafted artisanal types.
-interface XULBrowserElement extends XULFrameElement, FrameLoader {
-  currentURI: nsIURI;
-  docShellIsActive: boolean;
-  isRemoteBrowser: boolean;
-  remoteType: string;
-}
-
 // https://github.com/microsoft/TypeScript-DOM-lib-generator/issues/1736
 interface Localization {
   formatValuesSync(aKeys: L10nKey[]): (string | null)[];
@@ -149,7 +166,7 @@ interface DOMStringMap {
 interface Uint8Array<TArrayBuffer extends ArrayBufferLike> {
   setFromBase64(
     string: string,
-    options?: { alphabet?: string; lastChunkHandling: string },
+    options?: { alphabet?: string; lastChunkHandling: string }
   ): { read: number; written: number };
   setFromHex(string: string): { read: number; written: number };
   toBase64(options?: { alphabet?: string; omitPadding: boolean }): string;
