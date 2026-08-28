@@ -4,7 +4,7 @@
 
 import { produce } from "immer";
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, selectedTab as selectedTabSignal, orderedTabs, setSelectedTab } from "../../state/store.ts";
+import { appState, selectedTab as selectedTabSignal, orderedTabs } from "../../state/store.ts";
 import * as GroupOps from "../../ops/group-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
 import { pipe, A, O } from "@mobily/ts-belt";
@@ -284,17 +284,22 @@ export const methods = {
   },
 
   /**
-   * Activate a tab, making it the focused tab and firing `TabSelect`.
-   * Passing `null` clears the selection (rarely needed outside tests).
+   * Activate a tab. tabbrowser.js setSelectedTab: hand the tab to the tabbox,
+   * which marks the tab strip, switches the panel deck, and fires `select`
+   * on tabpanels. That lands in updateCurrentBrowser — the one place the
+   * store learns which tab is current and `TabSelect` goes out.
    */
   set selectedTab(val: any) {
-    if (!val) { setSelectedTab(null); return; }
     const id = resolveTabId(val);
-    if (!id) return;
-    setSelectedTab(id);
-    dispatch(this.tabContainer || document, "TabSelect");
-    const el = DOMRegistry.getTab(id);
-    if (el) dispatch(el, "TabSelect");
+    const el = (id ? DOMRegistry.getTab(id) : null) ?? val;
+    if (!el || el === this.selectedTab) return;
+    if (
+      document.documentElement?.hasAttribute("window-modal-open") ||
+      ((this.window as any).gNavToolbox?.collapsed && !(this as any)._allowTabChange)
+    ) {
+      return;
+    }
+    this.tabbox.selectedTab = el;
   },
 
   /** The `<browser>` element for the selected tab, or `null`. */
@@ -403,7 +408,13 @@ export const methods = {
    */
   getTabForBrowser(browser: XULBrowserElement): any {
     if (!browser) return null;
-    const id = browser._tabId;
+    // tabbrowser.js keeps a browser → tab map, and every path that makes or
+    // adopts a browser fills `_tabForBrowser`. `_tabId` is stamped on tabs
+    // only, so it was never a way back from a browser (AsyncTabSwitcher's
+    // MozLayerTreeReady and pagetitlechanged both come in through here).
+    const tab = this._tabForBrowser.get(browser);
+    if (tab) return tab;
+    const id = (browser as any)._tabId;
     return id ? DOMRegistry.getTab(id) ?? null : null;
   },
 

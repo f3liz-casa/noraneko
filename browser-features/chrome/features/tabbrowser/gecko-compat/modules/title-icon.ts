@@ -25,7 +25,7 @@ declare module "../TabbrowserCompat.ts" {
     tabLocalization: any;
     // Methods provided by this module
     setTabTitle(tab: MozTabbrowserTab): boolean;
-    setIcon(tab: MozTabbrowserTab, iconUrl?: string, origUrl?: string, clearFirst?: boolean): void;
+    setIcon(tab: MozTabbrowserTab, iconUrl?: any, origUrl?: any, clearFirst?: boolean): void;
     getIcon(tab: MozTabbrowserTab): string;
     setDefaultIcon(tab: MozTabbrowserTab, uri: any): void;
     getTabSharingState(tab: MozTabbrowserTab): any;
@@ -170,11 +170,35 @@ export const methods = {
   },
 
   /** Set the favicon URL for a tab. Pass `""` to clear it. */
-  setIcon(tab: MozTabbrowserTab, iconUrl = "", _origUrl?: string, _clearFirst?: boolean) {
+  setIcon(tab: MozTabbrowserTab, iconUrl: any = "", origUrl: any = iconUrl, clearFirst = false) {
     const id = resolveTabId(tab);
     if (!id) return;
+    const makeString = (url: any) => (typeof url === "string" ? url : url?.spec ?? "");
+    iconUrl = makeString(iconUrl);
+    origUrl = makeString(origUrl);
+
+    const LOCAL_PROTOCOLS = ["chrome:", "about:", "resource:", "data:"];
+    if (iconUrl && !LOCAL_PROTOCOLS.some(p => iconUrl.startsWith(p))) {
+      console.error(`Attempt to set a remote URL ${iconUrl} as a tab icon without a loading principal.`);
+      return;
+    }
+
+    const browser = this.getBrowserForTab(tab) as any;
+    if (browser) browser.mIconURL = iconUrl;
     send({ type: "SET_ICON", tabId: id, iconUrl });
-    this._tabAttrModified(tab, ["image"]);
+
+    // The favicon the strip paints is the tab's `image` attribute; the store
+    // alone shows nothing. (tabbrowser.js also reroutes remote SVG data: URIs
+    // through moz-remote-image for out-of-process decoding; not ported.)
+    if (iconUrl != tab.getAttribute("image")) {
+      if (clearFirst) tab.removeAttribute("image");
+      if (iconUrl) tab.setAttribute("image", iconUrl);
+      else tab.removeAttribute("image");
+      this._tabAttrModified(tab, ["image"]);
+    }
+
+    // The origUrl argument is currently only used by tests.
+    if (browser) this._callProgressListeners(browser, "onLinkIconAvailable", [iconUrl, origUrl]);
   },
 
   /** Return the currently stored favicon URL for a tab (empty string if none). */

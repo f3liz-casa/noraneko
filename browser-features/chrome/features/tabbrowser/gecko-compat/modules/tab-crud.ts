@@ -113,10 +113,9 @@ export const methods = {
       }
     }
 
-    if (!options.inBackground && !options.bulkOrderedOpen) send({ type: "SELECT_TAB", tabId: id });
-
     const tabEl = DOMRegistry.getTab(id);
     dispatch(tabEl ?? document, "TabOpen", options);
+    if (tabEl && !options.inBackground && !options.bulkOrderedOpen) this.selectedTab = tabEl;
     return tabEl ?? this._tabStub(id);
   },
 
@@ -203,6 +202,9 @@ export const methods = {
     const id = resolveTabId(tab);
     if (!id || appState.value.tabs[id]?.isClosing) return false;
     this._removingTabs.add(tab);
+    // tab.js keeps `closing` as a plain field; listeners (and our own
+    // _tabAttrModified) look at it to leave a closing tab alone.
+    (tab as any).closing = true;
     send({ type: "BEGIN_CLOSE_TAB", tabId: id });
     dispatch(tab, "TabClose", options);
     return true;
@@ -211,12 +213,25 @@ export const methods = {
   _endRemoveTab(tab: MozTabbrowserTab) {
     const id = resolveTabId(tab);
     if (!id) return;
+    // Move the selection off the closing tab first (tabbrowser.js does this
+    // before touching the DOM), so the deck never points at a removed panel.
+    this._blurTab(tab);
     this._removingTabs.delete(tab);
     const browser = DOMRegistry.getBrowser(id);
     if (browser) {
-      (browser.parentNode?.parentNode?.parentNode as Element | null | undefined)?.remove();
+      // An async switch may still be showing this browser; let the switcher
+      // put up a spinner instead of a browser from the end of the deck.
+      this._switcher?.onTabRemoved?.(tab);
+      const panel = this.getPanel(browser);
+      browser.remove();
+      this._tabForBrowser.delete(browser);
+      panel?.remove();
       DOMRegistry.unregisterBrowser(id);
     }
+    // The <tab> itself was never taken out of the strip before.
+    tab.remove();
+    this.tabContainer._invalidateCachedTabs?.();
+    DOMRegistry.unregisterTab(id);
     send({ type: "END_CLOSE_TAB", tabId: id });
   },
 
@@ -472,9 +487,9 @@ export const methods = {
       try { this._wireProgressListener(tabEl, browser); } catch (_) { /* */ }
     }
 
-    if (!options.inBackground) send({ type: "SELECT_TAB", tabId: addedId });
     const el = DOMRegistry.getTab(addedId);
     dispatch(el ?? document, "TabOpen", options);
+    if (el && !options.inBackground) this.selectedTab = el;
     return el ?? this._tabStub(addedId);
   },
 

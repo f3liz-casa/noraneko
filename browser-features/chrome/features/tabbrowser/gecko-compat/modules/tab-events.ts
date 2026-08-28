@@ -23,6 +23,7 @@ declare module "../TabbrowserCompat.ts" {
 
 export const methods = {
   _tabAttrModified(tab: MozTabbrowserTab, changed: string[]) {
+    if ((tab as any).closing) return;
     dispatch(tab, "TabAttrModified", { changed });
   },
 
@@ -55,7 +56,9 @@ export const methods = {
     // Tabpanels select → updateCurrentBrowser
     const panels = doc.getElementById("tabbrowser-tabpanels");
     if (panels) {
-      this._tabpanelsSelectHandler = () => this.updateCurrentBrowser();
+      this._tabpanelsSelectHandler = (event: Event) => {
+        if (event.target === panels) this.updateCurrentBrowser();
+      };
       panels.addEventListener("select", this._tabpanelsSelectHandler);
     }
   },

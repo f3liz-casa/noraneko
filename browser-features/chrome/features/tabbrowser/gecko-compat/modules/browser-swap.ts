@@ -11,6 +11,7 @@ import type { TabId } from "../../types/TabState.ts";
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
     _isBusy: boolean;
+    _asyncTabSwitching: boolean;
     _switcher: any;
     _tabFilters: Map<any, any>;
     _tabListeners: Map<any, any>;
@@ -219,6 +220,186 @@ export const swapBrowserMethods = {
           ourBrowser.webProgress?.addProgressListener?.(filter, notifyAll);
         }
       } catch (_) { /* */ }
+    }
+  },
+
+  // ==========================================================================
+  // Tab switching
+  // tabbrowser.js L1734~L1993 (updateCurrentBrowser)
+  // ==========================================================================
+
+  /**
+   * The tabbox has moved its selection (tab strip and panel deck already
+   * point at the new tab); bring the rest of the browser along. Reached from
+   * the tabpanels `select` listener, so every selection change — a click, a
+   * shortcut, `gBrowser.selectedTab = t` — passes through here once.
+   *
+   * Not ported: Glean tab-switch timing.
+   */
+  updateCurrentBrowser(forceUpdate?: boolean) {
+    const win = this.window as any;
+    const newTab: any = this.tabContainer.selectedItem;
+    const newBrowser: any = newTab ? this.getBrowserForTab(newTab) : null;
+    if (!newTab || !newBrowser) return;
+    if (this.selectedBrowser === newBrowser && !forceUpdate) return;
+
+    const oldTab: any = this.selectedTab;
+    const oldBrowser: any = this.selectedBrowser;
+    // Once the async switcher starts, it's unpredictable when it will touch
+    // the address bar, thus we store its state immediately.
+    win.gURLBar?.saveSelectionStateForBrowser?.(oldBrowser);
+
+    if (!forceUpdate) {
+      if (win.gMultiProcessBrowser) {
+        this._asyncTabSwitching = true;
+        this._getSwitcher().requestTab(newTab);
+        this._asyncTabSwitching = false;
+      }
+      (document as any).commandDispatcher?.lock();
+    }
+
+    // Preview mode should not reset the owner
+    if (oldTab && !this._previewMode && !oldTab.selected) oldTab.owner = null;
+    const lastRelatedTab = oldTab ? this._lastRelatedTabMap.get(oldTab) : null;
+    if (lastRelatedTab && !lastRelatedTab.selected) lastRelatedTab.owner = null;
+    this._lastRelatedTabMap = new WeakMap();
+
+    if (!win.gMultiProcessBrowser) {
+      if (oldBrowser) {
+        oldBrowser.removeAttribute("primary");
+        oldBrowser.docShellIsActive = false;
+      }
+      newBrowser.setAttribute("primary", "true");
+      newBrowser.docShellIsActive = !document.hidden;
+    }
+
+    // tabbrowser.js sets `_selectedTab`/`_selectedBrowser` here; ours live in
+    // the store, and `selectedTab`/`selectedBrowser` read from it.
+    const newId = resolveTabId(newTab);
+    if (newId) send({ type: "SELECT_TAB", tabId: newId });
+    this.showTab(newTab);
+    this.appendStatusPanel();
+    this._updateVisibleNotificationBox?.(newBrowser);
+
+    const oldBlocker = oldBrowser?.popupAndRedirectBlocker;
+    const newBlocker = newBrowser.popupAndRedirectBlocker;
+    if (oldBlocker && newBlocker) {
+      if (oldBlocker.getBlockedPopupCount() != newBlocker.getBlockedPopupCount()) {
+        newBlocker.sendObserverUpdateBlockedPopupsEvent();
+      }
+      if (oldBlocker.isRedirectBlocked() != newBlocker.isRedirectBlocked()) {
+        newBlocker.sendObserverUpdateBlockedRedirectEvent();
+      }
+    }
+
+    // Update the URL bar.
+    const webProgress = newBrowser.webProgress;
+    this._callProgressListeners(
+      null as any, "onLocationChange", [webProgress, null, newBrowser.currentURI, 0, true], true, false,
+    );
+    const securityUI = newBrowser.securityUI;
+    if (securityUI) {
+      this._callProgressListeners(
+        null as any, "onSecurityChange", [webProgress, null, securityUI.state], true, false,
+      );
+      // The true final argument marks this event as simulated.
+      this._callProgressListeners(
+        null as any, "onContentBlockingEvent",
+        [webProgress, null, newBrowser.getContentBlockingEvents(), true], true, false,
+      );
+    }
+    const listener = this._tabListeners.get(newTab);
+    if (listener?._stateFlags) {
+      this._callProgressListeners(
+        null as any, "onUpdateCurrentBrowser",
+        [listener._stateFlags, listener._status, listener._message, listener._totalProgress], true, false,
+      );
+    }
+
+    if (!this._previewMode) {
+      newTab.recordTimeFromUnloadToReload?.();
+      newTab.updateLastAccessed?.();
+      oldTab?.updateLastAccessed?.();
+      // if this is the foreground window, update the last-seen timestamps.
+      if (win.BrowserWindowTracker?.getTopWindow?.() === win) {
+        newTab.updateLastSeenActive?.();
+        oldTab?.updateLastSeenActive?.();
+      }
+
+      const oldFindBar = oldTab?._findBar;
+      if (oldFindBar && oldFindBar.findMode == oldFindBar.FIND_NORMAL && !oldFindBar.hidden) {
+        this._lastFindValue = oldFindBar._findField.value;
+      }
+
+      this.updateTitlebar();
+
+      newTab.removeAttribute("titlechanged");
+      newTab.attention = false;
+
+      // The tab has been selected, it's not unselected anymore.
+      newBrowser.unselectedTabHover?.(false);
+    }
+
+    // If the new tab's busy state differs from ours, tell the global
+    // progress listeners so the throbber and stop/reload button follow.
+    const busy = newTab.hasAttribute("busy");
+    if (busy !== !!this._isBusy) {
+      this._isBusy = busy;
+      const flag = busy
+        ? Ci.nsIWebProgressListener.STATE_START!
+        : Ci.nsIWebProgressListener.STATE_STOP!;
+      this._callProgressListeners(
+        null as any, "onStateChange",
+        [webProgress, null, flag | Ci.nsIWebProgressListener.STATE_IS_NETWORK!, 0], true, false,
+      );
+    }
+
+    // TabSelect is suppressed during preview mode to avoid confusing
+    // extensions and other code that rely upon the other suppressed changes.
+    if (!this._previewMode) {
+      newTab.dispatchEvent(new CustomEvent("TabSelect", {
+        bubbles: true,
+        cancelable: false,
+        detail: { previousTab: oldTab },
+      }));
+
+      this._checkIfShouldTriggerTabSelectMessage();
+
+      if (oldTab) this._tabAttrModified(oldTab, ["selected"]);
+      this._tabAttrModified(newTab, ["selected"]);
+
+      // `_startMultiSelectChange` is declared by tab-groups but not written yet.
+      this._startMultiSelectChange?.();
+      this._multiSelectChangeSelected = true;
+      this.clearMultiSelectedTabs();
+      if (this._multiSelectChangeAdditions?.size && oldTab) {
+        // Some tab has been multiselected just before switching tabs.
+        // The tab that was selected at that point should also be multiselected.
+        this.addToMultiSelectedTabs(oldTab);
+      }
+
+      if (!win.gMultiProcessBrowser) {
+        this._adjustFocusBeforeTabSwitch(oldTab, newTab);
+        this._adjustFocusAfterTabSwitch(newTab);
+      }
+
+      // A forced update can mean the tab was already selected; keep the
+      // urlbar's internal state in sync as if focus changed.
+      if (forceUpdate || !win.gMultiProcessBrowser) {
+        win.gURLBar?.afterTabSwitchFocusChange?.();
+      }
+    }
+
+    win.updateUserContextUIIndicator?.();
+    win.gPermissionPanel?.updateSharingIndicator?.();
+
+    // Enable touch events to start a native dragging session (Windows only).
+    oldTab?.removeAttribute("touchdownstartsdrag");
+    newTab.setAttribute("touchdownstartsdrag", "true");
+
+    if (!win.gMultiProcessBrowser) {
+      (document as any).commandDispatcher?.unlock();
+      this.dispatchEvent(new CustomEvent("TabSwitchDone", { bubbles: true, cancelable: true }));
     }
   },
 

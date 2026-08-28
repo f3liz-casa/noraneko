@@ -32,7 +32,7 @@ declare module "../TabbrowserCompat.ts" {
     removeProgressListener(listener: any): void;
     addTabsProgressListener(listener: any): void;
     removeTabsProgressListener(listener: any): void;
-    _callProgressListeners(browser: XULBrowserElement, method: string, args: any[]): void;
+    _callProgressListeners(browser: XULBrowserElement, method: string, args: any[], callGlobal?: boolean, callTabs?: boolean): boolean;
   }
 }
 

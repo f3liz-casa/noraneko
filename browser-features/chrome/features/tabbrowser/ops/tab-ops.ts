@@ -57,15 +57,15 @@ export const addTab = produce((draft: Draft<AppState>, tab: TabData, index?: num
 
 export const removeTab = produce((draft: Draft<AppState>, tabId: TabId) => {
   if (!draft.tabs[tabId]) return;
-  const oldIndex = draft.tabOrder.indexOf(tabId);
+  // Decide where the selection goes while the closing tab is still here;
+  // findTabToBlurTo starts from that tab's own record.
+  const blurTo = draft.selectedTabId === tabId ? findTabToBlurTo(draft as any, tabId, [tabId]) : null;
   draft.tabOrder = draft.tabOrder.filter(id => id !== tabId);
   delete draft.tabs[tabId];
 
   if (draft.selectedTabId === tabId) {
-    draft.selectedTabId = findTabToBlurTo(draft as any, tabId, [tabId]);
-    if (draft.selectedTabId && draft.tabs[draft.selectedTabId]) {
-      draft.tabs[draft.selectedTabId].isSelected = true;
-    }
+    draft.selectedTabId = blurTo;
+    if (blurTo && draft.tabs[blurTo]) draft.tabs[blurTo].isSelected = true;
   }
   updateTabIndices(draft);
 });

@@ -108,5 +108,6 @@ export function advanceSelectedTab(delta: number, wrap = false): void {
   let next = idx + delta;
   if (wrap) next = ((next % tabs.length) + tabs.length) % tabs.length;
   else if (next < 0 || next >= tabs.length) return;
-  send({ type: "SELECT_TAB", tabId: tabs[next].id });
+  const el = DOMRegistry.getTab(tabs[next].id);
+  if (el) (globalThis as any).gBrowser.selectedTab = el;
 }

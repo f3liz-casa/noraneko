@@ -58,7 +58,6 @@ declare module "../TabbrowserCompat.ts" {
     onRefreshAttempted(browser: XULBrowserElement, webProgress: any, refreshURI: any, millis: number, sameURI: boolean): void;
     refreshBlocked(browser: XULBrowserElement, webProgress: any, request: any, policy: number): void;
     _shouldShowProgress(request: any): boolean;
-    _callProgressListeners(browser: XULBrowserElement, method: string, args: any[], context?: any): void;
     _forwardToProgressListeners(method: string, args: any[]): void;
     // Stubs & sponsor
     _tabStub(id: TabId): any;

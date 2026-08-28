@@ -46,12 +46,25 @@ export class TabbrowserCompat {
   mProgressListeners: any[] = [];
   mTabsProgressListeners: any[] = [];
   
+  // tabbrowser.js: AsyncTabSwitcher and friends reach the window and the
+  // document through these, not through `window`. Firefox 143 (the current
+  // runtime) reads `ownerGlobal`; 149 renamed it `documentGlobal`.
+  ownerGlobal: Window;
+  documentGlobal: Window;
+  ownerDocument: Document;
+  // Tabs whose layers the switcher keeps warm, and browsers in print preview.
+  _tabLayerCache: any[] = [];
+  _printPreviewBrowsers = new Set<any>();
+
   // Original Enums
   public closingTabsEnum = {
     ALL: 0, OTHER: 1, TO_START: 2, TO_END: 3, MULTI_SELECTED: 4, DUPLICATES: 6, ALL_DUPLICATES: 7,
   };
 
   constructor(public window: Window) {
+    this.ownerGlobal = window;
+    this.documentGlobal = window;
+    this.ownerDocument = (window as any).document;
     // Define lazy module getters exactly like tabbrowser.js (Lines 105-130)
     ChromeUtils.defineESModuleGetters(this, {
       AsyncTabSwitcher: "moz-src:///browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs",
@@ -135,6 +148,13 @@ export class TabbrowserCompat {
    * state instead of creating a second tab.
    */
   _adoptExistingTabs() {
+    // Firefox's Tabbrowser already numbered the panels it made (panel-<win>-1
+    // for the first tab). Two counters starting at 0 would hand the next tab
+    // the same id, and a tabbox cannot tell two tabs apart by one panel.
+    for (const panel of Array.from(this.tabpanels?.children ?? []) as Element[]) {
+      const m = /^panel-\d+-(\d+)$/.exec(panel.id);
+      if (m) this._uniquePanelIDCounter = Math.max(this._uniquePanelIDCounter, Number(m[1]));
+    }
     const tabEls = Array.from(
       this.tabContainer?.querySelectorAll?.('tab[is="tabbrowser-tab"]') ?? [],
     ) as any[];
@@ -246,6 +266,9 @@ export class TabbrowserCompat {
       const nextEl = nextId ? DOMRegistry.getTab(nextId) : null;
       if (nextEl && this.tabContainer?.insertBefore) this.tabContainer.insertBefore(tabEl, nextEl);
       else this.tabContainer?.appendChild?.(tabEl);
+      // tabs.js caches `allTabs`; tabbrowser.js drops that cache on every
+      // insertion, and selectedIndex/selectedItem look the tab up through it.
+      this.tabContainer?._invalidateCachedTabs?.();
 
       // Create actual browser element for the tab.
       const res = (this as any)._createBrowserForTab ? (this as any)._createBrowserForTab(tabEl, {
@@ -256,9 +279,15 @@ export class TabbrowserCompat {
       const browser = res?.browser;
       if (browser) {
         DOMRegistry.registerBrowser(id, browser);
-        // Append browser container (stack -> container) to tabpanels.
-        const browserContainer = (browser as any).parentNode?.parentNode;
-        if (browserContainer && this.tabpanels?.appendChild) this.tabpanels.appendChild(browserContainer);
+        // tabbrowser.js _insertBrowser: the panel (browserSidebarContainer)
+        // goes into the deck under a unique id, and the tab points at it
+        // through linkedPanel — that is how the tabbox finds what to show.
+        const panel = this.getPanel(browser);
+        if (panel) {
+          panel.id = this._generateUniquePanelID();
+          (tabEl as any).linkedPanel = panel.id;
+          this.tabpanels?.appendChild?.(panel);
+        }
         this._tabForBrowser.set(browser, tabEl);
         try { this._wireProgressListener(tabEl, browser); } catch (_) { /* best-effort */ }
       }
@@ -267,9 +296,12 @@ export class TabbrowserCompat {
     }
   }
 
+  // tabs.js getRelatedElement calls this for a selected tab that has no
+  // linkedPanel. A tab that already has its browser must not get a second
+  // one (and _createBrowserDOM would also mint a second <tab>).
   _insertBrowser(tabOrId: any, options: any = {}) {
     const id = typeof tabOrId === "string" ? tabOrId : tabOrId?._tabId;
-    if (!id) return;
+    if (!id || DOMRegistry.getBrowser(id)) return;
     this._createBrowserDOM(id, options);
   }
 
@@ -367,6 +399,19 @@ export function initCompat(window: any) {
   compat._bindDomElements();
   compat._adoptExistingTabs();
   compat.init();
+  // Firefox's own Tabbrowser has already run init() on this window and is
+  // still listening: its tabpanels `select` handler and its document
+  // keydown/keypress handlers call back into *that* instance. Left alone,
+  // every tab switch would run two updateCurrentBrowser()s (two async
+  // switchers over the same browsers) and every shortcut would be handled
+  // twice. The listeners are inline closures and cannot be removed, so
+  // shadow the methods they reach for. Its other listeners (title changes,
+  // audio playback, crashes, ...) still act on the shared DOM.
+  const original = window.gBrowser;
+  if (original && original !== compat) {
+    original.updateCurrentBrowser = () => {};
+    original.handleEvent = () => {};
+  }
   // browser.js declares `var gBrowser` (writable, non-configurable), so
   // defineProperty is refused and plain assignment is the way to replace it.
   window.gBrowser = compat;

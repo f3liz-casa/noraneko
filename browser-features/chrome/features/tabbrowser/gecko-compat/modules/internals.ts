@@ -647,4 +647,106 @@ export const methods = {
         break;
     }
   },
+  // ==========================================================================
+  // Focus around a tab switch
+  // tabbrowser.js L2047~L2180 — AsyncTabSwitcher calls both.
+  // ==========================================================================
+
+  _adjustFocusBeforeTabSwitch(oldTab: any, newTab: any) {
+    if (this._previewMode) return;
+    const win = this.window as any;
+    const gURLBar = win.gURLBar;
+    const doc: any = this.window.document;
+    const oldBrowser = oldTab?.linkedBrowser;
+    const newBrowser = newTab?.linkedBrowser;
+    if (!oldBrowser || !newBrowser) return;
+
+    gURLBar.getBrowserState(oldBrowser).urlbarFocused = gURLBar.focused;
+
+    if (this._asyncTabSwitching) {
+      newBrowser._userTypedValueAtBeforeTabSwitch = newBrowser.userTypedValue;
+    }
+
+    if (this.isFindBarInitialized(oldTab)) {
+      const findBar = this.getCachedFindBar(oldTab);
+      oldTab._findBarFocused =
+        !findBar.hidden && findBar._findField.getAttribute("focused") == "true";
+    }
+
+    const activeEl = doc.activeElement;
+    // If focus is on the old tab, move it to the new tab.
+    if (activeEl == oldTab) {
+      newTab.focus();
+    } else if (win.gMultiProcessBrowser && activeEl != newBrowser && activeEl != newTab) {
+      // In e10s, if focus isn't already in the tabstrip or on the new browser,
+      // and the new browser's previous focus wasn't in the url bar but focus is
+      // there now, we need to adjust focus further.
+      const keepFocusOnUrlBar =
+        newBrowser && gURLBar.getBrowserState(newBrowser).urlbarFocused && gURLBar.focused;
+      if (!keepFocusOnUrlBar) {
+        // Clear focus so that _adjustFocusAfterTabSwitch can detect if
+        // some element has been focused and respect that.
+        doc.activeElement?.blur();
+      }
+    }
+  },
+
+  _adjustFocusAfterTabSwitch(newTab: any) {
+    const win = this.window as any;
+    const gURLBar = win.gURLBar;
+    const doc: any = this.window.document;
+    // Don't steal focus from the tab bar.
+    if (doc.activeElement == newTab) return;
+
+    const newBrowser = this.getBrowserForTab(newTab) as any;
+    if (!newBrowser) return;
+
+    if (newBrowser.hasAttribute("tabDialogShowing")) {
+      newBrowser.tabDialogBox.focus();
+      return;
+    }
+    // Focus the location bar if it was previously focused for that tab.
+    // In full screen mode, only bother making the location bar visible
+    // if the tab is a blank one.
+    if (gURLBar.getBrowserState(newBrowser).urlbarFocused) {
+      const selectURL = () => {
+        if (this._asyncTabSwitching) {
+          // Suppress popup notifications while the switch is in flight.
+          newBrowser._awaitingSetURI = true;
+          // gURLBar.setURI() (reached from onLocationChange in
+          // updateCurrentBrowser) would release the selection that
+          // gURLBar.select() makes, so restore it only after SetURI fired.
+          const currentActiveElement = doc.activeElement;
+          gURLBar.inputField.addEventListener("SetURI", () => {
+            delete newBrowser._awaitingSetURI;
+            // If the user typed into the URL bar for this browser in the
+            // meantime, focusing would select and overwrite that text.
+            const userTypedValueAtBeforeTabSwitch = newBrowser._userTypedValueAtBeforeTabSwitch;
+            delete newBrowser._userTypedValueAtBeforeTabSwitch;
+            if (newBrowser.userTypedValue && newBrowser.userTypedValue != userTypedValueAtBeforeTabSwitch) return;
+            if (currentActiveElement != doc.activeElement) return;
+            gURLBar.restoreSelectionStateForBrowser(newBrowser);
+          }, { once: true });
+        } else {
+          gURLBar.restoreSelectionStateForBrowser(newBrowser);
+        }
+      };
+
+      // A page in DOM fullscreen (say, a video) leaves fullscreen when a tab
+      // opens; wait for that before selecting the url field.
+      if (doc.documentElement.hasAttribute("inDOMFullscreen")) {
+        win.addEventListener("MozDOMFullscreen:Exited", selectURL, { once: true, wantsUntrusted: false });
+        return;
+      }
+      if (!win.fullScreen || newTab.isEmpty) {
+        selectURL();
+        return;
+      }
+    }
+
+    // Focus the find bar if it was previously focused for that tab.
+    if (win.gFindBarInitialized && !win.gFindBar.hidden && (this.selectedTab as any)?._findBarFocused) {
+      win.gFindBar._findField.focus();
+    }
+  },
 } satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;
