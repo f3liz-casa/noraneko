@@ -87,8 +87,10 @@ export class TabbrowserCompat {
     (this as any)._tabpanelsSelectHandler = null;
   }
 
-  // DOM elements set up in init() — matches original tabbrowser.js
-  tabContainer: any = null;
+  // DOM elements bound in _bindDomElements() — matches original tabbrowser.js.
+  // `tabContainer` is a getter from tab-collection; an instance field here
+  // would shadow it, hence `declare`.
+  declare tabContainer: any;
   tabGroupMenu: any = null;
   tabNoteMenu: any = null;
   tabbox: any = null;
@@ -96,18 +98,52 @@ export class TabbrowserCompat {
   pinnedTabsContainer: any = null;
   splitViewCommandSet: any = null;
 
-  init() {
-    if (this._initialized) return;
+  // Called by initCompat before init(); init() itself comes from lifecycle.ts.
+  _bindDomElements() {
     const doc = (this.window as any).document;
-    this.tabContainer = doc.getElementById("tabbrowser-tabs");
     this.tabGroupMenu = doc.getElementById("tab-group-editor");
     this.tabNoteMenu = doc.getElementById("tab-note-menu");
     this.tabbox = doc.getElementById("tabbrowser-tabbox");
     this.tabpanels = doc.getElementById("tabbrowser-tabpanels");
     this.pinnedTabsContainer = doc.getElementById("pinned-tabs-container");
     this.splitViewCommandSet = doc.getElementById("splitViewCommands");
-    this._setupEventListeners();
-    this._initialized = true;
+  }
+
+  /**
+   * Adopt tabs that already exist in the DOM. Firefox's own Tabbrowser has
+   * already run init() by the time browser-window-domcontentloaded fires, so
+   * the initial <tab> and its linkedBrowser are there; register them in our
+   * state instead of creating a second tab.
+   */
+  _adoptExistingTabs() {
+    const tabEls = Array.from(
+      this.tabContainer?.querySelectorAll?.('tab[is="tabbrowser-tab"]') ?? [],
+    ) as any[];
+    for (const tabEl of tabEls) {
+      if (tabEl._tabId) continue;
+      const id = crypto.randomUUID();
+      const browser = tabEl.linkedBrowser ?? null;
+      const uri = browser?.currentURI?.spec ?? "about:blank";
+      send({
+        type: "ADD_TAB",
+        tab: TabOps.createTab(id, uri, {
+          isPinned: !!tabEl.pinned,
+          isSelected: !!tabEl.selected,
+          label: tabEl.label || "New Tab",
+        }),
+        index: appState.value.tabOrder.length,
+      });
+      tabEl._tabId = id;
+      DOMRegistry.registerTab(id, tabEl);
+      if (browser) {
+        DOMRegistry.registerBrowser(id, browser);
+        this._tabForBrowser.set(browser, tabEl);
+      }
+      if (tabEl.selected) send({ type: "SELECT_TAB", tabId: id });
+    }
+    if (tabEls.length) {
+      console.debug(`[noraneko/tabbrowser] adopted ${tabEls.length} existing tab(s)`);
+    }
   }
 
   /**
@@ -307,17 +343,19 @@ export class TabbrowserCompat {
   _xulEl(tagName: string, attrs?: Record<string, any>) {
     const doc = (this.window as any).document;
     let el: Element;
+    // A customized built-in (`is`) only upgrades when passed at creation;
+    // setAttribute("is") afterwards leaves a plain <tab>/<browser>.
+    const init = attrs?.is ? { is: attrs.is } : undefined;
     try {
       if (typeof doc.createXULElement === "function") {
-        el = doc.createXULElement(tagName);
+        el = doc.createXULElement(tagName, init);
       } else {
-        el = doc.createElement(tagName);
+        el = doc.createElement(tagName, init);
       }
     } catch (_) {
-      el = doc.createElement(tagName);
+      el = doc.createElement(tagName, init);
     }
     if (attrs) {
-      if (attrs.is) el.setAttribute("is", attrs.is);
       for (const k of Object.keys(attrs)) {
         if (k === "is") continue;
         const v = attrs[k];
@@ -449,32 +487,57 @@ export function initCompat(window: any) {
   // Merge canonical module implementations onto the compat prototype so
   // the instance exposes full gBrowser behavior (modules may overwrite
   // lightweight shim methods defined above).
-  const moduleMethods = [
-    internals.methods,
-    lifecycle.methods,
-    tabCrud.methods,
-    browserFindbar.methods,
-    browserSwap.swapBrowserMethods,
-    browserCreate.methods,
-    tabMisc.methods,
-    tabEvents.methods,
-    tabInfo.methods,
-    browserDiscard.methods,
-    titleIcon.methods,
-    extended.methods,
-    splitViewOps.methods,
-    tabDedup.methods,
-    tabCollection.methods,
-    tabGroups.methods,
-    browserPanel.methods,
-    tabKeyboard.methods,
-  ].filter(Boolean as any);
+  const moduleMethods: Array<[string, object | undefined]> = [
+    ["internals", internals.methods],
+    ["lifecycle", lifecycle.methods],
+    ["tab-crud", tabCrud.methods],
+    ["browser-findbar", browserFindbar.methods],
+    ["browser-swap", browserSwap.swapBrowserMethods],
+    ["browser-create", browserCreate.methods],
+    ["tab-misc", tabMisc.methods],
+    ["tab-events", tabEvents.methods],
+    ["tab-info", tabInfo.methods],
+    ["browser-discard", browserDiscard.methods],
+    ["title-icon", titleIcon.methods],
+    ["extended", extended.methods],
+    ["split-view-ops", splitViewOps.methods],
+    ["tab-dedup", tabDedup.methods],
+    ["tab-collection", tabCollection.methods],
+    ["tab-groups", tabGroups.methods],
+    ["browser-panel", browserPanel.methods],
+    ["tab-keyboard", tabKeyboard.methods],
+  ];
 
-  for (const m of moduleMethods) {
-    try { Object.assign(TabbrowserCompat.prototype, m); } catch (_) { /* best-effort merge */ }
+  // Later modules win on name clashes. Say so out loud instead of silently
+  // shadowing an earlier implementation.
+  const owner = new Map<string, string>();
+  for (const [name, m] of moduleMethods) {
+    if (!m) continue;
+    for (const key of Object.keys(m)) {
+      const prev = owner.get(key);
+      if (prev) {
+        console.warn(
+          `[noraneko/tabbrowser] duplicate method \`${key}\`: ${prev} overridden by ${name}`,
+        );
+      }
+      owner.set(key, name);
+    }
+    // defineProperties (not Object.assign): modules declare getters/setters
+    // such as `selectedTab`, and assign would evaluate them once against the
+    // module object and copy the stale value.
+    try {
+      Object.defineProperties(
+        TabbrowserCompat.prototype,
+        Object.getOwnPropertyDescriptors(m),
+      );
+    } catch (_) { /* best-effort merge */ }
   }
 
   const compat = new TabbrowserCompat(window);
+  compat._bindDomElements();
+  compat._adoptExistingTabs();
   compat.init();
-  Object.defineProperty(window, "gBrowser", { get: () => compat, configurable: true });
+  // browser.js declares `var gBrowser` (writable, non-configurable), so
+  // defineProperty is refused and plain assignment is the way to replace it.
+  window.gBrowser = compat;
 }

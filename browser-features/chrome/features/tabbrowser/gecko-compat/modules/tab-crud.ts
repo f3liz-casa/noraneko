@@ -390,9 +390,6 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
    * Preview a tab without permanently selecting it.
    * Simplified version — just selects the tab.
    */
-  previewTab(tab: MozTabbrowserTab) {
-    this.selectedTab = tab;
-  },
 
   /**
    * Discard a tab's browser to free memory.

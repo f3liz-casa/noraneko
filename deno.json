@@ -46,7 +46,8 @@
   "tasks": {
     "feles-build": "deno run -A tools/feles-build.ts",
     "gha:dev": "gaji dev",
-    "gha:build": "gaji build"
+    "gha:build": "gaji build",
+    "check:tabbrowser": "deno run -A tools/scripts/check-tabbrowser-methods.ts"
   },
   "nodeModulesDir": "auto",
   "vendor": true

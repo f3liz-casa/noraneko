@@ -50,6 +50,7 @@ declare module "../TabbrowserCompat.ts" {
     selectedTab: any;
     readonly selectedBrowser: Element | null;
     readonly selectedBrowsers: Element[];
+    _queryTabs(pred: (t: TabData) => boolean): Element[];
     readonly activeSplitView: any;
     readonly splitViewBrowsers: Element[];
     addTabSplitView(tab: MozTabbrowserTab, otherTab: any): void;
@@ -195,6 +196,15 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
   // Tab Collection Accessors (deduplicated via _queryTabs)
   // tabbrowser.js L974~L1053
   // ==========================================================================
+
+  /** Tab elements (in tab-order) whose state passes `pred`; tabs without a DOM node are skipped. */
+  _queryTabs(pred: (t: TabData) => boolean): Element[] {
+    return pipe(
+      orderedTabs.value,
+      A.filter(pred),
+      A.filterMap(t => O.fromNullable(DOMRegistry.getTab(t.id))),
+    ) as Element[];
+  },
 
   /** All tab elements in the current window, in tab-order. */
   get tabs() {

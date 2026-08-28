@@ -30,6 +30,13 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     return `panel-${outerID}-${++this._uniquePanelIDCounter}`;
   },
 
+  /** tabbrowser.js `_appendStatusPanel`: park the status panel next to the browser. */
+  appendStatusPanel(browser?: any) {
+    const target = browser ?? this.selectedBrowser;
+    const panel = (this.window as any).StatusPanel?.panel;
+    if (target && panel) target.insertAdjacentElement("afterend", panel);
+  },
+
   _setupInitialBrowserAndTab() {
     // See browser.js for the meaning of window.arguments
     let userContextId = (this.window as any).arguments?.[5];

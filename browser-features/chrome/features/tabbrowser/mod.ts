@@ -47,6 +47,21 @@ import { initCompat as _initCompat } from "./gecko-compat/TabbrowserCompat.ts";
 export function initBeforeSessionStoreInit() {
   // Skip if the before-tabbrowser category hook already installed our compat.
   if ((window as any).__noranekoTabbrowserInstalled) return;
+  console.debug(
+    `[noraneko/tabbrowser] install: readyState=${document.readyState} tabs=${!!document.getElementById("tabbrowser-tabs")} gBrowser=${(window as any).gBrowser?.constructor?.name}`,
+  );
   _initCompat(window as any);
   (window as any).__noranekoTabbrowserInstalled = true;
+
+  // Diagnostic: report who owns gBrowser once Firefox finishes window startup.
+  const topic = "browser-delayed-startup-finished";
+  const observer = (subject: unknown) => {
+    if (subject !== window) return;
+    Services.obs.removeObserver(observer, topic);
+    const g = (window as any).gBrowser;
+    console.debug(
+      `[noraneko/tabbrowser] after startup: gBrowser=${g?.constructor?.name} tabs=${g?.tabs?.length} isCompat=${!!g?._bindDomElements}`,
+    );
+  };
+  Services.obs.addObserver(observer, topic);
 }

@@ -23,7 +23,6 @@ declare module "../TabbrowserCompat.ts" {
     replaceTabWithWindow(tab: MozTabbrowserTab, options?: any): any;
     replaceTabsWithWindow(contextTab: any, options?: any): any;
     replaceGroupWithWindow(group: MozTabbrowserTabGroup): any;
-    ungroupTab(tab: MozTabbrowserTab): void;
     ungroupSplitView(splitView: any): void;
     createTabsForSessionRestore(
       restoreTabsLazily: boolean,
@@ -312,15 +311,6 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
    *
    * Does nothing if the tab is not currently in a group.
    */
-  ungroupTab(tab: MozTabbrowserTab) {
-    const id = resolveTabId(tab);
-    if (!id) return;
-    const tabData = appState.value.tabs[id];
-    if (!tabData?.groupId) return;
-
-    send({ type: "REMOVE_TAB_FROM_GROUP", tabId: id });
-    dispatch(tab, "TabUngrouped");
-  },
 
   /**
    * Removes every tab in `splitView` from its tab group.

@@ -90,14 +90,16 @@ export const methods: Partial<TabbrowserCompat> & ThisType<TabbrowserCompat> = {
     this.tabContainer?._unlockTabSizing?.();
 
     if (!animate) {
-      (this.window as any).UserInteraction?.update?.("browser.tabs.opening", "not-animated", this.window);
+      const ui = (this.window as any).UserInteraction;
+      if (ui?.running?.("browser.tabs.opening", this.window)) ui.update("browser.tabs.opening", "not-animated", this.window);
       t.setAttribute("fadein", "true");
       // Call _handleNewTab asynchronously
       setTimeout(() => {
         this.tabContainer?._handleNewTab?.(t);
       }, 0);
     } else {
-      (this.window as any).UserInteraction?.update?.("browser.tabs.opening", "animated", this.window);
+      const ui = (this.window as any).UserInteraction;
+      if (ui?.running?.("browser.tabs.opening", this.window)) ui.update("browser.tabs.opening", "animated", this.window);
     }
 
     return t;
