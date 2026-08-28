@@ -3595,7 +3595,8 @@
           "jsr:@std/path@^1.1.4",
           "jsr:@types/gecko@*",
           "npm:birpc@4",
-          "npm:tsdown@0.21"
+          "npm:tsdown@0.21",
+          "npm:vite@*"
         ]
       },
       "libs/preact-xul": {

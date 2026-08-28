@@ -77,7 +77,8 @@ async function registerBuiltinWebExtActors(): Promise<void> {
     if (!response.ok) {
       return;
     }
-    entries = await response.json();
+    // gecko types give Response.json() as Promise<JSON>; the file is ours.
+    entries = (await response.json()) as unknown as BuiltinActorEntry[];
   } catch (error) {
     console.error("[noraneko] Failed to read builtins.json:", error);
     return;

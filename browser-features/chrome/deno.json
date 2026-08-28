@@ -6,7 +6,6 @@
     "@jsr/std__assert": "npm:@jsr/std__assert@^1.0.19",
     "@jsr/std__collections": "npm:@jsr/std__collections@^1.1.6",
     "@types/uuid": "npm:@types/uuid@^11.0.0",
-
     "birpc": "npm:birpc@^4.0.0",
     "es-toolkit": "npm:es-toolkit@^1.45.1",
     "@mobily/ts-belt": "npm:@mobily/ts-belt@^3.13.1",
@@ -34,14 +33,23 @@
     "build": "deno run -A npm:vite build"
   },
   "compilerOptions": {
-    "lib": ["ESNext", "DOM"],
-    "types": ["npm:vite/client", "jsr:@types/gecko"],
+    "lib": [
+      "ESNext"
+    ],
+    "types": [
+      "npm:vite/client",
+      "jsr:@types/gecko"
+    ],
     "jsx": "react-jsx",
-    "jsxImportSource": "preact"
+    "jsxImportSource": "preact",
+    "skipLibCheck": true
   },
   "lint": {
     "rules": {
-      "exclude": ["no-sloppy-imports", "no-window"]
+      "exclude": [
+        "no-sloppy-imports",
+        "no-window"
+      ]
     }
   },
   "exports": {

@@ -1,8 +1,15 @@
 {
   "name": "@nora/webext-actors",
   "compilerOptions": {
-    "lib": ["ESNext", "DOM"],
-    "types": ["jsr:@types/gecko"]
+    "lib": [
+      "ESNext",
+      "deno.ns"
+    ],
+    "types": [
+      "npm:vite/client",
+      "jsr:@types/gecko"
+    ],
+    "skipLibCheck": true
   },
   "imports": {
     "@std/path": "jsr:@std/path@^1.1.4",
@@ -13,6 +20,9 @@
     "build": "deno run -A build.ts"
   },
   "lint": {
-    "exclude": ["./_dist/**/*", "./_gen/**/*"]
+    "exclude": [
+      "./_dist/**/*",
+      "./_gen/**/*"
+    ]
   }
 }

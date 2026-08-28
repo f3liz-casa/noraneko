@@ -2,12 +2,12 @@
   "compilerOptions": {
     "lib": [
       "ESNext",
-      "DOM",
       "deno.ns"
     ],
     "types": [
       "npm:vite/client",
       "jsr:@types/gecko"
-    ]
+    ],
+    "skipLibCheck": true
   }
 }

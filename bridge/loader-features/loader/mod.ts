@@ -149,12 +149,13 @@ const orderModules = (modules: LoadedModule[]): LoadedModule[] => {
   );
 };
 
-const domReady = (): Promise<void> =>
-  document.readyState === "loading"
-    ? new Promise((resolve) =>
-        document.addEventListener("DOMContentLoaded", () => resolve(), { once: true }),
-      )
-    : Promise.resolve();
+const domReady = (): Promise<void> => {
+  const doc = document;
+  if (!doc || doc.readyState !== "loading") return Promise.resolve();
+  return new Promise((resolve) =>
+    doc.addEventListener("DOMContentLoaded", () => resolve(), { once: true }),
+  );
+};
 
 // ============================================================================
 // Entry

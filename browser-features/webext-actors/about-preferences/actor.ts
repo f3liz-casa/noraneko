@@ -38,7 +38,7 @@ export const parent = defineParent({
 });
 
 export const content = defineContent<typeof parent>((parent, ctx) => {
-  const navRoot = document.querySelector("#categories");
+  const navRoot = document?.querySelector("#categories");
   if (!navRoot) return;
 
   const fragment = (window as any).MozXULElement.parseXULToFragment(`
@@ -57,7 +57,7 @@ export const content = defineContent<typeof parent>((parent, ctx) => {
   navRoot.appendChild(fragment);
 
   document
-    .querySelector("#category-nora-link")
+    ?.querySelector("#category-nora-link")
     ?.addEventListener("click", () => {
       if (ctx.dev) {
         window.location.href = "http://localhost:5183/";

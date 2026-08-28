@@ -1,12 +1,19 @@
 {
   "compilerOptions": {
-    "lib": ["ESNext", "DOM"],
-    "types": ["jsr:@types/gecko"]
+    "lib": [
+      "ESNext"
+    ],
+    "types": [
+      "jsr:@types/gecko"
+    ],
+    "skipLibCheck": true
   },
   "imports": {
     "valibot": "npm:valibot@^1.2.0"
   },
   "lint": {
-    "exclude": ["custom-shortcut-key/**/*"]
+    "exclude": [
+      "custom-shortcut-key/**/*"
+    ]
   }
 }

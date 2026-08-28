@@ -10,6 +10,13 @@
     ".": "./*"
   },
   "compilerOptions": {
-    "types": ["npm:vite/client", "jsr:@types/gecko"]
+    "types": [
+      "npm:vite/client",
+      "jsr:@types/gecko"
+    ],
+    "lib": [
+      "ESNext"
+    ],
+    "skipLibCheck": true
   }
 }
