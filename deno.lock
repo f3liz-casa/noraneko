@@ -3152,6 +3152,7 @@
       "optionalPeers": [
         "typescript"
       ],
+      "deprecated": true,
       "bin": true
     },
     "tsdown@0.21.0_typescript@5.9.3_rolldown@1.0.0-rc.7": {
@@ -3476,21 +3477,8 @@
       "bridge/loader-features": {
         "dependencies": [
           "jsr:@types/gecko@*",
-          "npm:@deno/vite-plugin@^1.0.6",
-          "npm:@mobily/ts-belt@^3.13.1",
-          "npm:birpc@4",
-          "npm:i18next@^25.8.14",
-          "npm:tsdown@0.21",
           "npm:vite@*"
-        ],
-        "packageJson": {
-          "dependencies": [
-            "npm:@deno/vite-plugin@^1.0.6",
-            "npm:@preact/signals-core@^1.13.0",
-            "npm:@types/node@^25.3.5",
-            "npm:vite@^7.3.1"
-          ]
-        }
+        ]
       },
       "bridge/loader-modules": {
         "dependencies": [
@@ -3579,13 +3567,6 @@
           "npm:@preact/signals@^2.8.1",
           "npm:@vitejs/plugin-react@^5.1.4",
           "npm:preact@^10.28.4",
-          "npm:vite@^7.3.1"
-        ]
-      },
-      "browser-features/pages-newtab-legacy": {
-        "dependencies": [
-          "npm:@tailwindcss/vite@^4.2.1",
-          "npm:tailwindcss@^4.2.1",
           "npm:vite@^7.3.1"
         ]
       },

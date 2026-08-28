@@ -23,7 +23,6 @@
     "@types/chroma-js": "npm:@types/chroma-js@^3.1.2",
     "@types/gecko": "jsr:@types/gecko",
     "valibot": "npm:valibot@^1.2.0",
-    "@nora/solid-xul": "../shared/",
     "@nora/preact-xul": "../../libs/preact-xul/index.ts",
     "#features-chrome/": "./",
     "@lib": "./lib/mod.ts",

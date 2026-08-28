@@ -8,7 +8,6 @@ const logger = new Logger("symlinker");
 
 export function run(): void {
   const pairs: Array<[string, string]> = [
-    [path.join(PATHS.loader_features, "link-i18n"), PATHS.i18n],
     [path.join(PATHS.loader_modules, "link-modules"), PATHS.modules],
   ];
 

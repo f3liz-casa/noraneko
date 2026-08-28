@@ -25,53 +25,14 @@ export default defineConfig({
     outDir: r("_dist"),
     
     rollupOptions: {
-      preserveEntrySignatures: "allow-extension",
       input: { core: r("main.ts") },
       output: {
+        // One classic script: loaded per window with loadSubScript, so no
+        // ESM, no code-splitting. Everything the features import is inlined.
+        format: "iife",
+        name: "__noraneko_core",
+        inlineDynamicImports: true,
         entryFileNames: "[name].js",
-
-        /**
-         * Module chunking strategy for hotfix support:
-         * - Feature modules (common/*, static/*) -> separate chunks with predictable names
-         * - External dependencies -> vendor chunks
-         * - SVG assets -> separate chunks
-         *
-         * This enables the hotfix system to:
-         * 1. Identify which modules changed via hash comparison
-         * 2. Replace individual module chunks without full reload
-         * 3. Enable easy GC of old module versions
-         */
-        manualChunks(id) {
-          // Vendor/external dependencies - shared across all modules
-          if (id.includes("node_modules")) {
-            const parts = id.split("node_modules/")[1]?.split("/");
-            if (!parts) return undefined;
-            // .pnpm || .deno
-            const pkg = parts[0].startsWith(".") ? parts[1] : parts[0];
-            return `modules/external/${pkg}`;
-          }
-
-          // SVG assets
-          if (id.includes(".svg")) {
-            return `modules/svg/${id.split("/").at(-1)?.replaceAll("svg_url", "glue")}`;
-          }
-
-          // Feature modules from features/* - each gets its own chunk for hotswap
-          const featureMatch = id.match(/\/features\/([A-Za-z0-9_-]+)\//);
-          if (featureMatch?.[1]) {
-            return `modules/${featureMatch[1]}`;
-          }
-
-          // Feature modules from static/* - each gets its own chunk for hotswap
-          const staticMatch = id.match(/\/static\/([A-Za-z0-9_-]+)\//);
-          if (staticMatch?.[1]) {
-            return `modules/static/${staticMatch[1]}`;
-          }
-
-          // Legacy pattern support
-          const match = id.match(/\/core\/common\/([A-Za-z-]+)/);
-          if (match?.[1]) return `modules/${match[1]}`;
-        },
 
         assetFileNames(info) {
           const name = (info as any).originalFileNames?.at(0) ?? info.name;
@@ -80,8 +41,6 @@ export default defineConfig({
           return "assets/[name][extname]";
         },
 
-        // Use content hash for cache busting but predictable base names for hotfix identification
-        chunkFileNames: "assets/js/[name]-[hash:8].js",
       },
     },
   },

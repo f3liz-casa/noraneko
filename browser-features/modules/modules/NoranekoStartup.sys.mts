@@ -24,17 +24,30 @@ export function executeOnce(id: string, callback: () => void): boolean {
   return true;
 }
 
-export function onFinalUIStartup(): void {
-  Services.obs.removeObserver(onFinalUIStartup, "final-ui-startup");
-
-  createDefaultUserChromeFiles().catch((error) => {
-    console.error("Failed to create default userChrome files:", error);
-  });
-
-  registerBuiltinWebExtActors().catch((error) => {
-    console.error("Failed to register builtin WebExtension actors:", error);
-  });
-}
+/**
+ * App-level entry point, registered in chrome.manifest as
+ *
+ *   category browser-before-ui-startup
+ *     resource://noraneko/modules/NoranekoStartup.sys.mjs NoranekoStartup.init
+ *
+ * BrowserGlue calls this from _beforeUIStartup (final-ui-startup), before the
+ * first browser window opens. No patch to BrowserGlue.sys.mjs is needed.
+ */
+export const NoranekoStartup = {
+  init(): void {
+    executeOnce("NoranekoStartup.init", () => {
+      setupNoranekoNewTab().catch(console.error);
+      registerCustomAboutPages().catch(console.error);
+      if (!isMainBrowser) return;
+      createDefaultUserChromeFiles().catch((error) => {
+        console.error("Failed to create default userChrome files:", error);
+      });
+      registerBuiltinWebExtActors().catch((error) => {
+        console.error("Failed to register builtin WebExtension actors:", error);
+      });
+    });
+  },
+};
 
 /**
  * Parallel mechanism to JSActors: register noraneko's privileged built-in
@@ -279,11 +292,3 @@ async function registerCustomAboutPages(): Promise<void> {
   }
 }
 
-(async () => {
-  await setupNoranekoNewTab();
-})().catch(console.error);
-registerCustomAboutPages();
-
-if (isMainBrowser) {
-  Services.obs.addObserver(onFinalUIStartup, "final-ui-startup");
-}

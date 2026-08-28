@@ -6,7 +6,6 @@ import { genJarmnPlugin } from "@nora/vite-plugin-gen-jarmn";
 export default [
   defineConfig({
     entry: [
-      "src/chrome_root.ts",
       "src/about-preferences.ts",
       "src/about-newtab.ts",
     ],

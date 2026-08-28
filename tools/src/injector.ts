@@ -36,10 +36,11 @@ function buildFlatManifestContent(_mode: string): string {
     "skin noraneko classic/1.0 skin/",
     "resource noraneko resource/ contentaccessible=yes",
     "resource noraneko-builtin resource-builtin/ contentaccessible=yes",
-    "resource noraneko-loader loader/ contentaccessible=yes",
     "content noraneko-pages-aboutdialog aboutdialog/ contentaccessible=yes",
     "override chrome://browser/content/aboutDialog.xhtml chrome://noraneko-pages-aboutdialog/content/aboutDialog.xhtml",
     "content noraneko-settings settings/ contentaccessible=yes",
+    "category browser-window-domcontentloaded resource://noraneko/modules/NoranekoWindow.sys.mjs NoranekoWindow.onDOMContentLoaded",
+    "category browser-before-ui-startup resource://noraneko/modules/NoranekoStartup.sys.mjs NoranekoStartup.init",
   ]
     .filter(Boolean)
     .join("\n");
@@ -59,10 +60,11 @@ function buildOmniManifestLines(_mode: string): string[] {
     `skin noraneko classic/1.0 ${toUri("browser-features/skin")}`,
     `resource noraneko ${toUri("bridge/loader-modules/_dist")} contentaccessible=yes`,
     `resource noraneko-builtin ${toUri("browser-features/webext-actors/_dist")} contentaccessible=yes`,
-    `resource noraneko-loader ${toUri("bridge/loader-features/_dist")} contentaccessible=yes`,
     `content noraneko-pages-aboutdialog ${toUri("browser-features/pages-aboutDialog/_dist")} contentaccessible=yes`,
     `override chrome://browser/content/aboutDialog.xhtml chrome://noraneko-pages-aboutdialog/content/aboutDialog.html`,
     `content noraneko-settings ${toUri("browser-features/settings/_dist")} contentaccessible=yes`,
+    "category browser-window-domcontentloaded resource://noraneko/modules/NoranekoWindow.sys.mjs NoranekoWindow.onDOMContentLoaded",
+    "category browser-before-ui-startup resource://noraneko/modules/NoranekoStartup.sys.mjs NoranekoStartup.init",
   ];
   lines.push(OMNI_SECTION_END);
   return lines;

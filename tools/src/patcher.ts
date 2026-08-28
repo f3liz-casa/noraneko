@@ -142,9 +142,11 @@ export function patchNeeded(): boolean {
 
   const patchesDirFiles = Array.from(Deno.readDirSync(PATCHES_DIR))
     .map((e) => e.name)
+    .filter((n) => n.endsWith(".patch"))
     .sort();
   const patchesTmpFiles = Array.from(Deno.readDirSync(PATCHES_TMP))
     .map((e) => e.name)
+    .filter((n) => n.endsWith(".patch"))
     .sort();
 
   if (JSON.stringify(patchesDirFiles) !== JSON.stringify(patchesTmpFiles))

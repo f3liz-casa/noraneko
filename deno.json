@@ -1,19 +1,21 @@
 {
   "license": "MPL-2.0",
-  "links": ["libs/@types/gecko"],
-  "workspace": ["./libs/*", "./browser-features/*", "./bridge/*"],
+  "links": [
+    "libs/@types/gecko"
+  ],
+  "workspace": [
+    "./libs/*",
+    "./browser-features/*",
+    "./bridge/*"
+  ],
   "imports": {
     "@std/cli": "jsr:@std/cli@^1.0.28",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
     "@std/fs": "jsr:@std/fs@^1.0.23",
     "@std/path": "jsr:@std/path@^1.1.4",
     "#i18n/": "./i18n/",
-    "#chrome/": "./chrome/",
     "#libs/": "./libs/",
     "#features-chrome/": "./browser-features/chrome/",
-    "#modules/": "./browser-features/modules/",
-    "#ui/": "./src/ui/",
-    "#themes/": "./src/themes/",
     "#bridge-loader-features/": "./bridge/loader-features/",
     "@nora/shared/": "./browser-features/shared/",
     "@mobily/ts-belt": "npm:@mobily/ts-belt@^3.13.1",
@@ -25,17 +27,17 @@
     "vite": "npm:vite@^7.3.0"
   },
   "compilerOptions": {
-    "lib": ["deno.ns", "ESNext", "dom", "dom.asynciterable"],
+    "lib": [
+      "deno.ns",
+      "ESNext",
+      "dom",
+      "dom.asynciterable"
+    ],
     "checkJs": true
   },
   "exclude": [
-    "tools/build/tasks/inject/wasm/nora-inject.js",
     "**/_dist/**/*",
     "libs/@types/gecko/**/*",
-    "tools/build/tasks/inject/mixins/**/*",
-    "chrome/**/*",
-    "modules/**/*",
-    "src/**/*",
     "node_modules/**/*",
     "workflows/**/*",
     "generated/**/*",

@@ -29,16 +29,11 @@ function flatToOmniPath(relPath: string): string {
 function modifyBrowserXHTML(content: string): string {
   const document = new DOMParser().parseFromString(content, "text/xml");
 
+  // Older builds injected a <script data-geckomixin> here; the entry point is
+  // now the browser-window-domcontentloaded category (see NoranekoWindow.sys.mts).
   for (const elem of document.querySelectorAll("[data-geckomixin]")) {
     elem.remove();
   }
-
-  const script = document.createElement("script");
-  script.setAttribute("type", "module");
-  script.setAttribute("src", "chrome://noraneko-startup/content/chrome_root.js");
-  script.setAttribute("async", "async");
-  script.dataset.geckomixin = "";
-  document.querySelector("head").appendChild(script);
 
   return document.toString();
 }

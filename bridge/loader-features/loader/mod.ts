@@ -1,166 +1,195 @@
 // SPDX-License-Identifier: MPL-2.0
 
 /**
- * Module Loader - Data-Oriented Programming Style
+ * Feature module loader.
  *
- * Main entry point for the module loader system.
- * Julia/Kotlin-like functional patterns:
- * - Pure functions for core logic
- * - Module-level data structures
- * - Pipeline-style composition
+ * The chrome bundle entry (browser-features/chrome/main.ts) hands us the
+ * `import.meta.glob` maps; we turn them into a registry, honour the
+ * enable/disable prefs, order modules by their dependencies and run the two
+ * lifecycle phases. Nothing here is hot-swappable: a changed module means a
+ * restart, like the rest of Firefox.
  */
 
-import { MODULES_KEYS } from "./data/mod.ts";
-import {
-  setPrefFeatures,
-  getEnabledFeatures,
-  loadEnabledModules,
-  initializeModules,
-  initializeModulesForHotswap,
-  cleanupAllModules,
-  cleanupSelectiveModules,
-  notifyHotswapStart,
-  notifyHotswapComplete,
-  getRegisteredModuleNames,
-} from "./io/mod.ts";
+import { sortByDependencies, validateDependencies } from "./deps.ts";
+import type {
+  LoadedModule,
+  ModuleCategory,
+  ModuleGlobs,
+  ModuleLoader,
+  ModuleMetadata,
+  ModulesKeys,
+  ModulesRegistry,
+} from "./types.ts";
 
-console.debug("[noraneko] Initializing scripts...");
+export type { LoadedModule, ModuleGlobs, ModuleMetadata } from "./types.ts";
 
 // ============================================================================
-// Public API - Main Functions
+// Registry
+// ============================================================================
+
+/** `./features/tabbrowser/mod.ts` -> `tabbrowser` */
+const bareName = (globKey: string): string => {
+  const parts = globKey.split("/");
+  return parts.length >= 3 ? parts[parts.length - 2] : globKey;
+};
+
+const toCategory = (maps: Record<string, ModuleLoader>[]): ModuleCategory => {
+  const out: ModuleCategory = {};
+  for (const map of maps) {
+    for (const [key, loader] of Object.entries(map)) out[bareName(key)] = loader;
+  }
+  return out;
+};
+
+const buildRegistry = (globs: ModuleGlobs): ModulesRegistry => ({
+  common: toCategory(globs.common),
+  static: toCategory(globs.static),
+});
+
+const keysOf = (registry: ModulesRegistry): ModulesKeys => ({
+  common: Object.keys(registry.common),
+  static: Object.keys(registry.static),
+});
+
+// ============================================================================
+// Prefs
+// ============================================================================
+
+const PREF_ALL = "noraneko.features.all";
+const PREF_ENABLED = "noraneko.features.enabled";
+
+/** Publish the full list (locked) and the default enabled list. */
+const publishPrefs = (all: ModulesKeys): void => {
+  const prefs = Services.prefs.getDefaultBranch("");
+  prefs.setStringPref(PREF_ALL, JSON.stringify(all));
+  Services.prefs.lockPref(PREF_ALL);
+  prefs.setStringPref(PREF_ENABLED, JSON.stringify(all));
+};
+
+const enabledKeys = (): ModulesKeys =>
+  JSON.parse(Services.prefs.getStringPref(PREF_ENABLED, "{}")) as ModulesKeys;
+
+// ============================================================================
+// Loading
+// ============================================================================
+
+const defaultMetadata = (moduleName: string): ModuleMetadata => ({
+  moduleName,
+  dependencies: [],
+  softDependencies: [],
+});
+
+const loadOne = async (
+  name: string,
+  loader: ModuleLoader,
+): Promise<LoadedModule | null> => {
+  try {
+    // deno-lint-ignore no-explicit-any
+    const exports = (await loader()) as any;
+    const metadata: ModuleMetadata =
+      exports.default?._metadata?.() ?? exports._metadata?.() ?? defaultMetadata(name);
+    console.debug(`[noraneko] Loaded module: ${name}`);
+    return { name, metadata, ...exports };
+  } catch (e) {
+    console.error(`[noraneko] Failed to load module ${name}:`, e);
+    return null;
+  }
+};
+
+const loadEnabled = async (
+  registry: ModulesRegistry,
+  enabled: ModulesKeys,
+): Promise<LoadedModule[]> => {
+  const jobs: Promise<LoadedModule | null>[] = [];
+  for (const category of ["common", "static"] as const) {
+    const wanted = new Set(enabled[category] ?? []);
+    for (const [name, loader] of Object.entries(registry[category])) {
+      if (wanted.has(name)) jobs.push(loadOne(name, loader));
+    }
+  }
+  const results = await Promise.all(jobs);
+  const loaded = results.filter((m): m is LoadedModule => m !== null);
+  const failed = results.length - loaded.length;
+  if (failed > 0) {
+    console.warn(`[noraneko] ${failed} module(s) failed to load out of ${results.length}`);
+  }
+  return loaded;
+};
+
+// ============================================================================
+// Lifecycle
+// ============================================================================
+
+const runPhase = async (
+  modules: LoadedModule[],
+  phase: "initBeforeSessionStoreInit" | "init",
+): Promise<void> => {
+  for (const module of modules) {
+    const fn = module[phase];
+    if (typeof fn !== "function") continue;
+    try {
+      if (phase === "init") console.debug(`[noraneko] init ${module.name}`);
+      await fn();
+    } catch (e) {
+      console.error(`[noraneko] ${phase} failed for ${module.name}:`, e);
+    }
+  }
+};
+
+const orderModules = (modules: LoadedModule[]): LoadedModule[] => {
+  const invalid = validateDependencies(modules);
+  return sortByDependencies(
+    modules.filter((m) => {
+      if (invalid.has(m.name)) {
+        console.warn(`[noraneko] Skipping module ${m.name} due to dependency issues`);
+        return false;
+      }
+      return true;
+    }),
+  );
+};
+
+const domReady = (): Promise<void> =>
+  document.readyState === "loading"
+    ? new Promise((resolve) =>
+        document.addEventListener("DOMContentLoaded", () => resolve(), { once: true }),
+      )
+    : Promise.resolve();
+
+// ============================================================================
+// Entry
 // ============================================================================
 
 /**
- * Initialize all scripts (main entry point)
- * Side effect: initializes entire module system
+ * Load and initialize every enabled feature module.
+ * Called once per browser window from the chrome bundle entry.
  */
-export async function initScripts(): Promise<void> {
-  // Import required modules and initialize i18n
+export async function initScripts(globs: ModuleGlobs): Promise<void> {
   ChromeUtils.importESModule("resource://noraneko/modules/BrowserGlue.sys.mjs");
   const { NoranekoConstants } = ChromeUtils.importESModule(
     "resource://noraneko/modules/NoranekoConstants.sys.mjs",
   );
   console.debug(
     `[noraneko-buildid2]\nuuid: ${NoranekoConstants.buildID2}\ndate: ${new Date(
-      Number.parseInt(
-        NoranekoConstants.buildID2.slice(0, 13).replace("-", ""),
-        16,
-      ),
+      Number.parseInt(NoranekoConstants.buildID2.slice(0, 13).replace("-", ""), 16),
     ).toISOString()}`,
   );
 
-  setPrefFeatures(MODULES_KEYS);
+  // chrome_root.js is an async module script in <head>; feature modules
+  // touch the browser chrome DOM, so wait until browser.xhtml is parsed.
+  await domReady();
 
-  const enabledFeatures = getEnabledFeatures();
-  const modules = await loadEnabledModules(enabledFeatures);
-  await initializeModules(modules);
-}
-
-/**
- * Hotswap modules with new versions
- * Side effect: cleans up and reloads all modules
- */
-export async function hotswapModules(): Promise<boolean> {
-  console.debug("[noraneko] Starting module hotswap...");
-
-  try {
-    notifyHotswapStart();
-    await cleanupAllModules();
-    console.debug("[noraneko] All modules cleaned up");
-
-    const enabledFeatures = getEnabledFeatures();
-    const modules = await loadEnabledModules(enabledFeatures);
-    await initializeModulesForHotswap(modules);
-
-    console.debug("[noraneko] Module hotswap complete");
-    notifyHotswapComplete(true);
-    return true;
-  } catch (error) {
-    console.error("[noraneko] Module hotswap failed:", error);
-    notifyHotswapComplete(false);
-    return false;
-  }
-}
-
-/**
- * Hotswap specific modules (selective reload)
- * Only cleans up and reloads the specified modules and their dependents
- */
-export async function hotswapSelectiveModules(
-  moduleNames: string[],
-): Promise<boolean> {
+  const registry = buildRegistry(globs);
+  const all = keysOf(registry);
   console.debug(
-    `[noraneko] Starting selective hotswap for: ${moduleNames.join(", ")}`,
+    `[noraneko] Modules: common=[${all.common.join(", ")}] static=[${all.static.join(", ")}]`,
   );
+  publishPrefs(all);
 
-  try {
-    notifyHotswapStart();
+  const modules = orderModules(await loadEnabled(registry, enabledKeys()));
 
-    // Cleanup the specified modules and their dependents
-    const cleanedUp = await cleanupSelectiveModules(moduleNames);
-    console.debug(
-      `[noraneko] Cleaned up ${cleanedUp.length} modules: ${cleanedUp.join(", ")}`,
-    );
-
-    const enabledFeatures = getEnabledFeatures();
-
-    // Filter to only reload the cleaned up modules
-    const cleanedUpSet = new Set(cleanedUp);
-    const allModules = await loadEnabledModules(enabledFeatures);
-    const modulesToReload = allModules.filter((m) => cleanedUpSet.has(m.name));
-
-    await initializeModulesForHotswap(modulesToReload);
-
-    console.debug(
-      `[noraneko] Selective hotswap complete. Reloaded: ${modulesToReload.map((m) => m.name).join(", ")}`,
-    );
-    notifyHotswapComplete(true);
-    return true;
-  } catch (error) {
-    console.error("[noraneko] Selective hotswap failed:", error);
-    notifyHotswapComplete(false);
-    return false;
-  }
+  await runPhase(modules, "initBeforeSessionStoreInit");
+  // @ts-expect-error SessionStore is a browser.xhtml global
+  await SessionStore.promiseInitialized;
+  await runPhase(modules, "init");
 }
-
-/**
- * Get current registered module names (for external use)
- */
-export function getLoadedModuleNames(): string[] {
-  return getRegisteredModuleNames();
-}
-
-// ============================================================================
-// Re-exports - Public API
-// ============================================================================
-
-// Re-export types
-export type {
-  ModuleMetadata,
-  LoadedModule,
-  ModuleInfo,
-  HotswapEvent,
-  HotswapListener,
-} from "./types/mod.ts";
-
-// Re-export registry functions
-export {
-  registerModule,
-  getModule,
-  getAllModules,
-  hasModule,
-  cleanupModule,
-  cleanupAllModules,
-  cleanupSelectiveModules,
-  getRegisteredModuleNames,
-  addHotswapListener,
-  removeHotswapListener,
-  notifyHotswapStart,
-  notifyHotswapComplete,
-} from "./io/mod.ts";
-
-// Re-export module hooks
-export { onModuleLoaded } from "./io/mod.ts";
-
-// Re-export data
-export { MODULES, MODULES_KEYS } from "./data/mod.ts";
