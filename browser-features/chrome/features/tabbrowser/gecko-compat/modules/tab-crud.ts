@@ -145,7 +145,8 @@ export const methods = {
         allowInheritPrincipal: options.allowInheritPrincipal,
         allowThirdPartyFixup: options.allowThirdPartyFixup,
         fromExternal: options.fromExternal,
-        disableTRR: options.disableTRR,
+        // 143 callers say disableTRR, 154 (which _kickOffBrowserLoad follows) isCaptivePortalTab
+        isCaptivePortalTab: options.isCaptivePortalTab ?? options.disableTRR,
         forceAllowDataURI: options.forceAllowDataURI,
         skipLoad,
         referrerInfo: options.referrerInfo,
