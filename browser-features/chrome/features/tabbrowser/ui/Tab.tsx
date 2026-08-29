@@ -11,7 +11,9 @@ interface TabProps {
 
 /**
  * A tab as the mirror reports it. Reads the snapshot; acts through
- * gBrowser, which is where the tab actually lives.
+ * gBrowser, which is where the tab actually lives. Drawn as a box, not a
+ * <tab>: MozTab builds its own inside once connected, and would overwrite
+ * the label drawn here.
  */
 export function Tab({ tabId }: TabProps) {
   const tab = computed(() => appState.value.tabs[tabId]);
@@ -23,8 +25,9 @@ export function Tab({ tabId }: TabProps) {
   const gBrowser = () => (globalThis as any).gBrowser;
 
   return (
-    <xul:tab
+    <xul:hbox
       class="tabbrowser-tab"
+      role="tab"
       selected={isSelected.value ? "true" : undefined}
       pinned={isPinned.value ? "true" : undefined}
       busy={isBusy.value ? "true" : undefined}
@@ -57,6 +60,6 @@ export function Tab({ tabId }: TabProps) {
           />
         </xul:hbox>
       </xul:stack>
-    </xul:tab>
+    </xul:hbox>
   );
 }

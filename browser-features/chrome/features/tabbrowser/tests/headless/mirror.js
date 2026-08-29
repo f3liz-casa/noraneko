@@ -20,18 +20,21 @@ return (async () => {
   out.afterGroup = snap();
   out.busyMirrored = nt.appState.value.tabs[nt.appState.value.tabOrder[0]].isBusy === a.hasAttribute("busy");
   // the Preact strip drawn from the mirror
-  const box = document.createXULElement("vbox");
+  // in the document: XULElement.click() is silent on a detached element
+  const box = document.documentElement.appendChild(document.createXULElement("vbox"));
   nt.renderTabStrip(box);
   await sleep(100);
-  const drawn = () => [...box.querySelectorAll("tab.tabbrowser-tab")].map(t => t.querySelector(".tab-label")?.getAttribute("value"));
+  const drawn = () => [...box.querySelectorAll(".tabbrowser-tab")].map(t => t.querySelector(".tab-label")?.getAttribute("value"));
   out.drawn = drawn();
-  out.drawnSelected = [...box.querySelectorAll("tab.tabbrowser-tab")].map(t => t.getAttribute("selected") === "true");
-  // click on the drawn tab selects the real one
-  box.querySelectorAll("tab.tabbrowser-tab")[2].click(); await sleep(300);
+  out.drawnSelected = [...box.querySelectorAll(".tabbrowser-tab")].map(t => t.getAttribute("selected") === "true");
+  // click on a drawn tab (not the selected one) selects the real one
+  box.querySelectorAll(".tabbrowser-tab")[1].click(); await sleep(300);
   out.clickSelects = { selected: gb.selectedTab.label, mirrorSelected: snap().selected };
   gb.removeTab(b); await sleep(300);
   out.afterRemove = { ...snap(), drawn: drawn() };
+  out.afterRemove.drawnFollows = JSON.stringify(out.afterRemove.drawn) === JSON.stringify(out.afterRemove.order);
   gb.unpinTab(a); gb.removeTab(a); await sleep(300);
+  box.remove();
   out.final = snap();
   return JSON.stringify(out, null, 1);
 })();
