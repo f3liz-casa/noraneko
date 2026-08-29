@@ -190,7 +190,6 @@ export async function initScripts(globs: ModuleGlobs): Promise<void> {
   const modules = orderModules(await loadEnabled(registry, enabledKeys()));
 
   await runPhase(modules, "initBeforeSessionStoreInit");
-  // @ts-expect-error SessionStore is a browser.xhtml global
   await SessionStore.promiseInitialized;
   await runPhase(modules, "init");
 }
