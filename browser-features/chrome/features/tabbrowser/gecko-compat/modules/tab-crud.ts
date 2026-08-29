@@ -3,13 +3,6 @@
 // Section: addTab · removeTab/removeTabs · Tab Properties · Tab Movement
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, selectedTab as selectedTabSignal, orderedTabs, send } from "../../state/store.ts";
-import * as TabOps from "../../ops/tab-ops.ts";
-import * as GroupOps from "../../ops/group-ops.ts";
-import { DOMRegistry } from "../DOMRegistry.ts";
-import { BrowserSystem } from "../BrowserSystem.ts";
-import type { AppState, TabData, TabId, GroupId } from "../../types/TabState.ts";
-import { resolveTabId, dispatch } from "../compat-helpers.ts";
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
@@ -53,6 +46,7 @@ export const methods = {
    *
    * @returns The new tab, or null when it could not be created.
    */
+  // upstream: addTab@86fe2b6943 FIREFOX_143_0_1_RELEASE
   addTab(
     uri: nsIURI | string,
     {
@@ -250,25 +244,6 @@ export const methods = {
         this.getPanel(t.linkedBrowser).remove();
       }
       return null;
-    }
-
-    // Until the mirror listens for itself: the store learns of the tab here.
-    {
-      const id = crypto.randomUUID();
-      t._tabId = id;
-      DOMRegistry.registerTab(id, t);
-      DOMRegistry.registerBrowser(id, b);
-      send({
-        type: "ADD_TAB",
-        tab: TabOps.createTab(id, uriString, {
-          userContextId: userContextId ?? 0,
-          isPinned: !!pinned,
-          permanentKey: b.permanentKey,
-          ownerTabId: ownerTab?._tabId,
-          openerTabId: openerTab?._tabId,
-        }),
-        index: t._tPos,
-      });
     }
 
     // Fire a TabOpen event
@@ -651,9 +626,7 @@ export const methods = {
 
     tab.closing = true;
     this._removingTabs.add(tab);
-    this.tabContainer._invalidateCachedTabs?.();
-    const id = resolveTabId(tab);
-    if (id) send({ type: "BEGIN_CLOSE_TAB", tabId: id });
+    this.tabContainer._invalidateCachedTabs();
 
     // Invalidate hovered tab state tracking for this closing tab.
     tab._mouseleave?.();
@@ -798,12 +771,7 @@ export const methods = {
 
     // Remove the tab ...
     tab.remove();
-    this.tabContainer._invalidateCachedTabs?.();
-    const id = resolveTabId(tab);
-    if (id) {
-      DOMRegistry.unregisterTab(id);
-      send({ type: "END_CLOSE_TAB", tabId: id });
-    }
+    this.tabContainer._invalidateCachedTabs();
 
     // ... and fix up the _tPos properties immediately.
     for (let i = tab._tPos; i < this.tabs.length; i++) {
@@ -852,7 +820,6 @@ export const methods = {
     // reference to the tab after its removal.
     this._tabForBrowser.delete(tab.linkedBrowser);
     tab.linkedBrowser = null;
-    if (id) DOMRegistry.unregisterBrowser(id);
 
     panel.remove();
 
@@ -973,6 +940,7 @@ export const methods = {
    * (and get saved), beforeunload runs in parallel, prompts run in turn,
    * and the selected tab goes last so the selection moves only once.
    */
+  // upstream: removeTabs@c87819e103 FIREFOX_143_0_1_RELEASE
   removeTabs(
     tabs: MozTabbrowserTab[],
     {
@@ -1073,6 +1041,7 @@ export const methods = {
   },
 
   /** Close every open tab but `aTab` (and, by default, pinned and hidden ones). */
+  // upstream: removeAllTabsBut@5f46de5ec6 FIREFOX_143_0_1_RELEASE
   removeAllTabsBut(aTab: any, aParams: any = {}) {
     const { skipWarnAboutClosingTabs = false, skipPinnedOrSelectedTabs = true } = aParams;
 
@@ -1104,6 +1073,7 @@ export const methods = {
   },
 
   /** Close every tab whose current URI equals one of `urisToClose` (nsIURIs); resolves to the count. */
+  // upstream: closeTabsByURI@9fe20b8380 FIREFOX_143_0_1_RELEASE
   async closeTabsByURI(urisToClose: any[]): Promise<number> {
     const tabsToRemove: any[] = [];
     for (const tab of this.tabs) {
@@ -1148,6 +1118,7 @@ export const methods = {
   // ==========================================================================
 
   /** Pin `aTab`: it moves into the pinned container and gets the `pinned` attribute. */
+  // upstream: pinTab@84399e5062 FIREFOX_143_0_1_RELEASE
   pinTab(aTab: MozTabbrowserTab, { telemetrySource }: any = {}) {
     telemetrySource ??= this.TabMetrics.METRIC_SOURCE.UNKNOWN;
     const tab = aTab as any;
@@ -1163,6 +1134,7 @@ export const methods = {
     this._notifyPinnedStatus(tab, { telemetrySource });
   },
 
+  // upstream: unpinTab@487c881bd5 FIREFOX_143_0_1_RELEASE
   unpinTab(aTab: MozTabbrowserTab) {
     const tab = aTab as any;
     if (!tab.pinned) {
@@ -1193,6 +1165,7 @@ export const methods = {
     this.discardBrowser(tab);
   },
 
+  // upstream: showTab@65a3fea873 FIREFOX_143_0_1_RELEASE
   showTab(aTab: MozTabbrowserTab) {
     const tab = aTab as any;
     if (!tab.hidden || tab == (this.window as any).FirefoxViewHandler.tab) {
@@ -1212,6 +1185,7 @@ export const methods = {
     SessionStore.deleteCustomTabValue(tab, "hiddenBy");
   },
 
+  // upstream: hideTab@e42b64e8fc FIREFOX_143_0_1_RELEASE
   hideTab(aTab: MozTabbrowserTab, aSource?: string) {
     const tab = aTab as any;
     if (
@@ -1246,6 +1220,7 @@ export const methods = {
   },
 
   /** SessionStore clones the tab (history included) right after the original. */
+  // upstream: duplicateTab@f037fad4e7 FIREFOX_143_0_1_RELEASE
   duplicateTab(aTab: MozTabbrowserTab, aRestoreTabImmediately?: boolean, aOptions?: any) {
     return SessionStore.duplicateTab(this.window, aTab, 0, aRestoreTabImmediately, aOptions);
   },
@@ -1259,6 +1234,7 @@ export const methods = {
    * Move a tab (or a group, or a group's label) to `tabIndex` / `elementIndex`.
    * Pinned stays with pinned, unpinned with unpinned.
    */
+  // upstream: moveTabTo@21712a66f3 FIREFOX_143_0_1_RELEASE
   moveTabTo(
     element: any,
     {
@@ -1312,17 +1288,21 @@ export const methods = {
     );
   },
 
+  // upstream: moveTabBefore@a7ae698efc FIREFOX_143_0_1_RELEASE
   moveTabBefore(element: any, targetElement: any, metricsContext?: any) {
     this._moveTabNextTo(element, targetElement, true, metricsContext);
   },
 
+  // upstream: moveTabAfter@e962e188bf FIREFOX_143_0_1_RELEASE
   moveTabAfter(element: any, targetElement: any, metricsContext?: any) {
     this._moveTabNextTo(element, targetElement, false, metricsContext);
   },
 
+  // upstream: moveTabToStart@4d90629390 FIREFOX_143_0_1_RELEASE
   moveTabToStart(aTab?: any) {
     this.moveTabTo(aTab ?? this.selectedTab, { tabIndex: 0, forceUngrouped: true });
   },
+  // upstream: moveTabToEnd@22d4572adb FIREFOX_143_0_1_RELEASE
   moveTabToEnd(aTab?: any) {
     this.moveTabTo(aTab ?? this.selectedTab, {
       tabIndex: this.tabs.length - 1,

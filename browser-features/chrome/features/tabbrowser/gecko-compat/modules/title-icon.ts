@@ -4,8 +4,7 @@
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
 import { FAVICON_DEFAULTS } from "../tabbrowser-scope.ts";
-import type { TabId } from "../../types/TabState.ts";
-import { resolveTabId, dispatch } from "../compat-helpers.ts";
+import { dispatch } from "../compat-helpers.ts";
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
@@ -180,11 +179,13 @@ export const methods = {
     if (browser) this._callProgressListeners(browser, "onLinkIconAvailable", [iconUrl, origUrl]);
   },
 
+  // upstream: getIcon@2b87848a28 FIREFOX_143_0_1_RELEASE
   getIcon(aTab?: MozTabbrowserTab): string {
     const browser = aTab ? this.getBrowserForTab(aTab) : this.selectedBrowser;
     return (browser as any).mIconURL;
   },
 
+  // upstream: getTabSharingState@4607466f4a FIREFOX_143_0_1_RELEASE
   getTabSharingState(aTab: MozTabbrowserTab) {
     // Normalize the state object for consumers (ie.extensions).
     const state = Object.assign({}, (aTab as any)._sharingState && (aTab as any)._sharingState.webRTC);
@@ -324,6 +325,7 @@ export const methods = {
     }
   },
 
+  // upstream: getBrowserForOuterWindowID@152087e895 FIREFOX_143_0_1_RELEASE
   getBrowserForOuterWindowID(id: number): any {
     for (const b of this.browsers) {
       if (b.outerWindowID == id) {

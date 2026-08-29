@@ -94,6 +94,7 @@ export const methods = {
   },
 
   /** Move the selected tab one step right, stepping over or into groups as tabbrowser.js does. */
+  // upstream: moveTabForward@d083ccd217 FIREFOX_143_0_1_RELEASE
   moveTabForward() {
     const { selectedTab } = this;
     const nextTab = this.tabContainer.findNextTab(selectedTab, {
@@ -124,6 +125,7 @@ export const methods = {
     }
   },
 
+  // upstream: moveTabBackward@8b778cc537 FIREFOX_143_0_1_RELEASE
   moveTabBackward() {
     const { selectedTab } = this;
 

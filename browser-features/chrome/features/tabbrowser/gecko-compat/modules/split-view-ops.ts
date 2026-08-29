@@ -3,11 +3,6 @@
 // Section: Split View Operations · Adjacent Tab Operations
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, send } from "../../state/store.ts";
-import * as GroupOps from "../../ops/group-ops.ts";
-import { DOMRegistry } from "../DOMRegistry.ts";
-import type { TabId, SplitViewId } from "../../types/TabState.ts";
-import { resolveTabId, dispatch } from "../compat-helpers.ts";
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
@@ -119,7 +114,7 @@ export const methods = {
 
     // Use native tabContainer methods if available
     try {
-      (this as any)._handleTabMove?.(tab, () => splitViewWrapper.appendChild(tab));
+      this._handleTabMove(tab, () => splitViewWrapper.appendChild(tab));
       this.removeFromMultiSelectedTabs(tab);
       this.tabContainer?._notifyBackgroundTab?.(tab);
     } catch (_) { /* */ }

@@ -3,13 +3,6 @@
 // Section: Lifecycle · Tab Switcher · Progress Listeners
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, selectedTab as selectedTabSignal, orderedTabs, send } from "../../state/store.ts";
-import * as TabOps from "../../ops/tab-ops.ts";
-import * as GroupOps from "../../ops/group-ops.ts";
-import { DOMRegistry } from "../DOMRegistry.ts";
-import { BrowserSystem } from "../BrowserSystem.ts";
-import type { TabData, TabId, GroupId } from "../../types/TabState.ts";
-import { resolveTabId, dispatch } from "../compat-helpers.ts";
 
 const { XPCOMUtils } = ChromeUtils.importESModule("resource://gre/modules/XPCOMUtils.sys.mjs");
 

@@ -3,13 +3,7 @@
 // Section: Internal URI/Load · Tab Move/Position · Group/SplitView · Tab State · Utility
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, selectedTab as selectedTabSignal, orderedTabs } from "../../state/store.ts";
-import * as TabOps from "../../ops/tab-ops.ts";
-import * as GroupOps from "../../ops/group-ops.ts";
-import { DOMRegistry } from "../DOMRegistry.ts";
-import { BrowserSystem } from "../BrowserSystem.ts";
-import type { AppState, TabData, TabId, GroupId, SplitViewId } from "../../types/TabState.ts";
-import { resolveTabId, dispatch } from "../compat-helpers.ts";
+import { dispatch } from "../compat-helpers.ts";
 
 declare const PlacesUIUtils: any;
 declare const LOAD_FLAGS_NONE: number;
@@ -50,7 +44,7 @@ declare module "../TabbrowserCompat.ts" {
     _isFirstOrLastInTabGroup(tab: MozTabbrowserTab): boolean;
     _elementIndexToTabIndex(elementIndex: number): number;
     // Group/split view
-    _createTabSplitView(tabEls: any[], options?: any): any;
+    _createTabSplitView(options?: any): any;
     _insertSplitViewFooter(tab: MozTabbrowserTab): void;
     ungroupSplitView(splitView: any): void;
     moveSplitViewToExistingGroup(splitView: any, group: MozTabbrowserTabGroup): void;

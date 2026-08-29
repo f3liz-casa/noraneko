@@ -1,69 +1,60 @@
 // SPDX-License-Identifier: MPL-2.0
 
 /**
- * TabState - Data Model
+ * TabState — what the read-only mirror (state/store.ts) reports about the
+ * tab strip. Every field here is read off the <tab> elements; nothing is
+ * stored anywhere else.
  */
 
 export type TabId = string;
-export type WindowId = number;
-export type ProcessId = number;
 export type GroupId = string;
 export type SplitViewId = string;
-export type RemoteType = string;
 
 export interface TabData {
-  id: TabId;
-  index: number;
-  uri: string;
-  title: string;
-  label: string;
-  iconUrl?: string;
-  description?: string;
-  
-  // State flags
-  isPinned: boolean;
-  isHidden: boolean;
-  isSelected: boolean;
-  isMultiSelected: boolean;
-  isBusy: boolean;
-  isMuted: boolean;
-  isCrashed: boolean;
-  isLazy: boolean;
-  isDiscarded: boolean;
-  isClosing: boolean;
-  
-  // Audio state (Lines 8250-8350)
-  soundPlaying: boolean;
-  soundPlayingScheduledRemoval: boolean;
-  activeMediaBlocked: boolean;
-  
-  // Context and grouping
-  userContextId: number;
-  groupId?: GroupId;
-  splitViewId?: SplitViewId;
-  permanentKey: any;
-  
-  // Relationships
-  ownerTabId?: TabId;
-  openerTabId?: TabId;
-  successorTabId?: TabId;
-  predecessorTabIds: TabId[]; // New: for succession tracking
-  
-  // Metadata
-  lastAccessed: number;
-  createdTime: number;
-  lastSeenActive: number;
+  readonly id: TabId;
+  readonly index: number;
+  readonly uri: string;
+  readonly title: string;
+  readonly label: string;
+  readonly iconUrl?: string;
 
-  labelIsContentTitle: boolean;
-  labelDirection: "ltr" | "rtl";
-  sharingState: {
-    camera: boolean;
-    microphone: boolean;
-    screen: boolean;
+  // State flags (attributes on the tab)
+  readonly isPinned: boolean;
+  readonly isHidden: boolean;
+  readonly isSelected: boolean;
+  readonly isMultiSelected: boolean;
+  readonly isBusy: boolean;
+  readonly isMuted: boolean;
+  readonly isCrashed: boolean;
+  /** No browser in the deck yet: lazy, or discarded. */
+  readonly isDiscarded: boolean;
+  readonly isClosing: boolean;
+
+  // Audio state
+  readonly soundPlaying: boolean;
+  readonly soundPlayingScheduledRemoval: boolean;
+  readonly activeMediaBlocked: boolean;
+
+  // Context and grouping
+  readonly userContextId: number;
+  readonly groupId?: GroupId;
+  readonly splitViewId?: SplitViewId;
+
+  // Relationships
+  readonly ownerTabId?: TabId;
+  readonly openerTabId?: TabId;
+  readonly successorTabId?: TabId;
+
+  // Metadata
+  readonly lastAccessed: number;
+  readonly lastSeenActive: number;
+  readonly labelIsContentTitle: boolean;
+  readonly sharingState: {
+    readonly camera: boolean;
+    readonly microphone: boolean;
+    readonly screen: boolean;
   };
 }
-
-// ... (Rest of existing AppState and other interfaces) ...
 
 export interface TabGroupData {
   readonly id: GroupId;
@@ -78,36 +69,11 @@ export interface SplitViewData {
   readonly tabs: TabId[];
 }
 
-export interface BrowserEngineState {
-  readonly remoteType: RemoteType;
-  readonly processId: ProcessId;
-  readonly isWarming: boolean;
-  readonly canGoBack: boolean;
-  readonly canGoForward: boolean;
-}
-
 export interface AppState {
   readonly tabs: Record<TabId, TabData>;
   readonly groups: Record<GroupId, TabGroupData>;
   readonly splitViews: Record<SplitViewId, SplitViewData>;
-  readonly engineStates: Record<TabId, BrowserEngineState>;
-
   readonly tabOrder: TabId[];
   readonly selectedTabId: TabId | null;
-  
   readonly activeSplitViewId: SplitViewId | null;
-  
-  readonly config: {
-    readonly shouldExposeContentTitle: boolean;
-    readonly shouldExposeContentTitlePbm: boolean;
-    readonly showTabCardPreview: boolean;
-    readonly allowTransparentBrowser: boolean;
-    readonly tabGroupsEnabled: boolean;
-    readonly tabNotesEnabled: boolean;
-    readonly showPidAndActiveness: boolean;
-    readonly unloadTabInContextMenu: boolean;
-    readonly notificationEnableDelay: number;
-    readonly tabMinWidth: number;
-    readonly tabClipWidth: number;
-  };
 }

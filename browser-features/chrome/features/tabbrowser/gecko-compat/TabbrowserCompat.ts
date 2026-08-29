@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 /// <reference path="./gecko-types.d.ts" />
 
-import { appState, selectedTab as selectedTabSignal, orderedTabs, send } from "../state/store.ts";
-import * as TabOps from "../ops/tab-ops.ts";
-import * as GroupOps from "../ops/group-ops.ts";
-import { DOMRegistry } from "./DOMRegistry.ts";
-import { BrowserSystem } from "./BrowserSystem.ts";
-import { NavigationSystem } from "./NavigationSystem.ts";
 import { TabProgressListener, URILoadingWrapper, updateUserContextUIIndicator } from "./tabbrowser-scope.ts";
-import type { TabId } from "../types/TabState.ts";
 
 // Module method mixes (real implementations ported from Firefox tabbrowser.js)
 import * as internals from "./modules/internals.ts";
@@ -152,10 +145,13 @@ export class TabbrowserCompat {
   _switcher: any = null;
   _selectedTab: any = null;
   _selectedBrowser: any = null;
+  /** The <tab-split-view-wrapper> whose tabs share the deck, or null (154's #activeSplitView). */
+  _activeSplitView: any = null;
   /**
    * This defines a proxy which allows us to access browsers by
    * index without actually creating a full array of browsers.
    */
+  // upstream: browsers@3c50d4d383 FIREFOX_143_0_1_RELEASE
   browsers: any = new Proxy([] as any, {
     has: (_target: any, name: any) => {
       if (typeof name == "string" && Number.isInteger(parseInt(name))) {
@@ -285,10 +281,9 @@ export class TabbrowserCompat {
   }
 
   /**
-   * Adopt tabs that already exist in the DOM. Firefox's own Tabbrowser has
-   * already run init() by the time browser-window-domcontentloaded fires, so
-   * the initial <tab> and its linkedBrowser are there; register them in our
-   * state instead of creating a second tab.
+   * Firefox's own Tabbrowser has already run init() by the time
+   * browser-window-domcontentloaded fires, so the initial <tab> and its
+   * browser are in the strip. Take them as ours.
    */
   _adoptExistingTabs() {
     // Firefox's Tabbrowser already numbered the panels it made (panel-<win>-1
@@ -298,38 +293,14 @@ export class TabbrowserCompat {
       const m = /^panel-\d+-(\d+)$/.exec(panel.id);
       if (m) this._uniquePanelIDCounter = Math.max(this._uniquePanelIDCounter, Number(m[1]));
     }
-    const tabEls = Array.from(
-      this.tabContainer?.querySelectorAll?.('tab[is="tabbrowser-tab"]') ?? [],
-    ) as any[];
-    for (const tabEl of tabEls) {
-      if (tabEl._tabId) continue;
-      const id = crypto.randomUUID();
-      const browser = tabEl.linkedBrowser ?? null;
-      const uri = browser?.currentURI?.spec ?? "about:blank";
-      send({
-        type: "ADD_TAB",
-        tab: TabOps.createTab(id, uri, {
-          isPinned: !!tabEl.pinned,
-          isSelected: !!tabEl.selected,
-          label: tabEl.label || "New Tab",
-        }),
-        index: appState.value.tabOrder.length,
-      });
-      tabEl._tabId = id;
-      DOMRegistry.registerTab(id, tabEl);
-      if (browser) {
-        DOMRegistry.registerBrowser(id, browser);
-        this._tabForBrowser.set(browser, tabEl);
-      }
-      if (tabEl.selected) {
-        this._selectedTab = tabEl;
-        this._selectedBrowser = browser;
-        send({ type: "SELECT_TAB", tabId: id });
+    for (const tab of this.tabs as any[]) {
+      if (tab.linkedBrowser) this._tabForBrowser.set(tab.linkedBrowser, tab);
+      if (tab.selected) {
+        this._selectedTab = tab;
+        this._selectedBrowser = tab.linkedBrowser;
       }
     }
-    if (tabEls.length) {
-      console.debug(`[noraneko/tabbrowser] adopted ${tabEls.length} existing tab(s)`);
-    }
+    console.debug(`[noraneko/tabbrowser] adopted ${this.tabs.length} existing tab(s)`);
   }
 
   // Expose panel container for legacy direct DOM access

@@ -2,14 +2,8 @@
 // Ported from tabbrowser.js L974~L2896
 // Section: Browser Properties · Navigation · Tab Accessors · Selected Tab · Split View · Browser Lookup · Tab Container
 
-import { produce } from "immer";
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState } from "../../state/store.ts";
-import * as GroupOps from "../../ops/group-ops.ts";
-import { DOMRegistry } from "../DOMRegistry.ts";
-import { pipe, A, O } from "@mobily/ts-belt";
-import type { SplitViewId } from "../../types/TabState.ts";
-import { resolveTabId, dispatch } from "../compat-helpers.ts";
+import { dispatch } from "../compat-helpers.ts";
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
@@ -53,7 +47,7 @@ declare module "../TabbrowserCompat.ts" {
     readonly activeSplitView: any;
     readonly splitViewBrowsers: XULBrowserElement[];
     addTabSplitView(tab: MozTabbrowserTab, otherTab: any): void;
-    unsplitTabs(svId?: SplitViewId): void;
+    unsplitTabs(splitView?: any): void;
     browsers: any;
     getBrowserForTab(tab: MozTabbrowserTab): XULBrowserElement | undefined;
     getTabForBrowser(browser: any): MozTabbrowserTab | undefined;
@@ -134,7 +128,7 @@ export const methods = {
   set userTypedValue(val: string) { const b = this.selectedBrowser as any; if (b) b.userTypedValue = val; },
 
   // ==========================================================================
-  // Navigation (inlined — no more NavigationSystem indirection)
+  // Navigation
   // tabbrowser.js L974~L999
   // ==========================================================================
 
@@ -233,14 +227,17 @@ export const methods = {
    * Returns all tabs in the current window, including hidden tabs and tabs
    * in collapsed groups, but excluding closing tabs and the Firefox View tab.
    */
+  // upstream: get tabs@9d22602253 FIREFOX_143_0_1_RELEASE
   get tabs(): MozTabbrowserTab[] {
     return this.tabContainer.allTabs;
   },
 
+  // upstream: get tabGroups@d7e7f7039f FIREFOX_143_0_1_RELEASE
   get tabGroups(): any[] {
     return this.tabContainer.allGroups;
   },
 
+  // upstream: get tabsInCollapsedTabGroups@91e29f388f FIREFOX_143_0_1_RELEASE
   get tabsInCollapsedTabGroups(): MozTabbrowserTab[] {
     return this.tabGroups
       .filter((tabGroup: any) => tabGroup.collapsed)
@@ -249,21 +246,25 @@ export const methods = {
   },
 
   /** Tabs that are not closing (hidden ones included). */
+  // upstream: get openTabs@6c79aba265 FIREFOX_143_0_1_RELEASE
   get openTabs(): MozTabbrowserTab[] {
     return this.tabContainer.openTabs;
   },
 
   /** Tabs that are neither hidden nor closing. */
+  // upstream: get nonHiddenTabs@4d915ac9a6 FIREFOX_143_0_1_RELEASE
   get nonHiddenTabs(): MozTabbrowserTab[] {
     return this.tabContainer.nonHiddenTabs;
   },
 
   /** Tabs shown in the strip: not hidden, not closing, not in a collapsed group. */
+  // upstream: get visibleTabs@c61295a7b6 FIREFOX_143_0_1_RELEASE
   get visibleTabs(): MozTabbrowserTab[] {
     return this.tabContainer.visibleTabs;
   },
 
   /** Pinned tabs come first, so this is where the first unpinned one sits. */
+  // upstream: get pinnedTabCount@9cd8267f50 FIREFOX_143_0_1_RELEASE
   get pinnedTabCount(): number {
     let i;
     for (i = 0; i < this.tabs.length; i++) {
@@ -279,6 +280,7 @@ export const methods = {
   // tabbrowser.js L451~L457, L552~L640
   // ==========================================================================
 
+  // upstream: get selectedTab@f8dbcea455 FIREFOX_143_0_1_RELEASE
   get selectedTab(): any {
     return this._selectedTab;
   },
@@ -291,8 +293,7 @@ export const methods = {
    */
   // upstream: set selectedTab@aeac3f54b9 FIREFOX_143_0_1_RELEASE
   set selectedTab(val: any) {
-    const id = resolveTabId(val);
-    const el = (id ? DOMRegistry.getTab(id) : null) ?? val;
+    const el = val;
     if (!el || el === this.selectedTab) return;
     if (
       document.documentElement?.hasAttribute("window-modal-open") ||
@@ -303,6 +304,7 @@ export const methods = {
     this.tabbox.selectedTab = el;
   },
 
+  // upstream: get selectedBrowser@0338e1fbc8 FIREFOX_143_0_1_RELEASE
   get selectedBrowser(): XULBrowserElement | null {
     return this._selectedBrowser;
   },
@@ -318,52 +320,44 @@ export const methods = {
   },
 
   // ==========================================================================
-  // Split View
-  // noraneko extension — no direct tabbrowser.js equivalent
+  // Split View — a <tab-split-view-wrapper> in the strip holds the tabs
+  // (Firefox 154's shape; 143 has no such element, and nothing calls this yet)
   // ==========================================================================
 
-  /** The ID of the currently active split view, or `null` when no split view is open. */
-  get activeSplitView() { return appState.value.activeSplitViewId; },
+  /** The active split view wrapper, or null. */
+  get activeSplitView() { return this._activeSplitView; },
 
-  /** The browser elements for all panes in the active split view, or an empty array. */
+  /** The browsers of every pane in the active split view, or []. */
   get splitViewBrowsers(): XULBrowserElement[] {
-    const svId = appState.value.activeSplitViewId;
-    if (!svId) return [];
-    const sv = appState.value.splitViews[svId];
-    if (!sv) return [];
-    return pipe(sv.tabs, A.filterMap(id => O.fromNullable(DOMRegistry.getBrowser(id)))) as XULBrowserElement[];
+    return this._activeSplitView ? this._activeSplitView.tabs.map((t: any) => t.linkedBrowser) : [];
   },
 
   /**
-   * Create a side-by-side split view for two tabs.
-   *
-   * Fires `TabSplitViewActivate` on success. The new split view becomes
-   * the `activeSplitView`.
-   *
-   * @param tab      - First tab (displayed on the left)
-   * @param otherTab - Second tab (displayed on the right)
+   * Show `tab` and `otherTab` side by side: both move into a new wrapper
+   * where `tab` was, and the wrapper becomes the active split view.
    */
   addTabSplitView(tab: MozTabbrowserTab, otherTab: MozTabbrowserTab) {
-    const id1 = resolveTabId(tab);
-    const id2 = resolveTabId(otherTab);
-    if (!id1 || !id2) return;
-    const svId = GroupOps.generateLegacyId();
-    appState.value = GroupOps.createSplitView(appState.value, svId, [id1, id2]);
-    appState.value = produce(appState.value, d => { d.activeSplitViewId = svId; });
-    dispatch(document, "TabSplitViewActivate");
+    const wrapper = this._createTabSplitView({ id: `${Date.now()}-${Math.round(Math.random() * 100)}` });
+    this.tabContainer.insertBefore(wrapper, tab);
+    this.moveTabToSplitView(tab, wrapper);
+    this.moveTabToSplitView(otherTab, wrapper);
+    this._activeSplitView = wrapper;
+    this.showSplitViewPanels(wrapper.tabs);
+    dispatch(this.window.document, "TabSplitViewActivate");
   },
 
-  /**
-   * Tear down a split view, returning its tabs to normal display.
-   * Fires `TabSplitViewDeactivate`.
-   *
-   * @param svId - Split view to remove; defaults to the currently active one
-   */
-  unsplitTabs(svId?: SplitViewId) {
-    const id = svId ?? appState.value.activeSplitViewId;
-    if (!id) return;
-    appState.value = GroupOps.removeSplitView(appState.value, id);
-    dispatch(document, "TabSplitViewDeactivate");
+  /** Take a split view apart: its tabs go back to the strip, the wrapper goes. */
+  unsplitTabs(splitView?: any) {
+    splitView ??= this._activeSplitView;
+    if (!splitView) return;
+    const tabs = [...splitView.tabs];
+    this.hideSplitViewPanels(tabs);
+    for (const t of tabs) {
+      this._handleTabMove(t, () => splitView.before(t));
+    }
+    splitView.remove();
+    if (this._activeSplitView === splitView) this._activeSplitView = null;
+    dispatch(this.window.document, "TabSplitViewDeactivate");
   },
 
   // ==========================================================================
@@ -371,26 +365,16 @@ export const methods = {
   // tabbrowser.js L912~L914, L5783~L5785, L5803~L5817
   // ==========================================================================
 
+  // upstream: getBrowserForTab@8429d83149 FIREFOX_143_0_1_RELEASE
   getBrowserForTab(tab: MozTabbrowserTab): XULBrowserElement | undefined {
     return (tab as any).linkedBrowser;
   },
 
-  /**
-   * Return the `<tab>` element that owns `browser`, or `null`.
-   * The lookup uses `browser._tabId` — a property stamped onto each browser
-   * element during tab creation.
-   */
+  /** The tab that owns `browser`, or null. */
   // upstream: getTabForBrowser@44d5f9f1a6 FIREFOX_143_0_1_RELEASE
   getTabForBrowser(browser: XULBrowserElement): any {
     if (!browser) return null;
-    // tabbrowser.js keeps a browser → tab map, and every path that makes or
-    // adopts a browser fills `_tabForBrowser`. `_tabId` is stamped on tabs
-    // only, so it was never a way back from a browser (AsyncTabSwitcher's
-    // MozLayerTreeReady and pagetitlechanged both come in through here).
-    const tab = this._tabForBrowser.get(browser);
-    if (tab) return tab;
-    const id = (browser as any)._tabId;
-    return id ? DOMRegistry.getTab(id) ?? null : null;
+    return this._tabForBrowser.get(browser) ?? null;
   },
 
   /**
@@ -399,6 +383,7 @@ export const methods = {
    * @param index - Zero-based index into the ordered tab list.
    * @returns The browser element, or `null` if the index is out of range.
    */
+  // upstream: getBrowserAtIndex@92b0290b44 FIREFOX_143_0_1_RELEASE
   getBrowserAtIndex(index: number): XULBrowserElement | null {
     return this.browsers[index] ?? null;
   },

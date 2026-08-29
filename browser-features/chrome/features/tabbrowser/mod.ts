@@ -6,28 +6,17 @@
  * Re-implementation of the core browser tabs system using Data-Oriented Programming.
  *
  * Structure:
- * - types/:        Immutable data schemas (The "Data")
- * - state/:        Reactive storage (The "Database")
- * - ops/:          Pure business logic (The "Behavior")
- * - ui/:           Preact components (The "View")
- * - gecko-compat/: Bridges the DOP model to the real Gecko gBrowser/DOM
+ * - gecko-compat/: gBrowser, ported from tabbrowser.js; the DOM is the truth
+ * - state/:        a read-only mirror of the strip, rebuilt from its events
+ * - types/:        what the mirror reports
+ * - ui/:           Preact components that read the mirror
  */
 
 // Export Types
 export * from "./types/TabState.ts";
 
-// Export State Accessors
-export {
-  appState,
-  selectedTab,
-  orderedTabs,
-  allGroups,
-  send,
-} from "./state/store.ts";
-
-// Export Operations
-export * as TabOps from "./ops/tab-ops.ts";
-export * as GroupOps from "./ops/group-ops.ts";
+// Export the read-only mirror of the strip
+export { appState, selectedTab, orderedTabs, allGroups, tabById } from "./state/store.ts";
 
 // Export UI Components
 export { Tab } from "./ui/Tab.tsx";
@@ -36,6 +25,10 @@ export { TabStrip } from "./ui/TabStrip.tsx";
 // Export gecko-compat layer
 export { initCompat } from "./gecko-compat/TabbrowserCompat.ts";
 import { initCompat as _initCompat } from "./gecko-compat/TabbrowserCompat.ts";
+import { appState, attachMirror, tabById } from "./state/store.ts";
+import { TabStrip } from "./ui/TabStrip.tsx";
+import { render } from "preact";
+import { h } from "#libs/preact-xul/index.ts";
 
 // ============================================================================
 // Module lifecycle hook — called by loader/lifecycle.ts before SessionStore.
@@ -52,6 +45,13 @@ export function initBeforeSessionStoreInit() {
   );
   _initCompat(window as any);
   (window as any).__noranekoTabbrowserInstalled = true;
+  attachMirror((window as any).gBrowser);
+  // A hand on the mirror for tests and for anything living outside the bundle.
+  (window as any).noraneko.tabbrowser = {
+    appState,
+    tabById,
+    renderTabStrip: (into: Element) => render(h(TabStrip, null), into),
+  };
 
   // Diagnostic: report who owns gBrowser once Firefox finishes window startup.
   const topic = "browser-delayed-startup-finished";

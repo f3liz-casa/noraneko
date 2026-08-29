@@ -3,8 +3,7 @@
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
 import { TabProgressListener, updateUserContextUIIndicator } from "../tabbrowser-scope.ts";
-import { resolveTabId, dispatch } from "../compat-helpers.ts";
-import { appState, send } from "../../state/store.ts";
+import { dispatch } from "../compat-helpers.ts";
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
@@ -257,9 +256,6 @@ export const swapBrowserMethods = {
 
     this._selectedBrowser = newBrowser;
     this._selectedTab = newTab;
-    // The store still hears about it, until the mirror takes over.
-    const newId = resolveTabId(newTab);
-    if (newId) send({ type: "SELECT_TAB", tabId: newId });
     this.showTab(newTab);
     this.appendStatusPanel();
     this._updateVisibleNotificationBox?.(newBrowser);

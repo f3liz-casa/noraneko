@@ -3,10 +3,6 @@
 // Section: Extended Ops · Tab Groups · Window Ops · Selection · UI · Progress Callbacks · Stubs · Sponsor
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, send } from "../../state/store.ts";
-import { DOMRegistry } from "../DOMRegistry.ts";
-import type { SplitViewId } from "../../types/TabState.ts";
-import { resolveTabId } from "../compat-helpers.ts";
 
 declare const SharingUtils: any;
 
@@ -44,7 +40,6 @@ declare module "../TabbrowserCompat.ts" {
     showFullScreenViewContextMenuItems(menu: any): void;
     getTabPids(tab: MozTabbrowserTab): number[];
     shouldActivateDocShell(browser: XULBrowserElement): boolean;
-    moveTabToSplitView(tab: MozTabbrowserTab, svId?: SplitViewId): void;
     _setupInitialBrowserAndTab(): void;
     updateTitlebar(): void;
   }
@@ -62,6 +57,7 @@ export const methods = {
    * prompt come back in `tabsWithBeforeUnloadPrompt`, and the selected tab
    * waits to be last. Not ported: the Glean permitUnload timer.
    */
+  // upstream: _startRemoveTabs@9b7f77219f FIREFOX_143_0_1_RELEASE
   _startRemoveTabs(
     tabs: MozTabbrowserTab[],
     {
@@ -160,6 +156,7 @@ export const methods = {
   },
 
   /** Run beforeunload for `tabs` without closing them; true when the user cancelled. */
+  // upstream: runBeforeUnloadForTabs@89960729f2 FIREFOX_143_0_1_RELEASE
   async runBeforeUnloadForTabs(tabs: MozTabbrowserTab[]): Promise<boolean> {
     try {
       const { beforeUnloadComplete, tabsWithBeforeUnloadPrompt } = this._startRemoveTabs(tabs, {
@@ -187,6 +184,7 @@ export const methods = {
   },
 
   /** Discard `tabs` (after beforeunload), selecting something else first if need be. Not ported: the Glean record. */
+  // upstream: explicitUnloadTabs@b01bedd182 FIREFOX_143_0_1_RELEASE
   async explicitUnloadTabs(tabs: MozTabbrowserTab[]): Promise<void> {
     const win = this.window as any;
     const unloadBlocked = await this.runBeforeUnloadForTabs(tabs);
@@ -224,6 +222,7 @@ export const methods = {
    * Move a tab in from another window: a new tab here takes over its
    * browser (same process), the old one closes over there.
    */
+  // upstream: adoptTab@3d9fb5b0fe FIREFOX_143_0_1_RELEASE
   adoptTab(aTab: MozTabbrowserTab, { elementIndex, tabIndex, selectTab = false }: any = {}): any {
     // Swap the dropped tab with a new one we create and then close
     // it in the other window (making it seem to have moved between
@@ -311,14 +310,7 @@ export const methods = {
 
   /** Create a new tab group that wraps all tabs in the given split view. */
   moveSplitViewToNewGroup(splitView: any, options: any = {}): any {
-    if (!splitView) return null;
-    const svId: SplitViewId | undefined = splitView.splitViewId ?? splitView.id;
-    const svData = svId ? appState.value.splitViews[svId] : null;
-
-    const tabs: any[] = svData
-      ? svData.tabs.map((id: any) => DOMRegistry.getTab(id)).filter(Boolean)
-      : (Array.isArray(splitView.tabs) ? Array.from(splitView.tabs) : []);
-
+    const tabs: any[] = splitView?.tabs ? Array.from(splitView.tabs) : [];
     if (!tabs.length) return null;
     return this.addTabGroup(tabs, { ...options, isUserTriggered: true });
   },
@@ -337,20 +329,8 @@ export const methods = {
 
   /** Move tabs into an existing split view. */
   moveTabsToSplitView(tabs: MozTabbrowserTab[], splitView: any): void {
-    if (!splitView || !tabs?.length) return;
-    const svId: SplitViewId | undefined = splitView.splitViewId ?? splitView.id;
-    if (!svId || !appState.value.splitViews[svId]) return;
     for (const tab of tabs) {
-      if ((tab as any).pinned) continue;
-      const tabId = resolveTabId(tab);
-      if (!tabId) continue;
-      send({ type: "ADD_TAB_TO_SPLIT_VIEW", splitViewId: svId, tabId });
-      try {
-        if (this.isSplitViewWrapper(splitView)) {
-          splitView.appendChild(tab);
-        }
-      } catch (_) { /* */ }
-      this.removeFromMultiSelectedTabs(tab);
+      this.moveTabToSplitView(tab, splitView);
     }
   },
 
@@ -416,6 +396,7 @@ export const methods = {
   // ==========================================================================
 
   /** Close every multi-selected tab (after the "closing N tabs" warning). */
+  // upstream: removeMultiSelectedTabs@68d855f8fc FIREFOX_143_0_1_RELEASE
   removeMultiSelectedTabs({ isUserTriggered, telemetrySource }: any = {}): void {
     const selectedTabs = this.selectedTabs;
     if (!this.warnAboutClosingTabs(selectedTabs.length, this.closingTabsEnum.MULTI_SELECTED)) {

@@ -30,7 +30,6 @@
 interface MozTabbrowserTab extends XULElement {
   // ── Core identity ─────────────────────────────────────────────────────────
   /** Internal UUID assigned by TabbrowserCompat. */
-  _tabId?: string;
   /** Tab to select when this one closes (browser.tabs.selectOwnerOnClose). */
   owner?: MozTabbrowserTab | null;
   /** Zero-based position in the tab strip (including hidden tabs). */
@@ -272,7 +271,6 @@ declare const UrlbarProviderOpenTabs: any;
  * XULFrameElement, so only what tabbrowser.js bolts on is listed here.
  */
 interface XULBrowserElement {
-  _tabId?: string;
   permanentKey?: object;
   mIconURL?: string;
   isDistinctProductPageVisit?: boolean;

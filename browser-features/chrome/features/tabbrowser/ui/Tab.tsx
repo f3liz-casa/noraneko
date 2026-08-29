@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 import { h } from "#libs/preact-xul/index.ts";
-import { useEffect, useRef } from "preact/hooks";
 import { computed } from "@preact/signals";
-import { appState, send } from "../state/store.ts";
-import { DOMRegistry } from "../gecko-compat/DOMRegistry.ts";
+import { appState, tabById } from "../state/store.ts";
 import type { TabId } from "../types/TabState.ts";
 
 interface TabProps {
@@ -12,36 +10,25 @@ interface TabProps {
 }
 
 /**
- * Tab Component - Signal-Driven UI for maximum performance.
- * Binds to specific pieces of state to minimize re-renders.
+ * A tab as the mirror reports it. Reads the snapshot; acts through
+ * gBrowser, which is where the tab actually lives.
  */
 export function Tab({ tabId }: TabProps) {
-  const tabRef = useRef<HTMLElement>(null);
-
-  // Bindings
   const tab = computed(() => appState.value.tabs[tabId]);
   const isSelected = computed(() => tab.value?.isSelected);
   const isPinned = computed(() => tab.value?.isPinned);
   const isBusy = computed(() => tab.value?.isBusy);
   const iconUrl = computed(() => tab.value?.iconUrl || "chrome://branding/content/icon32.png");
   const label = computed(() => tab.value?.label || tab.value?.title || "");
-
-  useEffect(() => {
-    if (tabRef.current) {
-      DOMRegistry.registerTab(tabId, tabRef.current as unknown as MozTabbrowserTab);
-      (tabRef.current as any)._tabId = tabId;
-    }
-    return () => DOMRegistry.unregisterTab(tabId);
-  }, [tabId]);
+  const gBrowser = () => (globalThis as any).gBrowser;
 
   return (
     <xul:tab
-      ref={tabRef}
       class="tabbrowser-tab"
       selected={isSelected.value ? "true" : undefined}
       pinned={isPinned.value ? "true" : undefined}
       busy={isBusy.value ? "true" : undefined}
-      onClick={() => send({ type: "SELECT_TAB", tabId })}
+      onClick={() => { const el = tabById(tabId); if (el) gBrowser().selectedTab = el; }}
     >
       <xul:stack class="tab-stack" flex="1">
         <xul:hbox class="tab-background">
@@ -64,7 +51,8 @@ export function Tab({ tabId }: TabProps) {
             role="button"
             onClick={(e: MouseEvent) => {
               e.stopPropagation();
-              send({ type: "REMOVE_TAB", tabId });
+              const el = tabById(tabId);
+              if (el) gBrowser().removeTab(el);
             }}
           />
         </xul:hbox>
