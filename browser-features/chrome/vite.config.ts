@@ -57,6 +57,10 @@ export default defineConfig({
 
   resolve: {
     preserveSymlinks: true,
+    // libs/preact-xul has its own node_modules/preact (a deno symlink to the
+    // same files). With preserveSymlinks that counts as a second copy, and
+    // the options.vnode hook then lands on a preact nobody renders with.
+    dedupe: ["preact"],
     alias: [
       {
         find: "#bridge-loader-features",
