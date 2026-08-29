@@ -204,6 +204,7 @@ export const methods = {
         skipAnimation: true,
         tabIndex: options.tabIndex,
         adoptedTab: tab,
+        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
       });
 
       if (options.selectTab) {

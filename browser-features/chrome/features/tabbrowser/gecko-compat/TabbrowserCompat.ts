@@ -273,6 +273,9 @@ export class TabbrowserCompat {
       // Create actual browser element for the tab.
       const res = (this as any)._createBrowserForTab ? (this as any)._createBrowserForTab(tabEl, {
         uriString: uri,
+        uri: options.uri,
+        uriIsAboutBlank: options.uriIsAboutBlank,
+        skipLoad: options.skipLoad,
         userContextId: state?.userContextId,
         remoteType: options.remoteType,
       }) : { browser: null };

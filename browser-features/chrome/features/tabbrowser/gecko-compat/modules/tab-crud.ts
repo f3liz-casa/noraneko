@@ -70,7 +70,16 @@ export const methods = {
    */
   addTab(uri: nsIURI | string, options: any = {}) {
     const uriStr = typeof uri === "string" ? uri : uri?.spec || String(uri) || "about:blank";
+    // tabbrowser.js: every caller passes a principal (addTrustedTab and
+    // addWebTab supply one). The load below cannot start without it.
+    if (!options.triggeringPrincipal) {
+      throw new Error("Required argument triggeringPrincipal missing within addTab");
+    }
     const id = crypto.randomUUID();
+    // Lazy tabs are created eagerly here (see below), but their URL still
+    // belongs to SessionStore, so the load is skipped as in tabbrowser.js.
+    const skipLoad = options.skipLoad ?? !!options.createLazyBrowser;
+    const { uri: uriObj, uriIsAboutBlank } = this._determineURIToLoad(uriStr, false);
 
     const tabData = TabOps.createTab(id, uriStr, {
       userContextId: options.userContextId ?? 0,
@@ -102,7 +111,13 @@ export const methods = {
     // `createLazyBrowser` tabs are created eagerly. Session restore still
     // gets a tab; it just costs a docshell up front.
     {
-      this._createBrowserDOM(id, { remoteType: options.remoteType, userContextId: options.userContextId });
+      this._createBrowserDOM(id, {
+        remoteType: options.remoteType,
+        userContextId: options.userContextId,
+        uri: uriObj,
+        uriIsAboutBlank,
+        skipLoad,
+      });
 
       // Wire up progress listener for the new tab
       const tabEl = DOMRegistry.getTab(id);
@@ -115,17 +130,68 @@ export const methods = {
 
     const tabEl = DOMRegistry.getTab(id);
     dispatch(tabEl ?? document, "TabOpen", options);
+
+    // tabbrowser.js addTab: the load starts once TabOpen has fired.
+    const browser = DOMRegistry.getBrowser(id) as any;
+    if (browser) {
+      this._kickOffBrowserLoad(browser, {
+        uri: uriObj,
+        uriString: uriStr,
+        usingPreloadedContent: !!(tabEl as any)?._browserParams?.usingPreloadedContent,
+        triggeringPrincipal: options.triggeringPrincipal,
+        originPrincipal: options.originPrincipal,
+        originStoragePrincipal: options.originStoragePrincipal,
+        uriIsAboutBlank,
+        allowInheritPrincipal: options.allowInheritPrincipal,
+        allowThirdPartyFixup: options.allowThirdPartyFixup,
+        fromExternal: options.fromExternal,
+        disableTRR: options.disableTRR,
+        forceAllowDataURI: options.forceAllowDataURI,
+        skipLoad,
+        referrerInfo: options.referrerInfo,
+        charset: options.charset,
+        postData: options.postData,
+        policyContainer: options.policyContainer,
+        globalHistoryOptions: options.globalHistoryOptions,
+        triggeringRemoteType: options.triggeringRemoteType,
+        schemelessInput: options.schemelessInput,
+        hasValidUserGestureActivation:
+          !!options.hasValidUserGestureActivation ||
+          !!options.openWindowInfo?.hasValidUserGestureActivation,
+        textDirectiveUserActivation:
+          !!options.textDirectiveUserActivation ||
+          !!options.openWindowInfo?.textDirectiveUserActivation,
+      });
+    }
+
     if (tabEl && !options.inBackground && !options.bulkOrderedOpen) this.selectedTab = tabEl;
     return tabEl ?? this._tabStub(id);
   },
 
   /** Create a new tab with an implicitly trusted (system) principal. */
   addTrustedTab(uri: nsIURI | string, options: any = {}) {
-    return this.addTab(uri, { ...options, trusted: true });
+    return this.addTab(uri, {
+      ...options,
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+    });
   },
 
-  /** Open a URL in a new tab (alias for `addTab`). */
+  /**
+   * Open a URL in a new tab with a content (null) principal unless the
+   * caller brings its own. tabbrowser.js addWebTab.
+   */
   addWebTab(uri: string, options: any = {}) {
+    if (!options.triggeringPrincipal) {
+      options = {
+        ...options,
+        triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal({
+          userContextId: options.userContextId,
+        }),
+      };
+    }
+    if (options.triggeringPrincipal.isSystemPrincipal) {
+      throw new Error("System principal should never be passed into addWebTab()");
+    }
     return this.addTab(uri, options);
   },
 

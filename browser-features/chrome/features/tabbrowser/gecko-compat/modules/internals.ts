@@ -36,7 +36,7 @@ declare module "../TabbrowserCompat.ts" {
     _loadFlagsToFixupFlags(browser: XULBrowserElement, loadFlags: number): number;
     _normalizeLoadURIOptions(browser: XULBrowserElement, loadURIOptions: any): void;
     _handleUriInChrome(browser: XULBrowserElement, uri: any): boolean;
-    _kickOffBrowserLoad(browser: XULBrowserElement, uri: string, options?: any): void;
+    _kickOffBrowserLoad(browser: XULBrowserElement, options: any): void;
     _getTriggeringPrincipalFromHistory(browser: XULBrowserElement, uri: any): any;
     _maybeRequestReplyFromRemoteContent(event: KeyboardEvent): boolean;
     _updateTriggerMetadataForLoad(browser: XULBrowserElement, options: any): void;
