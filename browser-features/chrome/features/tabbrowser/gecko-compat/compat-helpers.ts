@@ -5,7 +5,7 @@
  * and the per-section module files.
  */
 
-import { appState, orderedTabs, selectedTab as selectedTabSignal, send } from "../state/store.ts";
+import { appState, send } from "../state/store.ts";
 import type { TabId } from "../types/TabState.ts";
 import { DOMRegistry } from "./DOMRegistry.ts";
 
@@ -92,22 +92,4 @@ export function dispatch(target: EventTarget | null, name: string, detail?: any)
   try {
     target.dispatchEvent(new CustomEvent(name, { bubbles: true, detail }));
   } catch (_) { /* swallow */ }
-}
-
-// ---------------------------------------------------------------------------
-// advanceSelectedTab — move tab selection forward/backward by `delta`,
-//   optionally wrapping around the ends.  Used by tabContainer and
-//   keyboard-navigation fallbacks.
-// ---------------------------------------------------------------------------
-export function advanceSelectedTab(delta: number, wrap = false): void {
-  const tabs = orderedTabs.value;
-  const sel = selectedTabSignal.value;
-  if (!sel || !tabs.length) return;
-  const idx = tabs.findIndex(t => t.id === sel.id);
-  if (idx === -1) return;
-  let next = idx + delta;
-  if (wrap) next = ((next % tabs.length) + tabs.length) % tabs.length;
-  else if (next < 0 || next >= tabs.length) return;
-  const el = DOMRegistry.getTab(tabs[next].id);
-  if (el) (globalThis as any).gBrowser.selectedTab = el;
 }

@@ -150,6 +150,32 @@ export class TabbrowserCompat {
   _printPreviewBrowsers = new Set<any>();
   // upstream: _switcher@f0d2ebed35 FIREFOX_143_0_1_RELEASE
   _switcher: any = null;
+  _selectedTab: any = null;
+  _selectedBrowser: any = null;
+  /**
+   * This defines a proxy which allows us to access browsers by
+   * index without actually creating a full array of browsers.
+   */
+  browsers: any = new Proxy([] as any, {
+    has: (_target: any, name: any) => {
+      if (typeof name == "string" && Number.isInteger(parseInt(name))) {
+        return name in this.tabs;
+      }
+      return false;
+    },
+    get: (target: any, name: any) => {
+      if (name == "length") {
+        return this.tabs.length;
+      }
+      if (typeof name == "string" && Number.isInteger(parseInt(name))) {
+        if (!(name in this.tabs)) {
+          return undefined;
+        }
+        return (this.tabs as any)[name].linkedBrowser;
+      }
+      return target[name];
+    },
+  });
   // upstream: _soundPlayingAttrRemovalTimer@d71e08ee39 FIREFOX_143_0_1_RELEASE
   _soundPlayingAttrRemovalTimer = 0;
   // upstream: _hoverTabTimer@f3225a41b2 FIREFOX_143_0_1_RELEASE
@@ -293,7 +319,11 @@ export class TabbrowserCompat {
         DOMRegistry.registerBrowser(id, browser);
         this._tabForBrowser.set(browser, tabEl);
       }
-      if (tabEl.selected) send({ type: "SELECT_TAB", tabId: id });
+      if (tabEl.selected) {
+        this._selectedTab = tabEl;
+        this._selectedBrowser = browser;
+        send({ type: "SELECT_TAB", tabId: id });
+      }
     }
     if (tabEls.length) {
       console.debug(`[noraneko/tabbrowser] adopted ${tabEls.length} existing tab(s)`);

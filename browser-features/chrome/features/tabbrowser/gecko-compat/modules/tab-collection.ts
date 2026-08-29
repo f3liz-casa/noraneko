@@ -4,18 +4,16 @@
 
 import { produce } from "immer";
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState, selectedTab as selectedTabSignal, orderedTabs } from "../../state/store.ts";
+import { appState } from "../../state/store.ts";
 import * as GroupOps from "../../ops/group-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
 import { pipe, A, O } from "@mobily/ts-belt";
-import type { TabData, TabId, SplitViewId } from "../../types/TabState.ts";
-import { resolveTabId, dispatch, advanceSelectedTab } from "../compat-helpers.ts";
+import type { SplitViewId } from "../../types/TabState.ts";
+import { resolveTabId, dispatch } from "../compat-helpers.ts";
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
-    _isInCollapsedGroup(tabId: TabId): boolean;
-    _fallbackContainer(): any;
     readonly docShell: any;
     readonly webNavigation: any;
     readonly webProgress: any;
@@ -52,7 +50,6 @@ declare module "../TabbrowserCompat.ts" {
     selectedTab: any;
     readonly selectedBrowser: XULBrowserElement | null;
     readonly selectedBrowsers: XULBrowserElement[];
-    _queryTabs(pred: (t: TabData) => boolean): MozTabbrowserTab[];
     readonly activeSplitView: any;
     readonly splitViewBrowsers: XULBrowserElement[];
     addTabSplitView(tab: MozTabbrowserTab, otherTab: any): void;
@@ -228,96 +225,62 @@ export const methods = {
   gotoIndex(index: number): void { this._selNav()?.gotoIndex(index); },
 
   // ==========================================================================
-  // Tab Collection Accessors (deduplicated via _queryTabs)
-  // tabbrowser.js L974~L1053
+  // Tab Collection Accessors — the tab strip (tabs.js) keeps these lists
+  // tabbrowser.js L381~L437
   // ==========================================================================
 
-  /** Tab elements (in tab-order) whose state passes `pred`; tabs without a DOM node are skipped. */
-  _queryTabs(pred: (t: TabData) => boolean): MozTabbrowserTab[] {
-    return pipe(
-      orderedTabs.value,
-      A.filter(pred),
-      A.filterMap(t => O.fromNullable(DOMRegistry.getTab(t.id))),
-    ) as MozTabbrowserTab[];
-  },
-
-  /** All tab elements in the current window, in tab-order. */
-  // upstream: get tabs@9d22602253 FIREFOX_143_0_1_RELEASE
-  get tabs() {
-    return this._queryTabs(() => true);
-  },
-
   /**
-   * All tab elements currently visible in the tab strip.
-   *
-   * Excludes hidden tabs, tabs inside collapsed groups, and the Firefox View tab.
+   * Returns all tabs in the current window, including hidden tabs and tabs
+   * in collapsed groups, but excluding closing tabs and the Firefox View tab.
    */
-  // upstream: get visibleTabs@c61295a7b6 FIREFOX_143_0_1_RELEASE
-  get visibleTabs() {
-    return this._queryTabs(t => {
-      if (t.isHidden || this._isInCollapsedGroup(t.id)) return false;
-      // Exclude Firefox View tab
-      try {
-        const tabEl = DOMRegistry.getTab(t.id);
-        if (tabEl === FirefoxViewHandler?.tab) return false;
-      } catch (_) { /* */ }
-      return true;
-    });
+  get tabs(): MozTabbrowserTab[] {
+    return this.tabContainer.allTabs;
   },
 
-  /** All tab elements that are not currently in the process of closing. */
-  // upstream: get openTabs@6c79aba265 FIREFOX_143_0_1_RELEASE
-  get openTabs() {
-    return this._queryTabs(t => !t.isClosing);
+  get tabGroups(): any[] {
+    return this.tabContainer.allGroups;
   },
 
-  /** All tab elements that are neither hidden nor closing. */
-  // upstream: get nonHiddenTabs@4d915ac9a6 FIREFOX_143_0_1_RELEASE
-  get nonHiddenTabs() {
-    return this._queryTabs(t => !t.isHidden && !t.isClosing);
+  get tabsInCollapsedTabGroups(): MozTabbrowserTab[] {
+    return this.tabGroups
+      .filter((tabGroup: any) => tabGroup.collapsed)
+      .flatMap((tabGroup: any) => tabGroup.tabs)
+      .filter((tab: any) => !tab.hidden && !tab.closing);
   },
 
-  /** The total number of pinned tabs in the current window. */
-  // upstream: get pinnedTabCount@9cd8267f50 FIREFOX_143_0_1_RELEASE
+  /** Tabs that are not closing (hidden ones included). */
+  get openTabs(): MozTabbrowserTab[] {
+    return this.tabContainer.openTabs;
+  },
+
+  /** Tabs that are neither hidden nor closing. */
+  get nonHiddenTabs(): MozTabbrowserTab[] {
+    return this.tabContainer.nonHiddenTabs;
+  },
+
+  /** Tabs shown in the strip: not hidden, not closing, not in a collapsed group. */
+  get visibleTabs(): MozTabbrowserTab[] {
+    return this.tabContainer.visibleTabs;
+  },
+
+  /** Pinned tabs come first, so this is where the first unpinned one sits. */
   get pinnedTabCount(): number {
-    let c = 0;
-    for (const id of appState.value.tabOrder) if (appState.value.tabs[id]?.isPinned) c++;
-    return c;
-  },
-
-  /** All tab group state objects for the current window. */
-  // upstream: get tabGroups@d7e7f7039f FIREFOX_143_0_1_RELEASE
-  get tabGroups() {
-    return Object.values(appState.value.groups);
-  },
-
-  /** All tab elements that belong to a currently collapsed tab group. */
-  // upstream: get tabsInCollapsedTabGroups@91e29f388f FIREFOX_143_0_1_RELEASE
-  get tabsInCollapsedTabGroups() {
-    const s = appState.value;
-    return Object.values(s.groups)
-      .filter(g => g.isCollapsed)
-      .flatMap(g => g.tabs)
-      .map(id => DOMRegistry.getTab(id))
-      .filter((t): t is MozTabbrowserTab => !!t);
-  },
-
-  _isInCollapsedGroup(tabId: TabId): boolean {
-    const s = appState.value;
-    const gid = s.tabs[tabId]?.groupId;
-    return gid ? s.groups[gid]?.isCollapsed ?? false : false;
+    let i;
+    for (i = 0; i < this.tabs.length; i++) {
+      if (!this.tabs[i].pinned) {
+        break;
+      }
+    }
+    return i;
   },
 
   // ==========================================================================
   // Selected Tab
-  // tabbrowser.js L552~L640
+  // tabbrowser.js L451~L457, L552~L640
   // ==========================================================================
 
-  /** The currently active tab element, or `null` when no tab is selected. */
-  // upstream: get selectedTab@f8dbcea455 FIREFOX_143_0_1_RELEASE
-  get selectedTab() {
-    const sel = selectedTabSignal.value;
-    return sel ? DOMRegistry.getTab(sel.id) ?? null : null;
+  get selectedTab(): any {
+    return this._selectedTab;
   },
 
   /**
@@ -340,11 +303,8 @@ export const methods = {
     this.tabbox.selectedTab = el;
   },
 
-  /** The `<browser>` element for the selected tab, or `null`. */
-  // upstream: get selectedBrowser@0338e1fbc8 FIREFOX_143_0_1_RELEASE
-  get selectedBrowser() {
-    const sel = selectedTabSignal.value;
-    return sel ? DOMRegistry.getBrowser(sel.id) ?? null : null;
+  get selectedBrowser(): XULBrowserElement | null {
+    return this._selectedBrowser;
   },
 
   /**
@@ -407,40 +367,13 @@ export const methods = {
   },
 
   // ==========================================================================
-  // Browsers proxy
-  // tabbrowser.js L361~L428
+  // Browser ↔ Tab Lookup   (`browsers` is a class field: its proxy closes over `this`)
+  // tabbrowser.js L912~L914, L5783~L5785, L5803~L5817
   // ==========================================================================
 
-  /**
-   * An array-like proxy of all browser elements, indexed by tab order.
-   *
-   * Supports indexed access (`browsers[0]`) and `.length`. Mutations are not supported.
-   */
-  // upstream: browsers@3c50d4d383 FIREFOX_143_0_1_RELEASE
-  browsers: new Proxy([] as any, {
-    has: (_t: any, name: any) => {
-      if (typeof name === "string" && Number.isInteger(parseInt(name)))
-        return parseInt(name) < appState.value.tabOrder.length;
-      return false;
-    },
-    get: (_t: any, name: any) => {
-      if (name === "length") return appState.value.tabOrder.length;
-      if (typeof name === "string" && Number.isInteger(parseInt(name))) {
-        const id = appState.value.tabOrder[parseInt(name)];
-        return id ? DOMRegistry.getBrowser(id) : undefined;
-      }
-      return ([] as any)[name];
-    },
-  }),
-
-  // ==========================================================================
-  // Browser ↔ Tab Lookup
-  // tabbrowser.js L6174~L6195
-  // ==========================================================================
-
-  /** Return the `<browser>` element owned by `tab`, or `undefined`. */
-  // upstream: getBrowserForTab@8429d83149 FIREFOX_143_0_1_RELEASE
-  getBrowserForTab(tab: MozTabbrowserTab) { const id = resolveTabId(tab); return id ? DOMRegistry.getBrowser(id) : undefined; },
+  getBrowserForTab(tab: MozTabbrowserTab): XULBrowserElement | undefined {
+    return (tab as any).linkedBrowser;
+  },
 
   /**
    * Return the `<tab>` element that owns `browser`, or `null`.
@@ -466,41 +399,17 @@ export const methods = {
    * @param index - Zero-based index into the ordered tab list.
    * @returns The browser element, or `null` if the index is out of range.
    */
-  // upstream: getBrowserAtIndex@92b0290b44 FIREFOX_143_0_1_RELEASE
-  getBrowserAtIndex(index: number) {
-    const id = appState.value.tabOrder[index];
-    return id ? (DOMRegistry.getBrowser(id) ?? null) : null;
+  getBrowserAtIndex(index: number): XULBrowserElement | null {
+    return this.browsers[index] ?? null;
   },
 
   // ==========================================================================
-  // Tab Container (advanceSelectedTab deduplicated)
-  // tabbrowser.js L6461~L7362
+  // Tab Container
   // ==========================================================================
 
-  /**
-   * The `#tabbrowser-tabs` element, augmented with `advanceSelectedTab`.
-   *
-   * Falls back to a minimal stub object when the element is not yet in the DOM.
-   */
-  get tabContainer() {
-    const el = document.getElementById("tabbrowser-tabs") as any;
-    if (el) {
-      if (typeof el.advanceSelectedTab !== "function") {
-        el.advanceSelectedTab = advanceSelectedTab;
-      }
-      return el;
-    }
-    return this._fallbackContainer();
-  },
-
-  _fallbackContainer() {
-    return {
-      addEventListener: (n: string, cb: any, o?: any) => document.addEventListener(n, cb, o),
-      removeEventListener: (n: string, cb: any, o?: any) => document.removeEventListener(n, cb, o),
-      advanceSelectedTab,
-      allTabs: this.tabs,
-      get selectedIndex() { return selectedTabSignal.value?.index ?? -1; },
-    } as any;
+  /** The `#tabbrowser-tabs` element (tabs.js); tabbox.js gives it advanceSelectedTab. */
+  get tabContainer(): any {
+    return (this.window as any).document.getElementById("tabbrowser-tabs");
   },
 
   // ==========================================================================

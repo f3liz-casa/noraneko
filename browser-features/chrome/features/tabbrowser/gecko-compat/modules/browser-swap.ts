@@ -270,8 +270,9 @@ export const swapBrowserMethods = {
       newBrowser.docShellIsActive = !document.hidden;
     }
 
-    // tabbrowser.js sets `_selectedTab`/`_selectedBrowser` here; ours live in
-    // the store, and `selectedTab`/`selectedBrowser` read from it.
+    this._selectedBrowser = newBrowser;
+    this._selectedTab = newTab;
+    // The store still hears about it, until the mirror takes over.
     const newId = resolveTabId(newTab);
     if (newId) send({ type: "SELECT_TAB", tabId: newId });
     this.showTab(newTab);
