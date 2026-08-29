@@ -25,6 +25,7 @@ export const methods = {
    *
    * @returns An empty array when the tab has no linked browser or PIDs are unavailable.
    */
+  // upstream: getTabPids@ac26a85b24 FIREFOX_143_0_1_RELEASE
   getTabPids(tab: MozTabbrowserTab): number[] {
     if (!tab?.linkedBrowser) {
       return [];
@@ -50,6 +51,7 @@ export const methods = {
    *
    * @param includeLabel - When `false`, omits the tab title from the result.
    */
+  // upstream: getTabTooltip@6a9ce9a3fb FIREFOX_143_0_1_RELEASE
   getTabTooltip(tab: MozTabbrowserTab, includeLabel = true): string {
     const labelArray: string[] = [];
     
@@ -132,6 +134,7 @@ export const methods = {
    * full tab tooltip text otherwise. Cancels the tooltip when tab card
    * previews are enabled.
    */
+  // upstream: createTooltip@99e0bdad07 FIREFOX_143_0_1_RELEASE
   createTooltip(event: Event) {
     event.stopPropagation();
     const tooltip = event.target as XULPopupElement;
@@ -191,6 +194,7 @@ export const methods = {
    * @param aCloseTabs  - `closingTabsEnum` value describing the operation type
    * @returns `true` when the user confirmed; `false` when they cancelled
    */
+  // upstream: warnAboutClosingTabs@7bf1f813eb FIREFOX_143_0_1_RELEASE
   warnAboutClosingTabs(tabsToClose: number, aCloseTabs: number): boolean {
     // Handle duplicate tabs warning
     const shownDupeDialogPref =
@@ -298,6 +302,7 @@ export const methods = {
   /**
    * Returns `true` if `element` is a tabbrowser tab element.
    */
+  // upstream: isTab@352ce2d712 FIREFOX_143_0_1_RELEASE
   isTab(element: any): boolean {
     return element?.localName === "tab" || element?.tagName === "tab" || 
            element?.classList?.contains?.("tabbrowser-tab");
@@ -306,6 +311,7 @@ export const methods = {
   /**
    * Returns `true` if `element` is a tab group container element.
    */
+  // upstream: isTabGroup@b6fe1a555d FIREFOX_143_0_1_RELEASE
   isTabGroup(element: any): boolean {
     return element?.localName === "tab-group" || element?.classList?.contains?.("tab-group");
   },
@@ -313,6 +319,7 @@ export const methods = {
   /**
    * Returns `true` if `element` is a tab group label element.
    */
+  // upstream: isTabGroupLabel@cbf0bdad41 FIREFOX_143_0_1_RELEASE
   isTabGroupLabel(element: any): boolean {
     return element?.localName === "tab-group-label" || 
            element?.classList?.contains?.("tab-group-label");
@@ -321,6 +328,7 @@ export const methods = {
   /**
    * Triggers async l10n translation of the tab context menu (`#tabContextMenu`).
    */
+  // upstream: translateTabContextMenu@179edd9812 FIREFOX_143_0_1_RELEASE
   translateTabContextMenu() {
     // Translate context menu items for tabs
     try {

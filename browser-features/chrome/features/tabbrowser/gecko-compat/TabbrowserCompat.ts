@@ -43,17 +43,23 @@ declare const Ci: any;
 export class TabbrowserCompat {
   _initialized = false;
   _uniquePanelIDCounter = 0;
+  // upstream: mProgressListeners@57984f5405 FIREFOX_143_0_1_RELEASE
   mProgressListeners: any[] = [];
+  // upstream: mTabsProgressListeners@ca7c4c5c4a FIREFOX_143_0_1_RELEASE
   mTabsProgressListeners: any[] = [];
   
   // tabbrowser.js: AsyncTabSwitcher and friends reach the window and the
   // document through these, not through `window`. Firefox 143 (the current
   // runtime) reads `ownerGlobal`; 149 renamed it `documentGlobal`.
+  // upstream: ownerGlobal@ed8ea8d6f7 FIREFOX_143_0_1_RELEASE
   ownerGlobal: Window;
   documentGlobal: Window;
+  // upstream: ownerDocument@fdbc07a646 FIREFOX_143_0_1_RELEASE
   ownerDocument: Document;
   // Tabs whose layers the switcher keeps warm, and browsers in print preview.
+  // upstream: _tabLayerCache@39645a0ef6 FIREFOX_143_0_1_RELEASE
   _tabLayerCache: any[] = [];
+  // upstream: _printPreviewBrowsers@8a83c8e884 FIREFOX_143_0_1_RELEASE
   _printPreviewBrowsers = new Set<any>();
 
   // Original Enums
@@ -189,6 +195,7 @@ export class TabbrowserCompat {
    * Returns the original AsyncTabSwitcher instance initialized with THIS compat class.
    * This ensures the legacy switcher "thinks" it's talking to the old tabbrowser.
    */
+  // upstream: _switcher@f0d2ebed35 FIREFOX_143_0_1_RELEASE
   _switcher: any = null;
 
   // Expose panel container for legacy direct DOM access
@@ -302,6 +309,7 @@ export class TabbrowserCompat {
   // tabs.js getRelatedElement calls this for a selected tab that has no
   // linkedPanel. A tab that already has its browser must not get a second
   // one (and _createBrowserDOM would also mint a second <tab>).
+  // upstream: _insertBrowser@289fa96bb0 FIREFOX_143_0_1_RELEASE
   _insertBrowser(tabOrId: any, options: any = {}) {
     const id = typeof tabOrId === "string" ? tabOrId : tabOrId?._tabId;
     if (!id || DOMRegistry.getBrowser(id)) return;
@@ -325,7 +333,9 @@ export class TabbrowserCompat {
 
   // Minimal compatibility helpers and no-op implementations for legacy callers
   showFullScreenViewContextMenuItems(...args: any[]) { /* no-op compat */ }
+  // upstream: shouldActivateDocShell@3e49d252af FIREFOX_143_0_1_RELEASE
   shouldActivateDocShell(browser?: any) { const b = browser || this.selectedBrowser; return !!(b && (b as any).docShell); }
+  // upstream: updateTitlebar@38aaae9f15 FIREFOX_143_0_1_RELEASE
   updateTitlebar() { try { if ((BrowserSystem as any)?.updateTitlebar) (BrowserSystem as any).updateTitlebar(this.window); } catch (_) { /* swallow */ } }
   createUserContextMenu(menu: any) { // Minimal fallback used by some legacy callers
     try { if ((this as any).createReopenInContainerMenu) return (this as any).createReopenInContainerMenu(menu); } catch (_) {}

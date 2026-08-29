@@ -403,6 +403,7 @@ export const methods = {
   // tabbrowser.js L3368~L3704
   // ==========================================================================
 
+  // upstream: _createTabGroup@4e18b5f86e FIREFOX_143_0_1_RELEASE
   _createTabGroup(options: any): any {
     const { id, color, collapsed, label = "", isAdoptingGroup = false } = options;
     const group = this.window.document.createXULElement?.("tab-group", { is: "tab-group" }) as MozTabbrowserTabGroup | undefined;
@@ -507,6 +508,7 @@ export const methods = {
     return true;
   },
 
+  // upstream: _handleKeyDownEvent@1c5fb13ad8 FIREFOX_143_0_1_RELEASE
   _handleKeyDownEvent(event: KeyboardEvent): void {
     if (!event.isTrusted || event.defaultCancelled || (event as any).defaultPreventedByChrome) {
       return;
@@ -536,6 +538,7 @@ export const methods = {
     }
   },
 
+  // upstream: _handleKeyPressEvent@dc042f15bc FIREFOX_143_0_1_RELEASE
   _handleKeyPressEvent(event: KeyboardEvent): void {
     if (!event.isTrusted || event.defaultCancelled || (event as any).defaultPreventedByChrome) {
       return;
@@ -617,6 +620,7 @@ export const methods = {
    * Observed topics: `contextual-identity-updated`,
    * `process-creation`, `nsPref:changed` (for audio/autoplay prefs).
    */
+  // upstream: observe@be3b0790c8 FIREFOX_143_0_1_RELEASE
   observe(subject: any, topic: string) {
     switch (topic) {
       case "contextual-identity-updated": {
@@ -652,6 +656,7 @@ export const methods = {
   // tabbrowser.js L2047~L2180 — AsyncTabSwitcher calls both.
   // ==========================================================================
 
+  // upstream: _adjustFocusBeforeTabSwitch@2cd465928f FIREFOX_143_0_1_RELEASE
   _adjustFocusBeforeTabSwitch(oldTab: any, newTab: any) {
     if (this._previewMode) return;
     const win = this.window as any;
@@ -691,6 +696,7 @@ export const methods = {
     }
   },
 
+  // upstream: _adjustFocusAfterTabSwitch@d0ad030362 FIREFOX_143_0_1_RELEASE
   _adjustFocusAfterTabSwitch(newTab: any) {
     const win = this.window as any;
     const gURLBar = win.gURLBar;

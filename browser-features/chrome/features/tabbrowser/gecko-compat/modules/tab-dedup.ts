@@ -20,6 +20,7 @@ export const methods = {
    * Returns all unpinned tabs that share the same URL as `tab`, excluding
    * `tab` itself.
    */
+  // upstream: getDuplicateTabsToClose@580fcd95b0 FIREFOX_143_0_1_RELEASE
   getDuplicateTabsToClose(tab: MozTabbrowserTab): any[] {
     const uri = (tab as any).linkedBrowser?.currentURI;
     if (!uri) return [];
@@ -38,6 +39,7 @@ export const methods = {
    * Returns all unpinned duplicate tabs across the window, keeping only the
    * first-encountered tab for each URL.
    */
+  // upstream: getAllDuplicateTabsToClose@05181e3111 FIREFOX_143_0_1_RELEASE
   getAllDuplicateTabsToClose(): any[] {
     const seenURIs = new Set();
     const duplicates: any[] = [];
@@ -62,6 +64,7 @@ export const methods = {
   /**
    * Closes all unpinned duplicate tabs that share the same URL as `tab`.
    */
+  // upstream: removeDuplicateTabs@953d005894 FIREFOX_143_0_1_RELEASE
   removeDuplicateTabs(tab: MozTabbrowserTab, options?: any) {
     const duplicates = this.getDuplicateTabsToClose(tab);
     if (duplicates.length) {
@@ -72,6 +75,7 @@ export const methods = {
   /**
    * Closes all duplicate tabs across the window, keeping one tab per URL.
    */
+  // upstream: removeAllDuplicateTabs@4f64465810 FIREFOX_143_0_1_RELEASE
   removeAllDuplicateTabs() {
     const duplicates = this.getAllDuplicateTabsToClose();
     if (duplicates.length) {
@@ -79,6 +83,7 @@ export const methods = {
     }
   },
 
+  // upstream: _removeDuplicateTabs@d2721a7c80 FIREFOX_143_0_1_RELEASE
   _removeDuplicateTabs(anchorElement: any, tabs: MozTabbrowserTab[], aCloseTabs: number, options?: any) {
     if (!this.warnAboutClosingTabs(tabs.length, aCloseTabs)) {
       return;

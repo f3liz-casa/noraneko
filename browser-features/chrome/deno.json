@@ -27,7 +27,8 @@
     "@lib": "./lib/mod.ts",
     "@lib/std": "./lib/std/mod.ts",
     "@lib/core": "./lib/core/mod.ts",
-    "@lib/ui": "./lib/ui/mod.ts"
+    "@lib/ui": "./lib/ui/mod.ts",
+    "oxc-parser": "npm:oxc-parser@^0.147.0"
   },
   "tasks": {
     "build": "deno run -A npm:vite build",

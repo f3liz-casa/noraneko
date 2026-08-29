@@ -68,6 +68,7 @@ export const methods = {
    * @param options.remoteType           - Override remote process type
    * @returns The newly created tab element (or a stub when the element is not yet in DOM)
    */
+  // upstream: addTab@86fe2b6943 FIREFOX_143_0_1_RELEASE
   addTab(uri: nsIURI | string, options: any = {}) {
     const uriStr = typeof uri === "string" ? uri : uri?.spec || String(uri) || "about:blank";
     // tabbrowser.js: every caller passes a principal (addTrustedTab and
@@ -170,6 +171,7 @@ export const methods = {
   },
 
   /** Create a new tab with an implicitly trusted (system) principal. */
+  // upstream: addTrustedTab@ef19ebff7e FIREFOX_143_0_1_RELEASE
   addTrustedTab(uri: nsIURI | string, options: any = {}) {
     return this.addTab(uri, {
       ...options,
@@ -181,6 +183,7 @@ export const methods = {
    * Open a URL in a new tab with a content (null) principal unless the
    * caller brings its own. tabbrowser.js addWebTab.
    */
+  // upstream: addWebTab@b50961aae1 FIREFOX_143_0_1_RELEASE
   addWebTab(uri: string, options: any = {}) {
     if (!options.triggeringPrincipal) {
       options = {
@@ -206,6 +209,7 @@ export const methods = {
    * @param options.newIndex   - Explicit insertion index for the first new tab.
    * @returns Array of newly created (or reused) tab elements.
    */
+  // upstream: loadTabs@fe9f7fb2bc FIREFOX_143_0_1_RELEASE
   loadTabs(uris: string[], options: any = {}) {
     if (!uris.length) return [];
 
@@ -265,6 +269,7 @@ export const methods = {
   // tabbrowser.js L5087~L5800
   // ==========================================================================
 
+  // upstream: _beginRemoveTab@5f9c8e90e6 FIREFOX_143_0_1_RELEASE
   _beginRemoveTab(tab: MozTabbrowserTab, options: any = {}): boolean {
     const id = resolveTabId(tab);
     if (!id || appState.value.tabs[id]?.isClosing) return false;
@@ -277,6 +282,7 @@ export const methods = {
     return true;
   },
 
+  // upstream: _endRemoveTab@f5f76942e9 FIREFOX_143_0_1_RELEASE
   _endRemoveTab(tab: MozTabbrowserTab) {
     const id = resolveTabId(tab);
     if (!id) return;
@@ -315,6 +321,7 @@ export const methods = {
    * @param options.skipPermitUnload - Skip `beforeunload` check
    * @returns `true` when removal was initiated, `false` when the tab was not found
    */
+  // upstream: removeTab@6ebddeaff4 FIREFOX_143_0_1_RELEASE
   removeTab(tab: MozTabbrowserTab, options: any = {}) {
     const {
       animate,
@@ -362,6 +369,7 @@ export const methods = {
   },
 
   /** Close the currently active tab. */
+  // upstream: removeCurrentTab@71120d00bf FIREFOX_143_0_1_RELEASE
   removeCurrentTab(options: any = {}) {
     this.removeTab(this.selectedTab, options);
   },
@@ -373,6 +381,7 @@ export const methods = {
    * `beforeunload` prompts individually.
    * Multi-selection clearing is locked during the loop and performed once at the end.
    */
+  // upstream: removeTabs@c87819e103 FIREFOX_143_0_1_RELEASE
   removeTabs(tabs: MozTabbrowserTab[], options: any = {}) {
     this._clearMultiSelectionLocked = true;
     try {
@@ -418,6 +427,7 @@ export const methods = {
    *
    * @param keepTab - The tab that should remain open.
    */
+  // upstream: removeAllTabsBut@5f46de5ec6 FIREFOX_143_0_1_RELEASE
   removeAllTabsBut(keepTab: any, options: any = {}) {
     const keepId = resolveTabId(keepTab);
     const skipPinnedOrSelected = options.skipPinnedOrSelectedTabs ?? true;
@@ -456,6 +466,7 @@ export const methods = {
    *
    * @param urisToClose - List of URL strings to match against open tabs.
    */
+  // upstream: closeTabsByURI@9fe20b8380 FIREFOX_143_0_1_RELEASE
   async closeTabsByURI(urisToClose: string[]) {
     const toRemove = TabOps.getTabsByURI(appState.value, urisToClose);
     for (const id of toRemove) {
@@ -473,6 +484,7 @@ export const methods = {
    * Pin a tab to the left side of the tab strip.
    * Fires a `TabPin` event and updates the `pinned` attribute.
    */
+  // upstream: pinTab@84399e5062 FIREFOX_143_0_1_RELEASE
   pinTab(tab: MozTabbrowserTab) {
     if ((tab as any).pinned) return;
     this.showTab?.(tab);
@@ -486,6 +498,7 @@ export const methods = {
    * Unpin a previously pinned tab.
    * Fires a `TabUnpin` event and removes the `pinned` attribute.
    */
+  // upstream: unpinTab@487c881bd5 FIREFOX_143_0_1_RELEASE
   unpinTab(tab: MozTabbrowserTab) {
     const id = resolveTabId(tab);
     if (id) send({ type: "UNPIN_TAB", tabId: id });
@@ -512,6 +525,7 @@ export const methods = {
    * Make a previously hidden tab visible in the tab strip.
    * Selected/sharing tabs cannot be hidden, so showing is always safe.
    */
+  // upstream: showTab@65a3fea873 FIREFOX_143_0_1_RELEASE
   showTab(tab: MozTabbrowserTab) {
     const id = resolveTabId(tab);
     if (id) send({ type: "SET_VISIBILITY", tabId: id, isVisible: true });
@@ -521,6 +535,7 @@ export const methods = {
    * Hide a tab from the tab strip without closing it.
    * Tabs that are selected or actively sharing (camera/mic/screen) are ignored.
    */
+  // upstream: hideTab@e42b64e8fc FIREFOX_143_0_1_RELEASE
   hideTab(tab: MozTabbrowserTab) {
     const id = resolveTabId(tab);
     if (id) send({ type: "SET_VISIBILITY", tabId: id, isVisible: false });
@@ -533,6 +548,7 @@ export const methods = {
    * @param options.inBackground - Keep the duplicate deselected
    * @returns Newly created tab element or stub
    */
+  // upstream: duplicateTab@f037fad4e7 FIREFOX_143_0_1_RELEASE
   duplicateTab(tab: MozTabbrowserTab, options: any = {}) {
     const id = resolveTabId(tab);
     if (!id) return null;
@@ -574,6 +590,7 @@ export const methods = {
    * @param tab     - Tab to move
    * @param options - Number (legacy) or `{ tabIndex }` / `{ elementIndex }`
    */
+  // upstream: moveTabTo@21712a66f3 FIREFOX_143_0_1_RELEASE
   moveTabTo(tab: MozTabbrowserTab, options: any = {}) {
     const id = resolveTabId(tab);
     if (!id) return;
@@ -585,6 +602,7 @@ export const methods = {
   },
 
   /** Move a tab to appear immediately before `target` in the tab strip. */
+  // upstream: moveTabBefore@a7ae698efc FIREFOX_143_0_1_RELEASE
   moveTabBefore(tab: MozTabbrowserTab, target: MozTabbrowserTab, _metricsContext?: any) {
     const id = resolveTabId(tab);
     const tid = resolveTabId(target);
@@ -595,6 +613,7 @@ export const methods = {
   },
 
   /** Move a tab to appear immediately after `target` in the tab strip. */
+  // upstream: moveTabAfter@e962e188bf FIREFOX_143_0_1_RELEASE
   moveTabAfter(tab: MozTabbrowserTab, target: MozTabbrowserTab, _metricsContext?: any) {
     const id = resolveTabId(tab);
     const tid = resolveTabId(target);
@@ -605,6 +624,7 @@ export const methods = {
   },
 
   /** Move a tab to the first available position (after any pinned tabs). */
+  // upstream: moveTabToStart@4d90629390 FIREFOX_143_0_1_RELEASE
   moveTabToStart(tab: MozTabbrowserTab) {
     const id = resolveTabId(tab);
     if (!id) return;
@@ -615,6 +635,7 @@ export const methods = {
     if (el) dispatch(el, "TabMove");
   },
   /** Move a tab to the very last position in the strip. */
+  // upstream: moveTabToEnd@22d4572adb FIREFOX_143_0_1_RELEASE
   moveTabToEnd(tab: MozTabbrowserTab) {
     const id = resolveTabId(tab);
     if (!id) return;

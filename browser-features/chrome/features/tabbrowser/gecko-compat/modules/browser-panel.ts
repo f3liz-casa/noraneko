@@ -23,6 +23,7 @@ declare module "../TabbrowserCompat.ts" {
 }
 
 export const methods = {
+  // upstream: _generateUniquePanelID@5a58d3aab5 FIREFOX_143_0_1_RELEASE
   _generateUniquePanelID(): string {
     if (!this._uniquePanelIDCounter) {
       this._uniquePanelIDCounter = 0;
@@ -39,6 +40,7 @@ export const methods = {
     if (target && panel) target.insertAdjacentElement("afterend", panel);
   },
 
+  // upstream: _setupInitialBrowserAndTab@d31fbac6db FIREFOX_143_0_1_RELEASE
   _setupInitialBrowserAndTab() {
     // See browser.js for the meaning of window.arguments
     let userContextId = (this.window as any).arguments?.[5];
@@ -169,6 +171,7 @@ export const methods = {
   /**
    * Returns the `<tabpanel>` element that contains `browser`.
    */
+  // upstream: getPanel@10d14ee553 FIREFOX_143_0_1_RELEASE
   getPanel(browser: XULBrowserElement): any {
     return this.getBrowserContainer(browser)?.parentNode;
   },
@@ -176,6 +179,7 @@ export const methods = {
   /**
    * Returns the `.browserContainer` `<vbox>` that wraps `browser`'s stack.
    */
+  // upstream: getBrowserContainer@e3461fb2e1 FIREFOX_143_0_1_RELEASE
   getBrowserContainer(browser: XULBrowserElement): any {
     return browser?.parentNode?.parentNode;
   },

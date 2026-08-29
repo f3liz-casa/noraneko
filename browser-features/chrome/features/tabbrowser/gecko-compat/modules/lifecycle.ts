@@ -49,6 +49,7 @@ export const methods = {
    * Wires the initial tab's progress listener, registers XPCOM observers, and
    * attaches all browser and tab-group event listeners. No-op if already initialized.
    */
+  // upstream: init@dae8e417b1 FIREFOX_143_0_1_RELEASE
   init() {
     if (this._initialized) return;
 
@@ -91,6 +92,7 @@ export const methods = {
    * Removes event listeners, unregisters open URIs, destroys per-tab progress
    * listeners, and shuts down the async tab switcher. Safe to call multiple times.
    */
+  // upstream: destroy@2ad058f3b7 FIREFOX_143_0_1_RELEASE
   destroy() {
     try { this.tabContainer?.destroy?.(); } catch (_) { /* */ }
 
@@ -174,6 +176,7 @@ export const methods = {
   // tabbrowser.js L7356~L7362
   // ==========================================================================
 
+  // upstream: _getSwitcher@554aa91a13 FIREFOX_143_0_1_RELEASE
   _getSwitcher() {
     if (!this._switcher) {
       this._switcher = new this.AsyncTabSwitcher(this);
@@ -189,6 +192,7 @@ export const methods = {
    *
    * @param tab - The background tab to warm up.
    */
+  // upstream: warmupTab@8dfb26ffd0 FIREFOX_143_0_1_RELEASE
   warmupTab(tab: MozTabbrowserTab) {
     if (typeof gMultiProcessBrowser !== "undefined" && gMultiProcessBrowser) {
       this._getSwitcher().warmupTab(tab);
@@ -208,6 +212,7 @@ export const methods = {
    *
    * @param listener - Listener conforming to `nsIWebProgressListener`.
    */
+  // upstream: addProgressListener@8631b2fd74 FIREFOX_143_0_1_RELEASE
   addProgressListener(listener: nsIWebProgressListener): void {
     this.mProgressListeners = uniq([...this.mProgressListeners, listener]);
   },
@@ -217,6 +222,7 @@ export const methods = {
    *
    * @param listener - The listener to remove.
    */
+  // upstream: removeProgressListener@85b323f12a FIREFOX_143_0_1_RELEASE
   removeProgressListener(listener: nsIWebProgressListener): void {
     const i = this.mProgressListeners.indexOf(listener);
     if (i > -1) this.mProgressListeners.splice(i, 1);
@@ -230,6 +236,7 @@ export const methods = {
    *
    * @param listener - Listener conforming to `nsIWebProgressListener`.
    */
+  // upstream: addTabsProgressListener@c364e37ea9 FIREFOX_143_0_1_RELEASE
   addTabsProgressListener(listener: nsIWebProgressListener): void {
     this.mTabsProgressListeners = uniq([...this.mTabsProgressListeners, listener]);
   },
@@ -239,11 +246,13 @@ export const methods = {
    *
    * @param listener - The listener to remove.
    */
+  // upstream: removeTabsProgressListener@c342b46910 FIREFOX_143_0_1_RELEASE
   removeTabsProgressListener(listener: nsIWebProgressListener): void {
     const i = this.mTabsProgressListeners.indexOf(listener);
     if (i > -1) this.mTabsProgressListeners.splice(i, 1);
   },
 
+  // upstream: _callProgressListeners@a8d76a36e4 FIREFOX_143_0_1_RELEASE
   _callProgressListeners(
     browser: XULBrowserElement,
     method: string,

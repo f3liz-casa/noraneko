@@ -22,6 +22,7 @@ export const methods = {
    * Opens a new tab on middle-click of a new-tab button, unless the button
    * is disabled.
    */
+  // upstream: handleNewTabMiddleClick@3684d91de0 FIREFOX_143_0_1_RELEASE
   handleNewTabMiddleClick(node: any, event: Event) {
     if (node?.getAttribute?.("disabled") === "true") {
       return;
@@ -38,6 +39,7 @@ export const methods = {
    * Resets the map that tracks opener relationships between tabs, clearing
    * all "last related tab" associations.
    */
+  // upstream: clearRelatedTabs@b59671927f FIREFOX_143_0_1_RELEASE
   clearRelatedTabs() {
     this._lastRelatedTabMap = new WeakMap();
   },
@@ -46,6 +48,7 @@ export const methods = {
    * Fires a `TabRefreshBlocked` event on the tab associated with `browser`
    * when a page refresh has been blocked.
    */
+  // upstream: refreshBlocked@d30b4df956 FIREFOX_143_0_1_RELEASE
   refreshBlocked(actor: any, browser: XULBrowserElement, data: any) {
     // Handle blocked refreshes
     try {
@@ -56,6 +59,7 @@ export const methods = {
     } catch (_) { /* */ }
   },
 
+  // upstream: _hasBeforeUnload@a5da1c67f3 FIREFOX_143_0_1_RELEASE
   _hasBeforeUnload(tab: MozTabbrowserTab): boolean {
     try {
       const browser = (tab as any).linkedBrowser;
@@ -66,6 +70,7 @@ export const methods = {
     }
   },
 
+  // upstream: _getTriggeringPrincipalFromHistory@1eb1276cf5 FIREFOX_143_0_1_RELEASE
   _getTriggeringPrincipalFromHistory(browser: XULBrowserElement): any {
     try {
       const sh = browser?.sessionHistory;
@@ -83,6 +88,7 @@ export const methods = {
    *
    * @returns `false` when the browser already has the correct remote type or on error.
    */
+  // upstream: updateBrowserRemotenessByURL@8d7f7ea78f FIREFOX_143_0_1_RELEASE
   updateBrowserRemotenessByURL(browser: XULBrowserElement, url: string, options: any = {}): boolean {
     try {
       const currentRemoteType = browser.remoteType;

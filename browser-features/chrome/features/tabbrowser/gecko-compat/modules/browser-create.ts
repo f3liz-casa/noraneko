@@ -20,6 +20,7 @@ declare module "../TabbrowserCompat.ts" {
 }
 
 export const methods = {
+  // upstream: _setFindbarData@23f26f7c74 FIREFOX_143_0_1_RELEASE
   _setFindbarData() {
     // Ensure content processes know the find bar keyboard shortcut
     try {
@@ -44,6 +45,7 @@ export const methods = {
     } catch (_) { /* */ }
   },
 
+  // upstream: _createTab@bf467c8d1e FIREFOX_143_0_1_RELEASE
   _createTab({
     uriString,
     userContextId,
@@ -108,6 +110,7 @@ export const methods = {
     return t;
   },
 
+  // upstream: _createBrowserForTab@4718fa9c30 FIREFOX_143_0_1_RELEASE
   _createBrowserForTab(
     tab: MozTabbrowserTab,
     {
@@ -203,6 +206,7 @@ export const methods = {
     return { browser: b, usingPreloadedContent };
   },
 
+  // upstream: _kickOffBrowserLoad@919c0f9d08 FIREFOX_154_0_RELEASE
   _kickOffBrowserLoad(
     browser: XULBrowserElement,
     {
@@ -309,6 +313,7 @@ export const methods = {
     }
   },
 
+  // upstream: _fireTabOpen@8075e2ff4c FIREFOX_143_0_1_RELEASE
   _fireTabOpen(tab: MozTabbrowserTab, eventDetail: any = {}) {
     const evt = new CustomEvent("TabOpen", {
       bubbles: true,
@@ -322,6 +327,7 @@ export const methods = {
    *
    * Does not insert the element into the document — callers are responsible for placement.
    */
+  // upstream: createBrowser@80031f59d1 FIREFOX_143_0_1_RELEASE
   createBrowser({
     isPreloadBrowser,
     name,

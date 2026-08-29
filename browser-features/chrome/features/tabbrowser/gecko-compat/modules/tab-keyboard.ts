@@ -21,6 +21,7 @@ export const methods = {
    * Toggles caret browsing mode, showing a confirmation prompt the first time
    * if the warning preference has not been permanently dismissed.
    */
+  // upstream: toggleCaretBrowsing@568244e5d2 FIREFOX_143_0_1_RELEASE
   toggleCaretBrowsing() {
     const kPrefName = "accessibility.browsewithcaret_shortcut.enabled";
     const kWarningPref = "accessibility.warn_on_browsewithcaret";
@@ -51,6 +52,7 @@ export const methods = {
     } catch (_) { /* */ }
   },
 
+  // upstream: _maybeRequestReplyFromRemoteContent@dcbc1a53a8 FIREFOX_143_0_1_RELEASE
   _maybeRequestReplyFromRemoteContent(event: KeyboardEvent): boolean {
     // If the selected browser is remote, ask it to handle the caret browsing toggle
     const browser = this.selectedBrowser as any;
@@ -65,6 +67,7 @@ export const methods = {
   /**
    * Moves the currently selected tab one position forward in the tab order.
    */
+  // upstream: moveTabForward@d083ccd217 FIREFOX_143_0_1_RELEASE
   moveTabForward() {
     const tab = this.selectedTab;
     if (!tab) return;
@@ -80,6 +83,7 @@ export const methods = {
   /**
    * Moves the currently selected tab one position backward in the tab order.
    */
+  // upstream: moveTabBackward@8b778cc537 FIREFOX_143_0_1_RELEASE
   moveTabBackward() {
     const tab = this.selectedTab;
     if (!tab) return;

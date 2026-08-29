@@ -25,6 +25,7 @@ export const methods = {
    *
    * Multiple concurrent calls are coalesced into a single creation promise.
    */
+  // upstream: getFindBar@e5801fe33e FIREFOX_143_0_1_RELEASE
   async getFindBar(tab?: MozTabbrowserTab): Promise<any> {
     tab ??= this.selectedTab;
     if (!tab) return null;
@@ -38,6 +39,7 @@ export const methods = {
     return (tab as any)._pendingFindBar;
   },
 
+  // upstream: _createFindBar@bcd548d915 FIREFOX_143_0_1_RELEASE
   async _createFindBar(tab: MozTabbrowserTab): Promise<any> {
     try {
       const findBar = this._xulEl("findbar") as any;
@@ -71,6 +73,7 @@ export const methods = {
    * Return the `<findbar>` element already attached to `tab`'s panel, or
    * `null` if it has not been created yet (non-blocking).
    */
+  // upstream: getCachedFindBar@47372badd2 FIREFOX_143_0_1_RELEASE
   getCachedFindBar(tab: MozTabbrowserTab): any {
     const panel = tab?.linkedBrowser ? this.getPanel(tab.linkedBrowser) : null;
     return panel?.querySelector?.("findbar") ?? null;
@@ -79,6 +82,7 @@ export const methods = {
   /**
    * Returns `true` if the find bar for `tab` has already been created.
    */
+  // upstream: isFindBarInitialized@81df3d7322 FIREFOX_143_0_1_RELEASE
   isFindBarInitialized(tab: MozTabbrowserTab): boolean {
     return !!this.getCachedFindBar(tab);
   },

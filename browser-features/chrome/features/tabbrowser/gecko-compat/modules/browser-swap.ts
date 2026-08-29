@@ -31,6 +31,7 @@ declare module "../TabbrowserCompat.ts" {
 }
 
 export const swapBrowserMethods = {
+  // upstream: swapBrowsers@694109d5b3 FIREFOX_143_0_1_RELEASE
   swapBrowsers(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab) {
     const id1 = resolveTabId(ourTab);
     const id2 = resolveTabId(otherTab);
@@ -49,6 +50,7 @@ export const swapBrowserMethods = {
     this._swapBrowserDocShells(ourTab, otherBrowser, stateFlags);
   },
 
+  // upstream: swapBrowsersAndCloseOther@f28a7412fb FIREFOX_143_0_1_RELEASE
   swapBrowsersAndCloseOther(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab) {
     const id1 = resolveTabId(ourTab);
     const id2 = resolveTabId(otherTab);
@@ -169,6 +171,7 @@ export const swapBrowserMethods = {
     }
   },
 
+  // upstream: _swapBrowserDocShells@853247ab91 FIREFOX_143_0_1_RELEASE
   _swapBrowserDocShells(ourTab: MozTabbrowserTab, otherBrowser: XULBrowserElement, stateFlags?: number) {
     const ourBrowser = this.getBrowserForTab(ourTab) as any;
     if (!ourBrowser) return;
@@ -236,6 +239,7 @@ export const swapBrowserMethods = {
    *
    * Not ported: Glean tab-switch timing.
    */
+  // upstream: updateCurrentBrowser@c801423591 FIREFOX_143_0_1_RELEASE
   updateCurrentBrowser(forceUpdate?: boolean) {
     const win = this.window as any;
     const newTab: any = this.tabContainer.selectedItem;
@@ -403,6 +407,7 @@ export const swapBrowserMethods = {
     }
   },
 
+  // upstream: _swapRegisteredOpenURIs@287a5bf51d FIREFOX_143_0_1_RELEASE
   _swapRegisteredOpenURIs(ourBrowser: XULBrowserElement, otherBrowser: XULBrowserElement) {
     const tmp = (ourBrowser as any).registeredOpenURI;
     delete (ourBrowser as any).registeredOpenURI;

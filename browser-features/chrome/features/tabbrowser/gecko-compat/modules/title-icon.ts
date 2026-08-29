@@ -58,6 +58,7 @@ export const methods = {
    * The title pipeline: contentTitle → URL fallback → hostname fallback.
    * Returns `true` if the label was actually changed.
    */
+  // upstream: setTabTitle@0022ebd446 FIREFOX_143_0_1_RELEASE
   setTabTitle(tab: MozTabbrowserTab): boolean {
     const id = resolveTabId(tab);
     if (!id) return false;
@@ -115,6 +116,7 @@ export const methods = {
     return this._setTabLabel(tab, title, { isContentTitle, isURL });
   },
 
+  // upstream: _setTabLabel@6cbb625fd7 FIREFOX_143_0_1_RELEASE
   _setTabLabel(tab: MozTabbrowserTab, label: string, options: any = {}): boolean {
     if (!label || label.includes("about:reader?")) return false;
 
@@ -170,6 +172,7 @@ export const methods = {
   },
 
   /** Set the favicon URL for a tab. Pass `""` to clear it. */
+  // upstream: setIcon@eb813beeca FIREFOX_143_0_1_RELEASE
   setIcon(tab: MozTabbrowserTab, iconUrl: any = "", origUrl: any = iconUrl, clearFirst = false) {
     const id = resolveTabId(tab);
     if (!id) return;
@@ -202,6 +205,7 @@ export const methods = {
   },
 
   /** Return the currently stored favicon URL for a tab (empty string if none). */
+  // upstream: getIcon@2b87848a28 FIREFOX_143_0_1_RELEASE
   getIcon(tab: MozTabbrowserTab): string {
     const id = resolveTabId(tab);
     return id ? appState.value.tabs[id]?.iconUrl ?? "" : "";
@@ -213,6 +217,7 @@ export const methods = {
    * @returns Object with boolean `camera`, boolean `microphone`, and string
    *          `screen` (empty string when no screen is being shared).
    */
+  // upstream: getTabSharingState@4607466f4a FIREFOX_143_0_1_RELEASE
   getTabSharingState(tab: MozTabbrowserTab) {
     const id = resolveTabId(tab);
     const state = id ? appState.value.tabs[id]?.sharingState : null;
@@ -230,6 +235,7 @@ export const methods = {
    * Removes the `sharing` attribute and refreshes the permission panel when
    * the browser is currently selected.
    */
+  // upstream: resetBrowserSharing@5e0e6a6731 FIREFOX_143_0_1_RELEASE
   resetBrowserSharing(browser: XULBrowserElement) {
     const tab = this.getTabForBrowser(browser);
     if (!tab) return;
@@ -247,6 +253,7 @@ export const methods = {
    *
    * @param state - Partial sharing state to merge; e.g. `{ webRTC: { camera: true } }`.
    */
+  // upstream: updateBrowserSharing@1fcb111528 FIREFOX_143_0_1_RELEASE
   updateBrowserSharing(browser: XULBrowserElement, state: any) {
     const tab = this.getTabForBrowser(browser);
     if (!tab) return;
@@ -275,6 +282,7 @@ export const methods = {
    *
    * Does nothing when `uri` is not in the built-in defaults map.
    */
+  // upstream: setDefaultIcon@e9a29056bc FIREFOX_143_0_1_RELEASE
   setDefaultIcon(tab: MozTabbrowserTab, uri: nsIURI | string) {
     try {
       const spec = typeof uri === "string" ? uri : uri?.spec;
@@ -291,6 +299,7 @@ export const methods = {
    * @param description  - Short text description of the page.
    * @param previewImage - URL of the page's preview/thumbnail image.
    */
+  // upstream: setPageInfo@e42a56cbd4 FIREFOX_143_0_1_RELEASE
   setPageInfo(_tab: MozTabbrowserTab, url: string, description: string, previewImage: string) {
     if (url) {
       try {
@@ -308,6 +317,7 @@ export const methods = {
    * Subsequent `setTabTitle` calls will override this value once a real
    * content title arrives.
    */
+  // upstream: setInitialTabTitle@797bbb6ee3 FIREFOX_143_0_1_RELEASE
   setInitialTabTitle(tab: MozTabbrowserTab, title: string, options: any = {}) {
     if (!options.isContentTitle && typeof isBlankPageURL === "function" && isBlankPageURL(title)) {
       title = this.tabContainer?.emptyTabTitle ?? "";
@@ -325,6 +335,7 @@ export const methods = {
    *
    * @returns `true` if the label was changed, `false` otherwise.
    */
+  // upstream: setTabLabelForAuthPrompts@11e2b5e7fa FIREFOX_143_0_1_RELEASE
   setTabLabelForAuthPrompts(tab: MozTabbrowserTab, label: string) {
     return this._setTabLabel(tab, label);
   },
@@ -334,6 +345,7 @@ export const methods = {
    *
    * Useful for capturing screenshots or reading layout without persisting a tab switch.
    */
+  // upstream: previewTab@340a5c40b7 FIREFOX_143_0_1_RELEASE
   previewTab(tab: MozTabbrowserTab, callback: () => void) {
     const currentTab = this.selectedTab;
     try {
@@ -351,6 +363,7 @@ export const methods = {
    *
    * @returns The matching browser element, or `null` if not found.
    */
+  // upstream: getBrowserForOuterWindowID@152087e895 FIREFOX_143_0_1_RELEASE
   getBrowserForOuterWindowID(id: number): any {
     for (let i = 0; i < appState.value.tabOrder.length; i++) {
       const b = this.browsers[i];
@@ -364,6 +377,7 @@ export const methods = {
    *
    * @returns The owning `MozTabbrowserTab`, or `null` for untrusted events.
    */
+  // upstream: getTabFromAudioEvent@9e2e55fd72 FIREFOX_143_0_1_RELEASE
   getTabFromAudioEvent(event: Event): any {
     if (!(event as any).isTrusted) return null;
     const browser = (event as any).originalTarget;
@@ -432,6 +446,7 @@ export const methods = {
    * @returns A `" — "`-joined title string, or the brand name alone when no
    *          content title is available.
    */
+  // upstream: getWindowTitleForBrowser@91b1a79b27 FIREFOX_143_0_1_RELEASE
   getWindowTitleForBrowser(browser: XULBrowserElement): string {
     if (!this._cachedTitleInfo) this._populateTitleCache();
 

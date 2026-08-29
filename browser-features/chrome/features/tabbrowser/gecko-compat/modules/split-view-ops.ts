@@ -46,6 +46,7 @@ export const methods = {
    * The new tab inherits the user-context ID and group of `tab` and receives
    * focus in the URL bar.
    */
+  // upstream: addAdjacentNewTab@5ab49fa4ca FIREFOX_143_0_1_RELEASE
   addAdjacentNewTab(tab: MozTabbrowserTab) {
     try {
       Services.obs?.notifyObservers?.(
@@ -204,6 +205,7 @@ export const methods = {
    *
    * @returns The new `Window`, or `null` on failure.
    */
+  // upstream: replaceTabWithWindow@e05472bb7d FIREFOX_143_0_1_RELEASE
   replaceTabWithWindow(tab: MozTabbrowserTab, options: any = {}): any {
     // Move tab to new window
     try {
@@ -252,6 +254,7 @@ export const methods = {
    *
    * @returns The new `Window`, or `null` when there is nothing to move.
    */
+  // upstream: replaceTabsWithWindow@354f106a94 FIREFOX_143_0_1_RELEASE
   replaceTabsWithWindow(contextTab: any, options: any = {}): any {
     // If only one tab selected or context tab not multi-selected, use single tab
     if (this.selectedTabs.length === 1 || !this.selectedTabs.includes(contextTab)) {
@@ -300,6 +303,7 @@ export const methods = {
    *
    * @returns The new `Window`, or `null` if the group is empty.
    */
+  // upstream: replaceGroupWithWindow@be9b539537 FIREFOX_143_0_1_RELEASE
   replaceGroupWithWindow(group: MozTabbrowserTabGroup): any {
     // Move entire tab group to new window
     if (!group?.tabs?.length) return null;
@@ -339,6 +343,7 @@ export const methods = {
    * @param tabGroupDataList  - Serialised tab-group state objects from SessionStore.
    * @returns Array of created (or reused) tab elements in restore order.
    */
+  // upstream: createTabsForSessionRestore@27d532f24c FIREFOX_143_0_1_RELEASE
   createTabsForSessionRestore(
     restoreTabsLazily: boolean,
     selectTab: number,

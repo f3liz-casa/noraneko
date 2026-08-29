@@ -22,11 +22,13 @@ declare module "../TabbrowserCompat.ts" {
 }
 
 export const methods = {
+  // upstream: _tabAttrModified@e23effd9c4 FIREFOX_143_0_1_RELEASE
   _tabAttrModified(tab: MozTabbrowserTab, changed: string[]) {
     if ((tab as any).closing) return;
     dispatch(tab, "TabAttrModified", { changed });
   },
 
+  // upstream: _setupEventListeners@b5081e3dce FIREFOX_143_0_1_RELEASE
   _setupEventListeners() {
     const doc = this.window.document;
     doc.addEventListener("keydown", this, { capture: true } as any);
@@ -70,6 +72,7 @@ export const methods = {
    * `activate`, `deactivate`, `sizemodechange`, `occlusionstatechange`,
    * `TabAttrModified`, `TabPinned`, `TabUnpinned`, and various media/audio events.
    */
+  // upstream: handleEvent@98f83440ef FIREFOX_143_0_1_RELEASE
   handleEvent(event: Event) {
     switch (event.type) {
       case "keydown":

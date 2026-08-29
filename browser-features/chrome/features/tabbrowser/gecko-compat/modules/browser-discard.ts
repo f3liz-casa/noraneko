@@ -34,6 +34,7 @@ export const methods = {
    * Return (lazily creating if necessary) the `NotificationBox` for `browser`.
    * Defaults to `selectedBrowser` when not provided.
    */
+  // upstream: getNotificationBox@d5df027ad5 FIREFOX_143_0_1_RELEASE
   getNotificationBox(browser?: XULBrowserElement | null): any {
     browser = browser || this.selectedBrowser;
     if (!browser) return null;
@@ -65,6 +66,7 @@ export const methods = {
    * Used for per-tab modal dialogs (permissions, authentication, etc.).
    * Defaults to `selectedBrowser` when not provided.
    */
+  // upstream: getTabDialogBox@55ab21ebb3 FIREFOX_143_0_1_RELEASE
   getTabDialogBox(browser?: XULBrowserElement | null): any {
     browser = browser || this.selectedBrowser;
     if (!browser) return null;
@@ -77,6 +79,7 @@ export const methods = {
   // tabbrowser.js L2714~L2896
   // ==========================================================================
 
+  // upstream: _mayDiscardBrowser@f7b632b942 FIREFOX_143_0_1_RELEASE
   _mayDiscardBrowser(aTab: MozTabbrowserTab, aForceDiscard?: boolean): boolean {
     const browser = aTab?.linkedBrowser;
     if (!browser) return false;
@@ -111,6 +114,7 @@ export const methods = {
    *
    * Must be awaited before calling `discardBrowser` to avoid losing session history.
    */
+  // upstream: prepareDiscardBrowser@d4dc3f070b FIREFOX_143_0_1_RELEASE
   async prepareDiscardBrowser(aTab: MozTabbrowserTab): Promise<void> {
     const browser = aTab?.linkedBrowser;
     if (!browser) return;
@@ -137,6 +141,7 @@ export const methods = {
    *
    * @param aForceDiscard - Skip the beforeunload check and force-close any open dialogs.
    */
+  // upstream: discardBrowser@7ea41b54de FIREFOX_143_0_1_RELEASE
   discardBrowser(aTab: MozTabbrowserTab, aForceDiscard?: boolean): boolean {
     const browser = aTab?.linkedBrowser;
     if (!browser) return false;

@@ -79,6 +79,7 @@ export const methods = {
   // noraneko extension — no direct tabbrowser.js equivalent
   // ==========================================================================
 
+  // upstream: _startRemoveTabs@9b7f77219f FIREFOX_143_0_1_RELEASE
   _startRemoveTabs(tabs: MozTabbrowserTab[], options: {
     animate?: boolean;
     suppressWarnAboutClosingWindow?: boolean;
@@ -131,6 +132,7 @@ export const methods = {
    * @returns `true` if any handler blocked the unload, `false` if it is safe
    *          to proceed with removal.
    */
+  // upstream: runBeforeUnloadForTabs@89960729f2 FIREFOX_143_0_1_RELEASE
   async runBeforeUnloadForTabs(tabs: MozTabbrowserTab[]): Promise<boolean> {
     try {
       const { beforeUnloadComplete, tabsWithBeforeUnloadPrompt } = (this as any)._startRemoveTabs(tabs, {
@@ -160,6 +162,7 @@ export const methods = {
    *
    * Selects a new tab first when the active tab is among those being unloaded.
    */
+  // upstream: explicitUnloadTabs@b01bedd182 FIREFOX_143_0_1_RELEASE
   async explicitUnloadTabs(tabs: MozTabbrowserTab[]): Promise<void> {
     const unloadBlocked = await (this as any).runBeforeUnloadForTabs(tabs);
     if (unloadBlocked) return;
@@ -187,6 +190,7 @@ export const methods = {
    * @param options.selectTab - If `true`, immediately selects the new tab.
    * @returns The newly created tab in this window, or `null` on failure.
    */
+  // upstream: adoptTab@3d9fb5b0fe FIREFOX_143_0_1_RELEASE
   adoptTab(tab: MozTabbrowserTab, options: {
     elementIndex?: number;
     tabIndex?: number;
@@ -229,6 +233,7 @@ export const methods = {
    * @param tabsAndSplitViews - Tabs or split-view wrapper elements to group
    * @returns The new `TabGroupData` state object, or `null` on failure
    */
+  // upstream: addTabGroup@1697b981cf FIREFOX_143_0_1_RELEASE
   addTabGroup(tabsAndSplitViews: any[], options: {
     id?: string | null;
     color?: string | null;
@@ -264,6 +269,7 @@ export const methods = {
   /**
    * Remove all tabs in a group and delete the group.
    */
+  // upstream: removeTabGroup@2c01e93671 FIREFOX_143_0_1_RELEASE
   async removeTabGroup(group: MozTabbrowserTabGroup, options: {
     animate?: boolean;
     skipPermitUnload?: boolean;
@@ -424,6 +430,7 @@ export const methods = {
   // ==========================================================================
 
   /** Closes all currently multi-selected tabs. */
+  // upstream: removeMultiSelectedTabs@68d855f8fc FIREFOX_143_0_1_RELEASE
   removeMultiSelectedTabs(options: { isUserTriggered?: boolean; telemetrySource?: string } = {}): void {
     const selectedTabs = (this as any).selectedTabs;
     if (!(this as any).warnAboutClosingTabs?.((selectedTabs as any[]).length, (this as any).closingTabsEnum?.MULTI_SELECTED)) {
@@ -489,6 +496,7 @@ export const methods = {
     // Menu item updates - delegated to runtime
   },
 
+  // upstream: _updateMultiselectedTabCloseButtonTooltip@44389946f3 FIREFOX_143_0_1_RELEASE
   _updateMultiselectedTabCloseButtonTooltip(): void {
     const tabCount = (this as any).selectedTabs.length;
     for (const tab of (this as any).selectedTabs) {

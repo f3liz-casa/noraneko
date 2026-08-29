@@ -14,6 +14,7 @@ export class BrowserSystem {
   /**
    * Re-implementation of Tabbrowser.createBrowser (Lines 2250-2350)
    */
+  // upstream: createBrowser@80031f59d1 FIREFOX_143_0_1_RELEASE
   static createBrowser(tabId: TabId, options: any = {}): Element {
     const doc = document;
     const browser = doc.createXULElement("browser");

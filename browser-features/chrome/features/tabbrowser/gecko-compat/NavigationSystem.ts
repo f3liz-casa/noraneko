@@ -14,6 +14,7 @@ export class NavigationSystem {
   /**
    * Ported from tabbrowser.js _internalMaybeFixupLoadURI (Lines 9350-9450)
    */
+  // upstream: loadURI@09edb025ec FIREFOX_143_0_1_RELEASE
   static loadURI(tabId: TabId, uriString: string, options: any = {}) {
     const browser = DOMRegistry.getBrowser(tabId) as any;
     if (!browser) return;
