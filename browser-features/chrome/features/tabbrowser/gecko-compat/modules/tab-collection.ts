@@ -53,7 +53,6 @@ declare module "../TabbrowserCompat.ts" {
     getTabForBrowser(browser: any): MozTabbrowserTab | undefined;
     getBrowserAtIndex(index: number): XULBrowserElement | null;
     readonly tabContainer: any;
-    _selNav(): any;
     addEventListener(...args: any[]): void;
     removeEventListener(...args: any[]): void;
     dispatchEvent(...args: any[]): boolean;
@@ -61,8 +60,6 @@ declare module "../TabbrowserCompat.ts" {
 }
 
 export const methods = {
-  /** `nsIWebNavigation` of the selected browser; null before the first tab exists. */
-  _selNav(): any { return (this.selectedBrowser as any)?.webNavigation ?? null; },
 
   // ==========================================================================
   // Forwarded browser properties
@@ -171,8 +168,7 @@ export const methods = {
    */
   // upstream: goBack@c1a0456985 FIREFOX_143_0_1_RELEASE
   goBack(requireUserInteraction = false): boolean {
-    const nav = this._selNav();
-    return nav ? nav.goBack(requireUserInteraction) : false;
+    return this.selectedBrowser!.goBack(requireUserInteraction);
   },
 
   /**
@@ -183,40 +179,39 @@ export const methods = {
    */
   // upstream: goForward@09bcaa28d5 FIREFOX_143_0_1_RELEASE
   goForward(requireUserInteraction = false): boolean {
-    const nav = this._selNav();
-    return nav ? nav.goForward(requireUserInteraction) : false;
+    return this.selectedBrowser!.goForward(requireUserInteraction);
   },
 
   /** Whether the selected browser can navigate back in session history. */
   // upstream: get canGoBack@03c2482adf FIREFOX_143_0_1_RELEASE
-  get canGoBack(): boolean { return this._selNav()?.canGoBack ?? false; },
+  get canGoBack(): boolean { return this.selectedBrowser!.canGoBack; },
   /** Whether the selected browser can navigate forward in session history. */
   // upstream: get canGoForward@4f434264ca FIREFOX_143_0_1_RELEASE
-  get canGoForward(): boolean { return this._selNav()?.canGoForward ?? false; },
+  get canGoForward(): boolean { return this.selectedBrowser!.canGoForward; },
   /** Whether the selected browser can navigate back, regardless of user-interaction requirements. */
   // upstream: get canGoBackIgnoringUserInteraction@1b0230e4b1 FIREFOX_143_0_1_RELEASE
-  get canGoBackIgnoringUserInteraction(): boolean { return this.canGoBack; },
+  get canGoBackIgnoringUserInteraction(): boolean { return this.selectedBrowser!.canGoBackIgnoringUserInteraction; },
 
   /** Reload the current page in the selected browser. */
   // upstream: reload@0c5f2b081d FIREFOX_143_0_1_RELEASE
-  reload(): void { this._selNav()?.reload(); },
+  reload(): void { this.selectedBrowser!.reload(); },
   /**
    * Reload the current page in the selected browser with specific load flags.
    *
    * @param flags - A bitmask of `nsIWebNavigation.LOAD_FLAGS_*` constants.
    */
   // upstream: reloadWithFlags@c3ceacc96e FIREFOX_143_0_1_RELEASE
-  reloadWithFlags(flags: number): void { this._selNav()?.reloadWithFlags(flags); },
+  reloadWithFlags(flags: number): void { this.selectedBrowser!.reloadWithFlags(flags); },
   /** Abort the current page load in the selected browser. */
   // upstream: stop@e08321bf1b FIREFOX_143_0_1_RELEASE
-  stop(): void { this._selNav()?.stop(); },
+  stop(): void { this.selectedBrowser!.stop(); },
   /**
    * Navigate to a specific entry in the selected browser's session history.
    *
    * @param index - Zero-based index into the session history list.
    */
   // upstream: gotoIndex@12dbc14070 FIREFOX_143_0_1_RELEASE
-  gotoIndex(index: number): void { this._selNav()?.gotoIndex(index); },
+  gotoIndex(index: number): void { this.selectedBrowser!.gotoIndex(index); },
 
   // ==========================================================================
   // Tab Collection Accessors — the tab strip (tabs.js) keeps these lists

@@ -21,7 +21,6 @@ declare module "../TabbrowserCompat.ts" {
     closeTabsByURI(urisToClose: any[]): Promise<number>;
     pinTab(tab: MozTabbrowserTab, options?: any): void;
     unpinTab(tab: MozTabbrowserTab): void;
-    discardTab(tab: MozTabbrowserTab): void;
     showTab(tab: MozTabbrowserTab): void;
     hideTab(tab: MozTabbrowserTab, source?: string): void;
     duplicateTab(tab: MozTabbrowserTab, restoreTabImmediately?: boolean, options?: any): any;
@@ -1159,11 +1158,6 @@ export const methods = {
    * Preview a tab without permanently selecting it.
    * Simplified version — just selects the tab.
    */
-
-  /** Ours: a name some callers use for discardBrowser. */
-  discardTab(tab: MozTabbrowserTab) {
-    this.discardBrowser(tab);
-  },
 
   // upstream: showTab@65a3fea873 FIREFOX_143_0_1_RELEASE
   showTab(aTab: MozTabbrowserTab) {

@@ -202,8 +202,6 @@ export class TabbrowserCompat {
   _tabSwitchTelemetry = new Map<string, { count: number; timestamp: number }>();
   _previousURL: string | null = null;
   _tabpanelsSelectHandler: any = null;
-  /** The tab a context menu was opened on (extended.ts updateContextMenu). */
-  contextTab: any = null;
   _asyncTabSwitching = false;
 
   constructor(public window: Window) {
@@ -444,31 +442,11 @@ export class TabbrowserCompat {
     }
   }
 
-  /** Ours: older callers' names for the tabbrowser.js operations. */
-  moveTabRelative(tab: any, target: any, position: "before" | "after" = "after") {
-    if (position === "before") this.moveTabBefore(tab, target);
-    else this.moveTabAfter(tab, target);
-  }
-  addRangeToSelection(start: any, end: any) {
-    const tabs = this.tabs;
-    const s = typeof start === "number" ? tabs[start] : start;
-    const e = typeof end === "number" ? tabs[end] : end;
-    if (s && e) this.addRangeToMultiSelectedTabs(s, e);
-  }
-  clearSelection() { this.clearMultiSelectedTabs(); }
-  reloadAllTabs() { this.reloadTabs(this.tabs); }
-
-  // Minimal compatibility helpers and no-op implementations for legacy callers
-  showFullScreenViewContextMenuItems(...args: any[]) { /* no-op compat */ }
   // upstream: shouldActivateDocShell@3e49d252af FIREFOX_143_0_1_RELEASE
   shouldActivateDocShell(browser?: any) { const b = browser || this.selectedBrowser; return !!(b && (b as any).docShell); }
   // upstream: updateTitlebar@38aaae9f15 FIREFOX_143_0_1_RELEASE
   updateTitlebar() {
     (this.window as any).document.title = this.getWindowTitleForBrowser(this.selectedBrowser!);
-  }
-  createUserContextMenu(menu: any) { // Minimal fallback used by some legacy callers
-    try { if ((this as any).createReopenInContainerMenu) return (this as any).createReopenInContainerMenu(menu); } catch (_) {}
-    return null;
   }
 
 }

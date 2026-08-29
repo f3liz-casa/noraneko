@@ -297,7 +297,16 @@ interface XULBrowserElement {
   fixupAndLoadURIString?(uriString: string, options?: any): void;
   permitUnload?(action?: any): { permitUnload: boolean };
   asyncPermitUnload?(action?: any): Promise<{ permitUnload: boolean }>;
-  reload?(): void;
+  // Session history, forwarded by tabbrowser.js ("FORWARDED BROWSER PROPERTIES").
+  canGoBack: boolean;
+  canGoBackIgnoringUserInteraction: boolean;
+  canGoForward: boolean;
+  goBack(requireUserInteraction?: boolean): boolean;
+  goForward(requireUserInteraction?: boolean): boolean;
+  reload(): void;
+  reloadWithFlags(flags: number): void;
+  stop(): void;
+  gotoIndex(index: number): void;
   resumeMedia?(): void;
   destroy?(): void;
 }

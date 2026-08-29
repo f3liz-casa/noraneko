@@ -9,35 +9,16 @@ declare const SharingUtils: any;
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
-    duplicateSelectedTabs(): void;
-    getMouseTargetRect(): any;
-    updateContextMenu(popupMenu: any): void;
-    _updateToggleMuteMenuItems(tabs: MozTabbrowserTab[]): void;
-    onMouseEnter(event: Event): void;
-    onMouseLeave(event: Event): void;
-    closeContextTabs(button?: any, tab?: any): void;
-    reopenInContainer(tab: MozTabbrowserTab, userContextId: number): void;
     adoptTab(tab: MozTabbrowserTab, options?: any): any;
     explicitUnloadTabs(tabs: MozTabbrowserTab[]): Promise<void>;
     removeMultiSelectedTabs(options?: { isUserTriggered?: boolean; telemetrySource?: string }): any;
     // Extended Tab Operations
     _startRemoveTabs(tabs: MozTabbrowserTab[], options?: any): any;
     runBeforeUnloadForTabs(tabs: MozTabbrowserTab[]): Promise<boolean>;
-    // Extended Tab Group Operations
-    ungroupTabs(tabs: MozTabbrowserTab[]): void;
-    ungroupSplitViews(splitView: any): void;
-    moveSplitViewToNewGroup(splitView: any, options?: any): any;
-    moveTabsToGroup(tabs: MozTabbrowserTab[], group: MozTabbrowserTabGroup): void;
-    moveTabsToNewGroup(tabs: MozTabbrowserTab[], options?: any): any;
-    moveTabsToSplitView(tabs: MozTabbrowserTab[], splitView: any): void;
-    addTabsToSavedGroup(tabs: MozTabbrowserTab[], groupId: string): void;
     // Extended window ops
     replaceGroupWithWindow(group: MozTabbrowserTabGroup): void;
     handleNewTabMiddleClick(node: any, event: Event): void;
     // Stubs & sponsor
-    createUserContextMenu(event: Event, options?: any): any;
-    createReopenInContainerMenu(event: Event): void;
-    showFullScreenViewContextMenuItems(menu: any): void;
     getTabPids(tab: MozTabbrowserTab): number[];
     shouldActivateDocShell(browser: XULBrowserElement): boolean;
     _setupInitialBrowserAndTab(): void;
@@ -287,110 +268,6 @@ export const methods = {
   },
 
   // ==========================================================================
-  // Extended Tab Group Operations
-  // noraneko extension — no direct tabbrowser.js equivalent
-  // ==========================================================================
-
-
-
-  /** Remove a set of tabs from their groups. */
-  ungroupTabs(tabs: MozTabbrowserTab[]): void {
-    for (let i = tabs.length - 1; i >= 0; i--) {
-      this.ungroupTab(tabs[i]);
-    }
-  },
-
-  /** Remove every tab in a split view from its tab group. */
-  ungroupSplitViews(splitView: MozSplitView): void {
-    if (!splitView) return;
-    const wrapper = this.isSplitViewWrapper(splitView) ? splitView : null;
-    if (!wrapper) return;
-    this.ungroupSplitView(wrapper);
-  },
-
-  /** Create a new tab group that wraps all tabs in the given split view. */
-  moveSplitViewToNewGroup(splitView: any, options: any = {}): any {
-    const tabs: any[] = splitView?.tabs ? Array.from(splitView.tabs) : [];
-    if (!tabs.length) return null;
-    return this.addTabGroup(tabs, { ...options, isUserTriggered: true });
-  },
-
-  /** Move several tabs into an existing group. */
-  moveTabsToGroup(tabs: MozTabbrowserTab[], group: MozTabbrowserTabGroup): void {
-    for (const tab of tabs) {
-      this.moveTabToGroup(tab, group);
-    }
-  },
-
-  /** Create a brand-new group from the given tabs. */
-  moveTabsToNewGroup(tabs: MozTabbrowserTab[], options: any = {}): any {
-    return this.addTabGroup(tabs, { ...options, isUserTriggered: true });
-  },
-
-  /** Move tabs into an existing split view. */
-  moveTabsToSplitView(tabs: MozTabbrowserTab[], splitView: any): void {
-    for (const tab of tabs) {
-      this.moveTabToSplitView(tab, splitView);
-    }
-  },
-
-  /** Persists `tabs` into a previously saved tab group via SessionStore. */
-  addTabsToSavedGroup(tabs: MozTabbrowserTab[], groupId: string): void {
-    try {
-      SessionStore?.addTabsToSavedGroup?.(groupId, tabs);
-    } catch (e) {
-      console.error("addTabsToSavedGroup failed:", e);
-    }
-  },
-
-  /** Reopen `tab`'s page in another container, right after it, and close the original. */
-  reopenInContainer(tab: MozTabbrowserTab, userContextId: number): void {
-    const browser = tab.linkedBrowser!;
-    const triggeringPrincipal = browser.contentPrincipal || Services.scriptSecurityManager.getSystemPrincipal();
-    const newTab = this.addTab(browser.currentURI.spec, {
-      userContextId,
-      pinned: tab.pinned,
-      tabIndex: (tab as any)._tPos + 1,
-      triggeringPrincipal,
-    });
-
-    if (tab.selected) {
-      this.selectedTab = newTab;
-    }
-
-    this.removeTab(tab);
-  },
-
-  /** Populates the "Reopen in Container" context menu for `tab`. */
-  createReopenInContainerMenu(event: Event): void {
-    try {
-      (this.window as any).createUserContextMenu?.(event, {
-        isContextMenu: true,
-        excludeUserContextId: (this.window as any).TabContextMenu?.contextTab?.userContextId,
-      });
-    } catch (e) {
-      console.error("createReopenInContainerMenu failed:", e);
-    }
-  },
-
-  /** Duplicates all currently selected tabs. */
-  duplicateSelectedTabs(): void {
-    const tabs = this.selectedTabs;
-    let newIndex = tabs[tabs.length - 1]?._tPos + 1;
-
-    for (const tab of tabs) {
-      try {
-        const newTab = SessionStore?.duplicateTab?.(window, tab);
-        if (newTab) {
-          this.moveTabTo(newTab, { tabIndex: newIndex++ });
-        }
-      } catch (e) {
-        console.error("duplicateSelectedTabs failed for tab:", e);
-      }
-    }
-  },
-
-  // ==========================================================================
   // Extended Tab Selection & Multi-Select
   // noraneko extension — no direct tabbrowser.js equivalent
   // ==========================================================================
@@ -405,78 +282,5 @@ export const methods = {
 
     this.removeTabs(selectedTabs, { isUserTriggered, telemetrySource });
   },
-
-  // ==========================================================================
-  // Extended Window Operations
-  // noraneko extension — no direct tabbrowser.js equivalent
-  // ==========================================================================
-
-  /** Returns the bounding rectangle of the tab strip. */
-  getMouseTargetRect(): any {
-    const container = this.tabContainer?.parentNode;
-    if (!container) return null;
-
-    try {
-      const panelRect = window.windowUtils?.getBoundsWithoutFlushing(this.tabContainer);
-      const containerRect = window.windowUtils?.getBoundsWithoutFlushing(container);
-      if (!panelRect || !containerRect) return null;
-
-      return {
-        top: panelRect.top,
-        bottom: panelRect.bottom,
-        left: RTL_UI ? containerRect.right - panelRect.width : containerRect.left,
-        right: RTL_UI ? containerRect.right : containerRect.left + panelRect.width,
-      };
-    } catch {
-      return null;
-    }
-  },
-
-  // ==========================================================================
-  // Extended UI & Tooltips
-  // noraneko extension — no direct tabbrowser.js equivalent
-  // ==========================================================================
-
-  /** Ours: mark a tab with the "new" badge. */
-  addNewBadge(tab: MozTabbrowserTab): void {
-    tab.setAttribute("badge", "new");
-  },
-
-  /** Resolves the context tab from the popup menu's trigger node. */
-  updateContextMenu(popupMenu: any): void {
-    try {
-      const triggerTab = popupMenu?.triggerNode?.tab || popupMenu?.triggerNode?.closest?.("tab");
-      this.contextTab = triggerTab || this.selectedTab;
-    } catch (e) {
-      console.error("updateContextMenu failed:", e);
-    }
-  },
-
-  _updateToggleMuteMenuItems(tabs: MozTabbrowserTab[]): void {
-    // Menu item updates - delegated to runtime
-  },
-
-
-  // ==========================================================================
-  // Extended Utility Methods
-  // noraneko extension — no direct tabbrowser.js equivalent
-  // ==========================================================================
-
-  onMouseEnter(event: Event): void {
-    // Mouse tracking - delegated to runtime
-  },
-
-  onMouseLeave(event: Event): void {
-    // Mouse tracking - delegated to runtime
-  },
-
-  closeContextTabs(button?: any, tab?: any): void {
-    const tabs = this.contextTab?.multiselected ? this.selectedTabs : [this.contextTab];
-    this.removeMultiSelectedTabs({
-      isUserTriggered: true,
-      telemetrySource: "tab_context_menu",
-    });
-  },
-
 
 } satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

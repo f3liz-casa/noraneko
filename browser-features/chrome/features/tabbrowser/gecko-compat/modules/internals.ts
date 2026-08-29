@@ -14,7 +14,6 @@ declare const LOAD_FLAGS_FIXUP_SCHEME_TYPOS: number;
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
     observe(subject: any, topic: string): void;
-    _createTabGroupMenuItem(group: MozTabbrowserTabGroup, isSaved?: boolean): any;
     _handleKeyDownEvent(event: KeyboardEvent): void;
     _handleKeyPressEvent(event: KeyboardEvent): void;
     tabLocalization: any;
@@ -22,12 +21,6 @@ declare module "../TabbrowserCompat.ts" {
     loadURI(uri: string, params?: any): void;
     fixupAndLoadURIString(uri: string, params?: any): void;
     loadTabs(uris: string[], options?: any): void;
-    _fixupURIString(browser: XULBrowserElement, uriString: string, loadURIOptions: any): any;
-    _isForInitialAboutBlank(webProgress: any, stateFlags: number, location?: any): boolean;
-    _internalMaybeFixupLoadURI(browser: XULBrowserElement, uriString: string, uri: any, loadURIOptions: any): void;
-    _loadFlagsToFixupFlags(browser: XULBrowserElement, loadFlags: number): number;
-    _normalizeLoadURIOptions(browser: XULBrowserElement, loadURIOptions: any): void;
-    _handleUriInChrome(browser: XULBrowserElement, uri: any): boolean;
     _kickOffBrowserLoad(browser: XULBrowserElement, options: any): void;
     _getTriggeringPrincipalFromHistory(browser: XULBrowserElement): any;
     _maybeRequestReplyFromRemoteContent(event: KeyboardEvent): boolean;
@@ -58,139 +51,14 @@ declare module "../TabbrowserCompat.ts" {
     _avoidSingleSelectedTab(tab: MozTabbrowserTab): void;
     _adjustFocusBeforeTabSwitch(tab: MozTabbrowserTab, newTab: any): void;
     _adjustFocusAfterTabSwitch(newTab: any): void;
-    _onTransitionEnd(event: TransitionEvent): void;
     _moveTabsNextTo(elements: any[], targetElement: any, moveBefore?: boolean, metricsContext?: any): void;
     // Utility
-    _mirror(source?: any, dest?: any, properties?: string[]): void;
     _notifyPinnedStatus(tab: MozTabbrowserTab, options?: any): void;
     _separateWholeGroups(tabs: MozTabbrowserTab[]): [any[], MozTabbrowserTab[]];
   }
 }
 
 export const methods = {
-  // ==========================================================================
-  // Internal URI/Load Methods
-  // tabbrowser.js L2307~L3217
-  // ==========================================================================
-
-  _normalizeLoadURIOptions(browser: XULBrowserElement, loadURIOptions: any): void {
-    if (!loadURIOptions.triggeringPrincipal) {
-      throw new Error("Must load with a triggering Principal");
-    }
-
-    if (
-      loadURIOptions.userContextId &&
-      loadURIOptions.userContextId != browser.getAttribute?.("usercontextid")
-    ) {
-      throw new Error("Cannot load with mismatched userContextId");
-    }
-
-    loadURIOptions.loadFlags |= loadURIOptions.flags || LOAD_FLAGS_NONE;
-    delete loadURIOptions.flags;
-    loadURIOptions.hasValidUserGestureActivation ??=
-      this.window.document.hasValidTransientUserGestureActivation;
-  },
-
-  _loadFlagsToFixupFlags(browser: XULBrowserElement, loadFlags: number): number {
-    let fixupFlags = Ci.nsIURIFixup?.FIXUP_FLAG_NONE || 0;
-    if (loadFlags & LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP) {
-      fixupFlags |= Ci.nsIURIFixup?.FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP || 0;
-    }
-    if (loadFlags & LOAD_FLAGS_FIXUP_SCHEME_TYPOS) {
-      fixupFlags |= Ci.nsIURIFixup?.FIXUP_FLAG_FIX_SCHEME_TYPOS || 0;
-    }
-    if (PrivateBrowsingUtils?.isBrowserPrivate?.(browser)) {
-      fixupFlags |= Ci.nsIURIFixup?.FIXUP_FLAG_PRIVATE_CONTEXT || 0;
-    }
-    return fixupFlags;
-  },
-
-  _fixupURIString(browser: XULBrowserElement, uriString: string, loadURIOptions: any): any {
-    try {
-      const fixupFlags = this._loadFlagsToFixupFlags(browser, loadURIOptions.loadFlags || 0);
-      const fixupInfo = Services.uriFixup?.getFixupURIInfo?.(uriString, fixupFlags);
-      return fixupInfo?.preferredURI || null;
-    } catch (_) {
-      return null;
-    }
-  },
-
-  _handleUriInChrome(browser: XULBrowserElement, uri: any): boolean {
-    if (uri?.scheme === "file") {
-      try {
-        const mimeType = Cc["@mozilla.org/mime;1"]
-          ?.getService?.(Ci.nsIMIMEService)
-          ?.getTypeFromURI?.(uri);
-        if (mimeType === "application/x-xpinstall") {
-          const systemPrincipal = Services.scriptSecurityManager?.getSystemPrincipal?.();
-          (AddonManager as any)?.getInstallForURL?.(uri.spec, {
-            telemetryInfo: { source: "file-url" },
-          }).then((install: any) => {
-            (AddonManager as any)?.installAddonFromWebpage?.(
-              mimeType,
-              browser,
-              systemPrincipal,
-              install
-            );
-          });
-          return true;
-        }
-      } catch (_) {
-        return false;
-      }
-    }
-    return false;
-  },
-
-  _internalMaybeFixupLoadURI(browser: XULBrowserElement, uriString: string, uri: any, loadURIOptions: any): void {
-    this._normalizeLoadURIOptions(browser, loadURIOptions);
-    
-    if (!uriString && !uri) {
-      uri = Services.io?.newURI?.("about:blank");
-    }
-
-    const startedWithURI = !!uri;
-    if (!uri) {
-      uri = this._fixupURIString(browser, uriString, loadURIOptions);
-    }
-
-    if (uri && this._handleUriInChrome(browser, uri)) {
-      return;
-    }
-
-    if (loadURIOptions.isCaptivePortalTab && browser.browsingContext) {
-      browser.browsingContext.isCaptivePortalTab = true;
-    }
-
-    browser.isNavigating = true;
-    try {
-      if (startedWithURI) {
-        browser.webNavigation?.loadURI?.(uri, loadURIOptions);
-      } else {
-        browser.webNavigation?.fixupAndLoadURIString?.(uriString, loadURIOptions);
-      }
-    } finally {
-      browser.isNavigating = false;
-    }
-  },
-
-  _isForInitialAboutBlank(webProgress: any, stateFlags: number, location?: any): boolean {
-    if (!(this as any).mBlank || !webProgress?.isTopLevel) {
-      return false;
-    }
-
-    if (
-      stateFlags & Ci.nsIWebProgressListener.STATE_STOP! &&
-      (this as any).mRequestCount === 0 &&
-      !location
-    ) {
-      return true;
-    }
-
-    const locationSpec = location ? location.spec : "";
-    return locationSpec === "about:blank";
-  },
-
   // ==========================================================================
   // Internal Tab Move & Position Methods
   // tabbrowser.js L6461~L7019
@@ -507,31 +375,6 @@ export const methods = {
   // ==========================================================================
 
 
-  _createTabGroupMenuItem(group: MozTabbrowserTabGroup, isSaved = false): any {
-    const item = this.window.document.createXULElement?.("menuitem");
-    if (!item) return null;
-
-    item.setAttribute?.("tab-group-id", group.id);
-
-    const label = group.label ?? group.name;
-    if (label) {
-      item.setAttribute?.("label", label);
-    } else {
-      (this.window.document as any).l10n?.setAttributes?.(item, "tab-context-unnamed-group");
-    }
-
-    item.classList?.add?.("menuitem-iconic", "tab-group-icon");
-    if (isSaved) {
-      item.classList?.add?.("tab-group-icon-closed");
-    }
-
-    item.style?.setProperty?.("--tab-group-color", `var(--tab-group-color-${group.color})`);
-    item.style?.setProperty?.("--tab-group-color-invert", `var(--tab-group-color-${group.color}-invert)`);
-    item.style?.setProperty?.("--tab-group-color-pale", `var(--tab-group-color-${group.color}-pale)`);
-
-    return item;
-  },
-
   _createTabSplitView(options: any): any {
     const splitview = this.window.document.createXULElement?.("tab-split-view-wrapper", {
       is: "tab-split-view-wrapper",
@@ -660,39 +503,10 @@ export const methods = {
     }
   },
 
-  /**
-   * Handle CSS `transitionend` for the status panel.
-   * Hides the panel element when it is no longer visible after animation.
-   *
-   * Mirrors Firefox's `StatusPanel._onTransitionEnd`.
-   */
-  _onTransitionEnd(): void {
-    try {
-      if (!(this as any).isVisible) {
-        (this as any).panel.hidden = true;
-      }
-    } catch (_) { /* */ }
-  },
-
   // ==========================================================================
   // Internal Utility Methods
   // tabbrowser.js L872~L1053
   // ==========================================================================
-
-  _mirror(source?: any, dest?: any, properties?: string[]): void {
-    // Mirror properties from source to dest
-    if (!source || !dest || !properties) {
-      return;
-    }
-    
-    try {
-      for (const prop of properties) {
-        if (prop in source) {
-          dest[prop] = source[prop];
-        }
-      }
-    } catch (_) { /* */ }
-  },
 
   _notifyPinnedStatus(aTab: MozTabbrowserTab, { telemetrySource }: any = {}): void {
     telemetrySource ??= this.TabMetrics.METRIC_SOURCE.UNKNOWN;

@@ -17,6 +17,7 @@
 //   deno task upstream-diff --to FIREFOX_154_0_RELEASE --diff --only addTab
 //   deno task upstream-diff --stamp FIREFOX_143_0_1_RELEASE              # stamp the unstamped members
 //   deno task upstream-diff --stamp FIREFOX_154_0_RELEASE --only addTab  # re-stamp one after reconciling it
+//   deno task upstream-diff --fog                                        # `?.` and `catch (` here vs there, per member
 //
 // Tags are fetched from the mozilla-firefox mirror and cached under
 // ~/.cache/noraneko; `--to` also takes a local path. Members are keyed
@@ -41,6 +42,7 @@ const pin = (await Deno.readTextFile(here + "UPSTREAM")).trim();
 const toSpec = args.get("to") as string | undefined;
 const stampArg = args.get("stamp");
 const only = args.get("only") as string | undefined;
+const fog = args.has("fog");
 const showDiff = args.get("diff") === true;
 if (!toSpec && !stampArg) {
   console.error("usage: upstream-diff --to <tag|path> [--diff] [--only <member>]\n       upstream-diff --stamp [<tag>] [--only <member>]");
@@ -222,10 +224,14 @@ async function indexCompat(): Promise<Map<string, Entry[]>> {
 }
 
 // Which upstream member does an unstamped entry stand for? Exact name first,
-// then a field here may stand for a getter/setter there.
+// then a field here may stand for a getter/setter there, and `_x` here
+// stands for `#x` there (a class field can be private; a prototype merge
+// cannot).
 function guessKey(entry: Entry, up: Upstream): string | undefined {
   const b = bare(entry.name), c = entry.container;
-  for (const k of [`${c}.${entry.name}`, `${c}.${b}`, `${c}.get ${b}`, `${c}.set ${b}`]) if (up.has(k)) return k;
+  const names = [entry.name, b, `get ${b}`, `set ${b}`];
+  if (b.startsWith("_")) names.push(`#${b.slice(1)}`, `get #${b.slice(1)}`, `set #${b.slice(1)}`);
+  for (const name of names) if (up.has(`${c}.${name}`)) return `${c}.${name}`;
 }
 
 const wanted = (entry: Entry) =>
@@ -267,10 +273,11 @@ const entries = [...(await indexCompat()).values()].flat().filter(wanted);
 type Drift = { entry: Entry; key: string; since: string; kind: "changed" | "removed"; via: string[] };
 const drifted: Drift[] = [];
 const covered = new Set<string>();
+const ours: Entry[] = [];   // stands for nothing upstream, in either tag
 
 for (const e of entries) {
   const key = e.stamp?.key ?? guessKey(e, from) ?? guessKey(e, to);
-  if (!key) continue;
+  if (!key) { ours.push(e); continue; }
   covered.add(key);
   const since = e.stamp?.tag ?? pin;
   const base = e.stamp ? await upstream(since) : from;
@@ -285,6 +292,31 @@ for (const e of entries) {
     .map((k) => k.replace(/^Tabbrowser\./, ""));
   const ownChanged = !base.get(key) || base.get(key)!.own !== now.own;
   drifted.push({ entry: e, key, since, kind: "changed", via: ownChanged ? ["(itself)", ...via] : via });
+}
+
+// --------------------------------------------------------------------- fog
+// `?.` and `catch (` guard against what tabbrowser.js takes for granted; a
+// port that has more of them than its upstream member is hiding a hole.
+if (fog) {
+  const byFile = await indexCompat();
+  const count = (text: string) => ({ opt: (text.match(/\?\./g) ?? []).length, cat: (text.match(/catch \(/g) ?? []).length });
+  let members = 0, opt = 0, cat = 0;
+  for (const [path, es] of byFile) {
+    const lines = (await Deno.readTextFile(path)).split("\n");
+    es.forEach((e, i) => {
+      if (!wanted(e)) return;
+      const end = es[i + 1] ? (es[i + 1].stamp?.line ?? es[i + 1].line) : lines.length;
+      const here = count(lines.slice(e.line, end).join("\n"));
+      const key = e.stamp?.key ?? guessKey(e, from) ?? guessKey(e, to);
+      const there = key ? count(to.get(key)?.raw ?? from.get(key)?.raw ?? "") : { opt: 0, cat: 0 };
+      const extraOpt = Math.max(0, here.opt - there.opt), extraCat = Math.max(0, here.cat - there.cat);
+      if (!extraOpt && !extraCat) return;
+      members++; opt += extraOpt; cat += extraCat;
+      console.log(`${(key ?? e.name).replace(/^Tabbrowser\./, "").padEnd(36)} ${loc(e).padEnd(44)} ?. ${here.opt}/${there.opt}  catch ${here.cat}/${there.cat}${key ? "" : "  (ours)"}`);
+    });
+  }
+  console.log(`\n${members} members with more guards than upstream: ${opt} extra \`?.\`, ${cat} extra \`catch (\``);
+  Deno.exit(0);
 }
 
 const stamped = entries.filter((e) => e.stamp).length;
@@ -314,6 +346,9 @@ if (!only) {
     const names = rest[kind].sort();
     if (names.length) console.log(`${mark} ${names.length}: ${names.join(", ")}`);
   }
+  console.log(`\n## members here that upstream does not have (${pin}, ${toSpec})`);
+  for (const e of ours) console.log(`  ${e.name.padEnd(36)} ${loc(e)}`);
+  if (!ours.length) console.log("(none)");
 }
 
 if (showDiff) {
