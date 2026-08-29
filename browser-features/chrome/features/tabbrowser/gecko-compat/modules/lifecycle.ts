@@ -8,18 +8,14 @@ import * as TabOps from "../../ops/tab-ops.ts";
 import * as GroupOps from "../../ops/group-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
 import { BrowserSystem } from "../BrowserSystem.ts";
-import { uniq } from "es-toolkit";
 import type { TabData, TabId, GroupId } from "../../types/TabState.ts";
 import { resolveTabId, dispatch } from "../compat-helpers.ts";
+
+const { XPCOMUtils } = ChromeUtils.importESModule("resource://gre/modules/XPCOMUtils.sys.mjs");
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
-    // Class fields used by this module
-    _dataURLRegEx: RegExp;
-    _nonPrintingRegEx: RegExp;
-    _initialized: boolean;
-    _tabpanelsSelectHandler: any;
     tabLocalization: any;
     // Lifecycle
     init(): void;
@@ -27,6 +23,8 @@ declare module "../TabbrowserCompat.ts" {
     // Tab Switcher
     _getSwitcher(): any;
     warmupTab(tab: MozTabbrowserTab): void;
+    activateBrowserForPrintPreview(browser: XULBrowserElement): void;
+    deactivatePrintPreviewBrowsers(): void;
     // Progress Listeners
     addProgressListener(listener: any): void;
     removeProgressListener(listener: any): void;
@@ -58,6 +56,20 @@ export const methods = {
       true,
     );
 
+    // tabbrowser.js init(): the preferences it reads through lazy getters.
+    for (const [name, pref, fallback] of [
+      ["_shouldExposeContentTitle", "privacy.exposeContentTitleInWindow", true],
+      ["_shouldExposeContentTitlePbm", "privacy.exposeContentTitleInWindow.pbm", true],
+      ["_showTabCardPreview", "browser.tabs.hoverPreview.enabled", true],
+      ["_allowTransparentBrowser", "browser.tabs.allow_transparent_browser", false],
+      ["_tabGroupsEnabled", "browser.tabs.groups.enabled", false],
+      ["showPidAndActiveness", "browser.tabs.tooltipsShowPidAndActiveness", false],
+      ["_unloadTabInContextMenu", "browser.tabs.unloadTabInContextMenu", false],
+      ["_notificationEnableDelay", "security.notification_enable_delay", 500],
+    ] as const) {
+      XPCOMUtils.defineLazyPreferenceGetter(this, name, pref, fallback);
+    }
+
     // Wire up progress listener for the initial tab
     const initialTab = this.selectedTab;
     const initialBrowser = this.selectedBrowser as any;
@@ -70,9 +82,8 @@ export const methods = {
 
       initialBrowser.docShellIsActive = this.shouldActivateDocShell(initialBrowser);
 
-      try { this._wireProgressListener(initialTab, initialBrowser); }
-      catch (e) { console.warn("Failed to wire initial tab progress listener", e); }
-
+      // Its TabProgressListener is taken over in initCompat, once this
+      // instance is the window's gBrowser.
       this.appendStatusPanel(initialBrowser);
     }
 
@@ -199,6 +210,23 @@ export const methods = {
     }
   },
 
+  /** Keep `browser` rendering while it is in print preview, even in the background. */
+  activateBrowserForPrintPreview(browser: XULBrowserElement) {
+    this._printPreviewBrowsers.add(browser);
+    if (this._switcher) {
+      this._switcher.activateBrowserForPrintPreview(browser);
+    }
+    (browser as any).docShellIsActive = true;
+  },
+
+  deactivatePrintPreviewBrowsers() {
+    const browsers = this._printPreviewBrowsers;
+    this._printPreviewBrowsers = new Set();
+    for (const browser of browsers) {
+      browser.docShellIsActive = this.shouldActivateDocShell(browser);
+    }
+  },
+
   // ==========================================================================
   // Progress Listeners
   // tabbrowser.js L6144~L6173, L1054~L1101
@@ -214,7 +242,17 @@ export const methods = {
    */
   // upstream: addProgressListener@8631b2fd74 FIREFOX_143_0_1_RELEASE
   addProgressListener(listener: nsIWebProgressListener): void {
-    this.mProgressListeners = uniq([...this.mProgressListeners, listener]);
+    if (arguments.length != 1) {
+      console.error(
+        "gBrowser.addProgressListener was " +
+          "called with a second argument, " +
+          "which is not supported. See bug " +
+          "608628. Call stack: ",
+        new Error().stack,
+      );
+    }
+
+    this.mProgressListeners.push(listener);
   },
 
   /**
@@ -238,7 +276,7 @@ export const methods = {
    */
   // upstream: addTabsProgressListener@c364e37ea9 FIREFOX_143_0_1_RELEASE
   addTabsProgressListener(listener: nsIWebProgressListener): void {
-    this.mTabsProgressListeners = uniq([...this.mTabsProgressListeners, listener]);
+    this.mTabsProgressListeners.push(listener);
   },
 
   /**
@@ -266,8 +304,8 @@ export const methods = {
     const invoke = (listeners: any[], a: any[]) => {
       for (const p of listeners) {
         if (method in p) {
-          try { if (p[method].apply(p, a) === false) rv = false; }
-          catch (e) { console.error(e); }
+          try { if (!p[method].apply(p, a)) rv = false; }
+          catch (e) { console.error(e); }  // don't inhibit other listeners
         }
       }
     };

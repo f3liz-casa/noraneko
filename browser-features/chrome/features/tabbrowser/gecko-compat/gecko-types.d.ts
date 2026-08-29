@@ -245,28 +245,17 @@ declare const webrtcUI: {
   [key: string]: any;
 };
 declare const SelectableProfileService: any;
-declare const TabProgressListener: new (
-  tab: MozTabbrowserTab,
-  browser: MozBrowser,
-  initial: boolean,
-  preloaded: boolean,
-  stateFlags?: number,
-) => any;
-declare function updateUserContextUIIndicator(): void;
 declare const gPermissionPanel: any;
 declare const ContextualIdentityService: any;
 declare const PlacesUtils: {
   favicons: any;
   [key: string]: any;
 };
-declare const FAVICON_DEFAULTS: Record<string, string>;
 declare const WebExtensionPolicy: any;
 declare function isBlankPageURL(url: string): boolean;
 declare const gFindBarInitialized: boolean;
 declare const gFindBar: any;
 declare const RTL_UI: boolean;
-declare const handleDroppedLink: any;
-declare const URILoadingWrapper: any;
 declare const gBrowserInit: any;
 declare const gBrowserAllowScriptsToCloseInitialTabs: boolean;
 declare const gBrowser: TabbrowserCompat;

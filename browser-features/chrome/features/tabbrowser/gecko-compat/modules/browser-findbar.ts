@@ -10,7 +10,6 @@ declare const requestAnimationFrame: (cb: () => void) => void;
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
-    _lastFindValue: string;
     // Methods provided by this module
     getCachedFindBar(tab?: any): any;
     isFindBarInitialized(tab?: any): boolean;

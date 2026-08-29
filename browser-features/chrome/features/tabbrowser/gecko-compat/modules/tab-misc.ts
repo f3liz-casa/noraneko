@@ -10,8 +10,6 @@ declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
     updateBrowserRemotenessByURL(browser: XULBrowserElement, url: string, options?: any): boolean;
     updateBrowserRemoteness?(browser: XULBrowserElement, options: any): boolean;
-    // Class fields used by this module
-    _lastRelatedTabMap: WeakMap<any, any>;
     // Methods
     clearRelatedTabs(): void;
   }

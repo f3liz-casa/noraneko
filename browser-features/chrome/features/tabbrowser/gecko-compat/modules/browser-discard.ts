@@ -11,14 +11,13 @@ declare module "../TabbrowserCompat.ts" {
     prepareDiscardBrowser(aTab: MozTabbrowserTab): Promise<void>;
     /** Not ported yet: discarded browsers stay eager (see addTab in tab-crud). */
     _createLazyBrowser?(aTab: MozTabbrowserTab): void;
-    // Class fields used by this module
-    _windowIsClosing: boolean;
-    _nextNotificationBoxId: number;
-    _notificationEnableDelay: number;
     // Methods provided by this module
     _mayDiscardBrowser(tab: MozTabbrowserTab, skipBeforeUnloadCheck?: boolean): boolean;
     getNotificationBox(browser?: any): any;
     getTabDialogBox(browser?: any): any;
+    getTabNotificationDeck(): any;
+    readNotificationBox(browser?: any): any;
+    _updateVisibleNotificationBox(browser?: any): void;
     // Methods called by this module but defined elsewhere
     _hasBeforeUnload(tab: MozTabbrowserTab): boolean;
   }
@@ -59,6 +58,34 @@ export const methods = {
       }
     }
     return (browser as any)._notificationBox;
+  },
+
+  /** The deck that holds every tab's notification box; stamped out of its template on first use. */
+  getTabNotificationDeck() {
+    if (!this._tabNotificationDeck) {
+      const doc = this.window.document;
+      const template = doc.getElementById("tab-notification-deck-template") as any;
+      template.replaceWith(template.content);
+      this._tabNotificationDeck = doc.getElementById("tab-notification-deck");
+    }
+    return this._tabNotificationDeck;
+  },
+
+  /** The notification box `browser` already has, or null; never creates one. */
+  readNotificationBox(browser?: XULBrowserElement | null) {
+    browser = browser || this.selectedBrowser;
+    return (browser as any)?._notificationBox || null;
+  },
+
+  _updateVisibleNotificationBox(browser?: XULBrowserElement | null) {
+    if (!this._tabNotificationDeck) {
+      // If the deck hasn't been created we don't need to create it here.
+      return;
+    }
+    const notificationBox = this.readNotificationBox(browser);
+    this.getTabNotificationDeck().selectedViewName = notificationBox
+      ? notificationBox.stack.getAttribute("name")
+      : "";
   },
 
   /**

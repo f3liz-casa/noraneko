@@ -3,6 +3,7 @@
 // Section: Title · Icon · Label · Browser Sharing
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
+import { FAVICON_DEFAULTS } from "../tabbrowser-scope.ts";
 import { appState, selectedTab as selectedTabSignal, send } from "../../state/store.ts";
 import * as TabOps from "../../ops/tab-ops.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
@@ -12,16 +13,7 @@ import { resolveTabId, dispatch } from "../compat-helpers.ts";
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
-    _previewMode: boolean;
     _cleanupTabSwitchTelemetry(now: number): void;
-    // Class fields used by this module
-    _dataURLRegEx: RegExp;
-    _nonPrintingRegEx: RegExp;
-    _tabSwitchTelemetry: Map<string, { count: number; timestamp: number }>;
-    _previousURL: string | null;
-    _cachedTitleInfo: Record<string, string> | null;
-    _shouldExposeContentTitle: boolean;
-    _shouldExposeContentTitlePbm: boolean;
     tabLocalization: any;
     // Methods provided by this module
     setTabTitle(tab: MozTabbrowserTab): boolean;

@@ -23,8 +23,6 @@ declare module "../TabbrowserCompat.ts" {
     _createTabGroupMenuItem(group: MozTabbrowserTabGroup, isSaved?: boolean): any;
     _handleKeyDownEvent(event: KeyboardEvent): void;
     _handleKeyPressEvent(event: KeyboardEvent): void;
-    // Class fields used by this module
-    _taskbarTabTitle: string | null;
     tabLocalization: any;
     // Methods — Internal URI/Load
     loadURI(uri: string, params?: any): void;
@@ -37,7 +35,7 @@ declare module "../TabbrowserCompat.ts" {
     _normalizeLoadURIOptions(browser: XULBrowserElement, loadURIOptions: any): void;
     _handleUriInChrome(browser: XULBrowserElement, uri: any): boolean;
     _kickOffBrowserLoad(browser: XULBrowserElement, options: any): void;
-    _getTriggeringPrincipalFromHistory(browser: XULBrowserElement, uri: any): any;
+    _getTriggeringPrincipalFromHistory(browser: XULBrowserElement): any;
     _maybeRequestReplyFromRemoteContent(event: KeyboardEvent): boolean;
     _updateTriggerMetadataForLoad(browser: XULBrowserElement, options: any): void;
     // Internal tab ops
@@ -49,7 +47,7 @@ declare module "../TabbrowserCompat.ts" {
     _getTabMoveState(tab: MozTabbrowserTab): any;
     _handleTabMove(element: any, moveCallback: () => void, metricsContext?: any): void;
     _moveTabNextTo(element: any, targetElement: any, moveBefore?: boolean, metricsContext?: any): void;
-    _isLastTabInWindow(): boolean;
+    _isLastTabInWindow(tab: MozTabbrowserTab): boolean;
     _isFirstOrLastInTabGroup(tab: MozTabbrowserTab): boolean;
     _elementIndexToTabIndex(elementIndex: number): number;
     // Group/split view
@@ -385,17 +383,14 @@ export const methods = {
     return false;
   },
 
-  _isLastTabInWindow(): boolean {
-    let openTabCount = 0;
-    for (const tab of this.tabs) {
-      if ((tab as any).isOpen && !(tab as any).hidden) {
-        openTabCount++;
-        if (openTabCount > 1) {
-          return false;
-        }
+  /** Is `tab` the only open, visible tab in this window? */
+  _isLastTabInWindow(tab: MozTabbrowserTab): boolean {
+    for (const otherTab of this.tabs) {
+      if (otherTab != tab && (otherTab as any).isOpen && !(otherTab as any).hidden) {
+        return false;
       }
     }
-    return openTabCount === 1;
+    return true;
   },
 
   // ==========================================================================

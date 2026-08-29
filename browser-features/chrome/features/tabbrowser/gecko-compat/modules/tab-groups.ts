@@ -15,15 +15,6 @@ import { resolveTabId, dispatch } from "../compat-helpers.ts";
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
     createTabGroup(tabs?: MozTabbrowserTab[], options?: any): any;
-    // Class fields used by this module
-    _lastMultiSelectedTabRef: WeakRef<any> | null;
-    _multiSelectedTabsSet: WeakSet<any>;
-    _clearMultiSelectionLocked: boolean;
-    _clearMultiSelectionLockedOnce: boolean;
-    _multiSelectChangeStarted: boolean;
-    _multiSelectChangeAdditions: Set<any>;
-    _multiSelectChangeRemovals: Set<any>;
-    _multiSelectChangeSelected: boolean;
     // Methods
     addTabGroup(tabs: MozTabbrowserTab[], options?: any): any;
     removeTabGroup(group: MozTabbrowserTabGroup, options?: any): Promise<void>;
@@ -31,6 +22,7 @@ declare module "../TabbrowserCompat.ts" {
     getTabGroupById(groupId: GroupId): any;
     getAllTabGroups(options?: any): any[];
     moveTabToExistingGroup(tab: MozTabbrowserTab, groupId: GroupId): void;
+    moveTabToGroup(tab: MozTabbrowserTab, group: any, metricsContext?: any): void;
     adoptTabGroup(group: MozTabbrowserTabGroup): void;
     selectedTabs: MozTabbrowserTab[];
     multiSelectedTabsCount: number;
@@ -115,6 +107,23 @@ export const methods = {
     if (!groupableTabs.length) return null;
     const color = options.color ?? (this as any).tabGroupMenu?.nextUnusedColor?.() ?? "blue";
     return this.createTabGroup(groupableTabs, { ...options, color });
+  },
+
+  /** Move one tab into `group` (pinned tabs stay where they are). */
+  moveTabToGroup(tab: MozTabbrowserTab, group: any, metricsContext?: any) {
+    if (!this.isTab(tab)) {
+      throw new Error("Can only move a tab into a tab group");
+    }
+    if (tab.pinned) {
+      return;
+    }
+    if (tab.group && tab.group.id === group.id) {
+      return;
+    }
+
+    this._handleTabMove(tab, () => group.appendChild(tab), metricsContext);
+    this.removeFromMultiSelectedTabs(tab);
+    this.tabContainer._notifyBackgroundTab(tab);
   },
 
   /**
@@ -349,6 +358,14 @@ export const methods = {
   unlockClearMultiSelection() {
     this._clearMultiSelectionLocked = false;
     this._clearMultiSelectionLockedOnce = false;
+  },
+
+  /** Batch multi-selection changes; the TabMultiSelect events go out on the next microtask. */
+  _startMultiSelectChange() {
+    if (!this._multiSelectChangeStarted) {
+      this._multiSelectChangeStarted = true;
+      Promise.resolve().then(() => this._endMultiSelectChange());
+    }
   },
 
   // upstream: _endMultiSelectChange@e26018c999 FIREFOX_143_0_1_RELEASE

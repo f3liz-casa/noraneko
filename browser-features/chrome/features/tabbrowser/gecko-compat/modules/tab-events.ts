@@ -12,9 +12,6 @@ declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
     handleEvent(event: Event): void;
     _setupEventListeners(): void;
-    // Class fields used by this module
-    _tabpanelsSelectHandler: any;
-    _switcher: any;
     // Methods
     _reregisterOpenTab(tab: MozTabbrowserTab, groupId: string | null): void;
     _unregisterAndReregisterOpenTab(tab: MozTabbrowserTab, originalGroupId: string | null): void;

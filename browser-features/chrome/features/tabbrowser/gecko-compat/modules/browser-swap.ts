@@ -2,6 +2,7 @@
 // Ported from tabbrowser.js L5801~L5944, L6178~L6305
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
+import { TabProgressListener, updateUserContextUIIndicator } from "../tabbrowser-scope.ts";
 import { resolveTabId, dispatch } from "../compat-helpers.ts";
 import { DOMRegistry } from "../DOMRegistry.ts";
 import { appState, send } from "../../state/store.ts";
@@ -10,11 +11,6 @@ import type { TabId } from "../../types/TabState.ts";
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
-    _isBusy: boolean;
-    _asyncTabSwitching: boolean;
-    _switcher: any;
-    _tabFilters: Map<any, any>;
-    _tabListeners: Map<any, any>;
     swapBrowsers(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab): void;
     swapBrowsersAndCloseOther(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab): void;
     _swapBrowserDocShells(ourTab: MozTabbrowserTab, otherBrowser: XULBrowserElement, stateFlags?: number): void;
@@ -23,7 +19,6 @@ declare module "../TabbrowserCompat.ts" {
     _tabAttrModified(tab: MozTabbrowserTab, modifiedAttrs: string[]): void;
     setTabTitle(tab: MozTabbrowserTab): void;
     _endRemoveTab(tab: MozTabbrowserTab): void;
-    window: Window;
     shouldActivateDocShell(browser: XULBrowserElement): boolean;
     updateCurrentBrowser(forceUpdate?: boolean): void;
     getFindBar(tab: MozTabbrowserTab): Promise<any>;
@@ -213,16 +208,14 @@ export const swapBrowserMethods = {
       send({ type: "SET_PERMANENT_KEY", tabId: ourId, permanentKey: ourBrowser.permanentKey });
     }
 
+    // Restore the progress listener
     if (filter) {
-      try {
-        const newListener = (globalThis as any).TabProgressListener ? new (globalThis as any).TabProgressListener(ourTab, ourBrowser, false, false, stateFlags) : null;
-        if (newListener) {
-          this._tabListeners.set(ourTab, newListener);
-          const notifyAll = (globalThis as any).Ci?.nsIWebProgress?.NOTIFY_ALL || 0xffffffff;
-          filter.addProgressListener(newListener, notifyAll);
-          ourBrowser.webProgress?.addProgressListener?.(filter, notifyAll);
-        }
-      } catch (_) { /* */ }
+      const newListener = new TabProgressListener(this, ourTab, ourBrowser, false, false, stateFlags);
+      this._tabListeners.set(ourTab, newListener);
+
+      const notifyAll = Ci.nsIWebProgress.NOTIFY_ALL!;
+      filter.addProgressListener(newListener, notifyAll);
+      ourBrowser.webProgress.addProgressListener(filter, notifyAll);
     }
   },
 
@@ -394,7 +387,7 @@ export const swapBrowserMethods = {
       }
     }
 
-    win.updateUserContextUIIndicator?.();
+    updateUserContextUIIndicator(win);
     win.gPermissionPanel?.updateSharingIndicator?.();
 
     // Enable touch events to start a native dragging session (Windows only).

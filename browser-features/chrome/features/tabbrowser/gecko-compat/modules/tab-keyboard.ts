@@ -13,6 +13,7 @@ declare module "../TabbrowserCompat.ts" {
     toggleCaretBrowsing(): void;
     moveTabForward(): void;
     moveTabBackward(): void;
+    selectTabAtIndex(index: number, event?: Event): void;
   }
 }
 
@@ -62,6 +63,33 @@ export const methods = {
       event.preventDefault();
       return true;
     } catch (_) { return false; }
+  },
+
+  /**
+   * Select the visible tab at `index`; negative counts from the end, and out
+   * of range clamps (Ctrl+1..9 and friends).
+   */
+  selectTabAtIndex(index: number, event?: Event) {
+    const tabs = this.visibleTabs;
+
+    // count backwards for index < 0
+    if (index < 0) {
+      index += tabs.length;
+      // clamp at index 0 if still negative.
+      if (index < 0) {
+        index = 0;
+      }
+    } else if (index >= tabs.length) {
+      // clamp at right-most tab if out of range.
+      index = tabs.length - 1;
+    }
+
+    this.selectedTab = tabs[index];
+
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   },
 
   /**

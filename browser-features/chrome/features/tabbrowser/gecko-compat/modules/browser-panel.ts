@@ -3,6 +3,7 @@
 // Section: Panels & Containers — "how are panels and containers set up?"
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
+import { TabProgressListener, URILoadingWrapper } from "../tabbrowser-scope.ts";
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
@@ -14,10 +15,8 @@ declare module "../TabbrowserCompat.ts" {
     // Methods provided by this module
     getBrowserContainer(browser?: any): any;
     // Methods called by this module but defined elsewhere
+    _appendStatusPanel(): void;
     appendStatusPanel(browser?: any): any;
-    readNotificationBox(browser: XULBrowserElement): any;
-    getTabNotificationDeck(): any;
-    _updateVisibleNotificationBox(browser: XULBrowserElement): void;
     addNewBadge(tab: MozTabbrowserTab, options?: any): void;
   }
 }
@@ -33,7 +32,12 @@ export const methods = {
     return `panel-${outerID}-${++this._uniquePanelIDCounter}`;
   },
 
-  /** tabbrowser.js `_appendStatusPanel`: park the status panel next to the browser. */
+  /** Park the status panel next to the selected browser. */
+  _appendStatusPanel() {
+    this.selectedBrowser!.insertAdjacentElement("afterend", (this.window as any).StatusPanel.panel);
+  },
+
+  /** Ours: the same for any browser, and forgiving when StatusPanel is not there yet. */
   appendStatusPanel(browser?: any) {
     const target = browser ?? this.selectedBrowser;
     const panel = (this.window as any).StatusPanel?.panel;
@@ -130,7 +134,7 @@ export const methods = {
     if (gBrowserAllowScriptsToCloseInitialTabs) {
       browser.setAttribute("allowscriptstoclose", "true");
     }
-    browser.droppedLinkHandler = handleDroppedLink;
+    browser.droppedLinkHandler = (this.window as any).handleDroppedLink;
     browser.loadURI = URILoadingWrapper.loadURI.bind(URILoadingWrapper, browser);
     browser.fixupAndLoadURIString = URILoadingWrapper.fixupAndLoadURIString.bind(
       URILoadingWrapper,
@@ -140,32 +144,36 @@ export const methods = {
     const uniqueId = this._generateUniquePanelID();
     const panel = this.getPanel(browser);
     panel.id = uniqueId;
-    try {
-      const tabpanels = this.window.document.getElementById("tabbrowser-tabpanels");
-      tabpanels?.appendChild?.(panel);
-    } catch (_) { /* */ }
+    this.tabpanels.appendChild(panel);
 
-    const tab = this.tabs[0];
-    if (tab) {
-      (tab as any).linkedPanel = uniqueId;
-      (tab as any)._tPos = 0;
-      (tab as any)._fullyOpen = true;
-      (tab as any).linkedBrowser = browser;
-      (tab as any).permanentKey = browser.permanentKey;
+    const tab = this.tabs[0] as any;
+    tab.linkedPanel = uniqueId;
+    tab.permanentKey = browser.permanentKey;
+    tab._tPos = 0;
+    tab._fullyOpen = true;
+    tab.linkedBrowser = browser;
 
-      if (userContextId) {
-        tab.setAttribute("usercontextid", userContextId);
-        ContextualIdentityService?.setTabStyle?.(tab);
-      }
-
-      this._tabForBrowser.set(browser, tab);
-      this.appendStatusPanel();
-
-      browser.docShellIsActive = this.shouldActivateDocShell(browser);
-
-      // Hook up progress listener
-      try { this._wireProgressListener(tab, browser); } catch (_) { /* */ }
+    if (userContextId) {
+      tab.setAttribute("usercontextid", userContextId);
+      ContextualIdentityService.setTabStyle(tab);
     }
+
+    this._tabForBrowser.set(browser, tab);
+
+    this._appendStatusPanel();
+
+    // This is the initial browser, so it's usually active; the default is false
+    // so we have to update it:
+    browser.docShellIsActive = this.shouldActivateDocShell(browser);
+
+    // Hook the browser up with a progress listener.
+    const tabListener = new TabProgressListener(this, tab, browser, true, false);
+    const filter: any = Cc["@mozilla.org/appshell/component/browser-status-filter;1"]
+      .createInstance(Ci.nsIWebProgress);
+    filter.addProgressListener(tabListener, Ci.nsIWebProgress.NOTIFY_ALL!);
+    this._tabListeners.set(tab, tabListener);
+    this._tabFilters.set(tab, filter);
+    browser.webProgress.addProgressListener(filter, Ci.nsIWebProgress.NOTIFY_ALL!);
   },
 
   /**

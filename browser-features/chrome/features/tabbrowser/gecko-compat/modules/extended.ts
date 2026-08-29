@@ -42,8 +42,6 @@ declare module "../TabbrowserCompat.ts" {
     addTabsToSavedGroup(tabs: MozTabbrowserTab[], groupId: string): void;
     // Extended selection
     selectAllTabs(): void;
-    multiselected: boolean;
-    visibleTabsCount: number;
     // Extended window ops
     replaceGroupWithWindow(group: MozTabbrowserTabGroup): void;
     handleNewTabMiddleClick(node: any, event: Event): void;
@@ -67,7 +65,6 @@ declare module "../TabbrowserCompat.ts" {
     getTabPids(tab: MozTabbrowserTab): number[];
     shouldActivateDocShell(browser: XULBrowserElement): boolean;
     moveTabToSplitView(tab: MozTabbrowserTab, svId?: SplitViewId): void;
-    _wireProgressListener(tab: any, browser: any): void;
     _setupInitialBrowserAndTab(): void;
     updateTitlebar(): void;
   }
