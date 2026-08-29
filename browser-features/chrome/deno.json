@@ -31,7 +31,8 @@
   },
   "tasks": {
     "build": "deno run -A npm:vite build",
-    "check": "deno check main.ts features/tabbrowser/mod.ts"
+    "check": "deno check main.ts features/tabbrowser/mod.ts",
+    "upstream-diff": "deno run -A features/tabbrowser/upstream-diff.ts"
   },
   "compilerOptions": {
     "lib": [
