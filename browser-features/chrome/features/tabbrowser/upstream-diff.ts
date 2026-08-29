@@ -176,9 +176,10 @@ const upstream = (spec: string) => {
 
 // ------------------------------------------------------------ compat index
 type Entry = {
-  name: string;   // as defined here: addTab, get selectedTab
-  file: string;   // relative to this directory
-  line: number;   // 0-based, the definition line
+  name: string;       // as defined here: addTab, get selectedTab
+  container: string;  // upstream container this file's members stand for
+  file: string;       // relative to this directory
+  line: number;       // 0-based, the definition line
   stamp?: { key: string; hash: string; tag: string; line: number };
 };
 
@@ -198,10 +199,16 @@ async function indexCompat(): Promise<Map<string, Entry[]>> {
         const file = p.slice(here.length);
         const lines = (await Deno.readTextFile(p)).split("\n");
         const entries: Entry[] = [];
+        // `export const methods = {` and `class TabbrowserCompat` both stand
+        // for Tabbrowser; a class or object with another name at column 0
+        // (TabProgressListener, URILoadingWrapper) stands for its namesake.
+        let container = "Tabbrowser";
         lines.forEach((l, i) => {
+          const c = /^(?:export\s+)?(?:class|const|let)\s+([A-Za-z_$][\w$]*)/.exec(l);
+          if (c) container = c[1] === "methods" || c[1] === "TabbrowserCompat" ? "Tabbrowser" : c[1];
           const m = DEF.exec(l);
           if (!m || SKIP.test(m[2])) return;
-          const entry: Entry = { name: m[1] ? `${m[1]} ${m[2]}` : m[2], file, line: i };
+          const entry: Entry = { name: m[1] ? `${m[1]} ${m[2]}` : m[2], container, file, line: i };
           const s = i > 0 ? STAMP.exec(lines[i - 1]) : null;
           if (s) entry.stamp = { key: qualify(s[1]), hash: s[2], tag: s[3], line: i - 1 };
           entries.push(entry);
@@ -217,8 +224,8 @@ async function indexCompat(): Promise<Map<string, Entry[]>> {
 // Which upstream member does an unstamped entry stand for? Exact name first,
 // then a field here may stand for a getter/setter there.
 function guessKey(entry: Entry, up: Upstream): string | undefined {
-  const b = bare(entry.name);
-  for (const k of [`Tabbrowser.${entry.name}`, `Tabbrowser.${b}`, `Tabbrowser.get ${b}`, `Tabbrowser.set ${b}`]) if (up.has(k)) return k;
+  const b = bare(entry.name), c = entry.container;
+  for (const k of [`${c}.${entry.name}`, `${c}.${b}`, `${c}.get ${b}`, `${c}.set ${b}`]) if (up.has(k)) return k;
 }
 
 const wanted = (entry: Entry) =>

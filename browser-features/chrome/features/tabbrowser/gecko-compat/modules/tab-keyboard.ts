@@ -69,6 +69,7 @@ export const methods = {
    * Select the visible tab at `index`; negative counts from the end, and out
    * of range clamps (Ctrl+1..9 and friends).
    */
+  // upstream: selectTabAtIndex@20748e0faf FIREFOX_143_0_1_RELEASE
   selectTabAtIndex(index: number, event?: Event) {
     const tabs = this.visibleTabs;
 

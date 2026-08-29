@@ -73,10 +73,13 @@ export const methods = {
       throw new Error("Required argument triggeringPrincipal missing within addTab");
     }
     const id = crypto.randomUUID();
-    // Lazy tabs are created eagerly here (see below), but their URL still
-    // belongs to SessionStore, so the load is skipped as in tabbrowser.js.
-    const skipLoad = options.skipLoad ?? !!options.createLazyBrowser;
-    const { uri: uriObj, uriIsAboutBlank } = this._determineURIToLoad(uriStr, false);
+    const win = this.window as any;
+    const createLazyBrowser = !!options.createLazyBrowser;
+    // A lazy tab's URL belongs to SessionStore; its browser starts on
+    // about:blank and nothing is loaded until it is first used.
+    const skipLoad = options.skipLoad ?? createLazyBrowser;
+    const { uri: uriObj, uriIsAboutBlank, lazyBrowserURI, uriString } =
+      this._determineURIToLoad(uriStr, createLazyBrowser);
 
     const tabData = TabOps.createTab(id, uriStr, {
       userContextId: options.userContextId ?? 0,
@@ -103,23 +106,76 @@ export const methods = {
       this._lastRelatedTabMap.set(options.openerTab, DOMRegistry.getTab(id));
     }
 
-    // Lazy browsers (tabbrowser.js _createLazyBrowser: a <browser> whose
-    // docshell appears on first property access) are not ported yet, so
-    // `createLazyBrowser` tabs are created eagerly. Session restore still
-    // gets a tab; it just costs a docshell up front.
+    // <tab> and <browser>; the browser is inserted into the deck right away
+    // unless the tab is lazy.
     this._createBrowserDOM(id, {
-      remoteType: options.remoteType,
-      userContextId: options.userContextId,
+      uriString,
       uri: uriObj,
       uriIsAboutBlank,
       skipLoad,
+      createLazyBrowser,
+      userContextId: options.userContextId,
+      preferredRemoteType: options.preferredRemoteType ?? options.remoteType,
+      openerBrowser: options.openerBrowser,
+      referrerInfo: options.referrerInfo,
+      forceNotRemote: options.forceNotRemote,
+      name: options.name,
+      initialBrowsingContextGroupId: options.initialBrowsingContextGroupId,
+      openWindowInfo: options.openWindowInfo,
+      triggeringRemoteType: options.triggeringRemoteType,
+      noInitialLabel: options.noInitialLabel,
+      skipBackgroundNotify: options.skipBackgroundNotify,
     });
 
-    const tabEl = DOMRegistry.getTab(id);
+    const tabEl = DOMRegistry.getTab(id) as any;
+    const browser = DOMRegistry.getBrowser(id) as any;
+
+    if (tabEl && browser) {
+      if (options.focusUrlBar) {
+        win.gURLBar.getBrowserState(browser).urlbarFocused = true;
+      }
+
+      // If the caller opts in, create a lazy browser.
+      if (createLazyBrowser) {
+        this._createLazyBrowser(tabEl);
+
+        if (lazyBrowserURI) {
+          // Lazy browser must be explicitly registered so tab will appear as
+          // a switch-to-tab candidate in autocomplete.
+          this.UrlbarProviderOpenTabs.registerOpenTab(
+            lazyBrowserURI.spec,
+            tabEl.userContextId,
+            options.tabGroup?.id,
+            win.PrivateBrowsingUtils.isWindowPrivate(win),
+          );
+          browser.registeredOpenURI = lazyBrowserURI;
+        }
+        // tabbrowser.js skips this for insertTab: false (session restore
+        // inserting the tabs itself); the compat always inserts the tab.
+        SessionStore.setTabState(tabEl, {
+          entries: [
+            {
+              url: lazyBrowserURI?.spec || "about:blank",
+              title: options.lazyTabTitle,
+              triggeringPrincipal_base64: E10SUtils.serializePrincipal(options.triggeringPrincipal),
+            },
+          ],
+          // Make sure to store the userContextId associated to the lazy tab
+          // otherwise it would be created as a default tab when recreated on a
+          // session restore (See Bug 1819794).
+          userContextId: options.userContextId,
+        });
+      } else if (options.openerBrowser && !options.openWindowInfo) {
+        // If we were called by frontend and don't have openWindowInfo,
+        // but we were opened from another browser, set the cross group
+        // opener ID:
+        browser.browsingContext.crossGroupOpener = options.openerBrowser.browsingContext;
+      }
+    }
+
     dispatch(tabEl ?? document, "TabOpen", options);
 
     // tabbrowser.js addTab: the load starts once TabOpen has fired.
-    const browser = DOMRegistry.getBrowser(id) as any;
     if (browser) {
       this._kickOffBrowserLoad(browser, {
         uri: uriObj,
@@ -152,7 +208,22 @@ export const methods = {
       });
     }
 
-    if (tabEl && !options.inBackground && !options.bulkOrderedOpen) this.selectedTab = tabEl;
+    // This field is updated regardless if we actually animate
+    // since it's important that we keep this count correct in all cases;
+    // tabs.js _handleNewTab counts it back down.
+    this.tabAnimationsInProgress++;
+
+    // Additionally send pinned tab events
+    if (options.pinned && tabEl) {
+      this._notifyPinnedStatus(tabEl);
+    }
+
+    if (tabEl) win.gSharedTabWarning?.tabAdded(tabEl);
+
+    // tabbrowser.js: inBackground defaults to true.
+    if (tabEl && options.inBackground === false) {
+      this.selectedTab = tabEl;
+    }
     return tabEl ?? this._tabStub(id);
   },
 
@@ -192,6 +263,7 @@ export const methods = {
    * @returns nothing — the tabs are reachable through `firstTabAdded` in
    *   tabbrowser.js only via selection; callers that need them use addTab.
    */
+  // upstream: loadTabs@fe9f7fb2bc FIREFOX_143_0_1_RELEASE
   loadTabs(
     uris: string[],
     {
@@ -340,6 +412,7 @@ export const methods = {
    * last-tab decision, TabClose, the progress listener. Returns false when
    * the close was refused. Not ported: the Glean permitUnload timer.
    */
+  // upstream: _beginRemoveTab@5f9c8e90e6 FIREFOX_143_0_1_RELEASE
   _beginRemoveTab(
     aTab: MozTabbrowserTab,
     {
@@ -556,6 +629,7 @@ export const methods = {
    * Take the tab, its browser and its panel out, then tell the store.
    * Not ported: the Glean close-time stopwatches.
    */
+  // upstream: _endRemoveTab@f5f76942e9 FIREFOX_143_0_1_RELEASE
   _endRemoveTab(aTab: MozTabbrowserTab) {
     const win = this.window as any;
     const tab = aTab as any;
@@ -680,6 +754,7 @@ export const methods = {
    * happens in _endRemoveTab (from _onTransitionEnd, or the 3s fallback).
    * Not ported: the Glean close-time stopwatches.
    */
+  // upstream: removeTab@6ebddeaff4 FIREFOX_143_0_1_RELEASE
   removeTab(
     aTab: MozTabbrowserTab,
     {

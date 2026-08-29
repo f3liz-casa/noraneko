@@ -110,6 +110,7 @@ export const methods = {
   },
 
   /** Move one tab into `group` (pinned tabs stay where they are). */
+  // upstream: moveTabToGroup@c409245f77 FIREFOX_143_0_1_RELEASE
   moveTabToGroup(tab: MozTabbrowserTab, group: any, metricsContext?: any) {
     if (!this.isTab(tab)) {
       throw new Error("Can only move a tab into a tab group");
@@ -361,6 +362,7 @@ export const methods = {
   },
 
   /** Batch multi-selection changes; the TabMultiSelect events go out on the next microtask. */
+  // upstream: _startMultiSelectChange@b72dad51cc FIREFOX_143_0_1_RELEASE
   _startMultiSelectChange() {
     if (!this._multiSelectChangeStarted) {
       this._multiSelectChangeStarted = true;

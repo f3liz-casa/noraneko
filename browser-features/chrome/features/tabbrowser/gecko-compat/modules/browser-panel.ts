@@ -33,6 +33,7 @@ export const methods = {
   },
 
   /** Park the status panel next to the selected browser. */
+  // upstream: _appendStatusPanel@2e20ecf386 FIREFOX_143_0_1_RELEASE
   _appendStatusPanel() {
     this.selectedBrowser!.insertAdjacentElement("afterend", (this.window as any).StatusPanel.panel);
   },

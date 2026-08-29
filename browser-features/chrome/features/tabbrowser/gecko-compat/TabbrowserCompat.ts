@@ -46,26 +46,38 @@ export class TabbrowserCompat {
   _uniquePanelIDCounter = 0;
 
   // ---- Fields, in tabbrowser.js order (L219~L380). ----------------------
+  // upstream: closingTabsEnum@760eb8ff93 FIREFOX_143_0_1_RELEASE
   closingTabsEnum = {
     ALL: 0, OTHER: 1, TO_START: 2, TO_END: 3, MULTI_SELECTED: 4, DUPLICATES: 6, ALL_DUPLICATES: 7,
   };
+  // upstream: _lastRelatedTabMap@f0bb0257f0 FIREFOX_143_0_1_RELEASE
   _lastRelatedTabMap = new WeakMap<any, any>();
   // upstream: mProgressListeners@57984f5405 FIREFOX_143_0_1_RELEASE
   mProgressListeners: any[] = [];
   // upstream: mTabsProgressListeners@ca7c4c5c4a FIREFOX_143_0_1_RELEASE
   mTabsProgressListeners: any[] = [];
+  // upstream: _tabListeners@51c50a31f2 FIREFOX_143_0_1_RELEASE
   _tabListeners = new Map<any, any>();
+  // upstream: _tabFilters@586937d7f4 FIREFOX_143_0_1_RELEASE
   _tabFilters = new Map<any, any>();
+  // upstream: _isBusy@68f7b149ce FIREFOX_143_0_1_RELEASE
   _isBusy = false;
+  // upstream: _awaitingToggleCaretBrowsingPrompt@c4ece010b1 FIREFOX_143_0_1_RELEASE
   _awaitingToggleCaretBrowsingPrompt = false;
+  // upstream: _previewMode@a0743a163e FIREFOX_143_0_1_RELEASE
   _previewMode = false;
+  // upstream: _lastFindValue@d1dffa1800 FIREFOX_143_0_1_RELEASE
   _lastFindValue = "";
+  // upstream: _contentWaitingCount@f63ae837da FIREFOX_143_0_1_RELEASE
   _contentWaitingCount = 0;
   // upstream: _tabLayerCache@39645a0ef6 FIREFOX_143_0_1_RELEASE
   _tabLayerCache: any[] = [];
+  // upstream: tabAnimationsInProgress@6a0b467752 FIREFOX_143_0_1_RELEASE
   tabAnimationsInProgress = 0;
+  // upstream: _tabForBrowser@1d71fc4fd0 FIREFOX_143_0_1_RELEASE
   _tabForBrowser = new Map<any, any>();
   // The <browser> members a lazy browser stands in for (see _createLazyBrowser).
+  // upstream: _browserBindingProperties@9994be42a5 FIREFOX_143_0_1_RELEASE
   _browserBindingProperties = [
     "canGoBack",
     "canGoForward",
@@ -112,26 +124,42 @@ export class TabbrowserCompat {
     "didStartLoadSinceLastUserTyping",
     "audioMuted",
   ];
+  // upstream: _removingTabs@943a93a5b0 FIREFOX_143_0_1_RELEASE
   _removingTabs = new Set<any>();
+  // upstream: _multiSelectedTabsSet@e23816d97d FIREFOX_143_0_1_RELEASE
   _multiSelectedTabsSet = new WeakSet<any>();
+  // upstream: _lastMultiSelectedTabRef@c20988c9f9 FIREFOX_143_0_1_RELEASE
   _lastMultiSelectedTabRef: WeakRef<any> | null = null;
+  // upstream: _clearMultiSelectionLocked@7dee37d1d8 FIREFOX_143_0_1_RELEASE
   _clearMultiSelectionLocked = false;
+  // upstream: _clearMultiSelectionLockedOnce@797d6fe716 FIREFOX_143_0_1_RELEASE
   _clearMultiSelectionLockedOnce = false;
+  // upstream: _multiSelectChangeStarted@682e817bb4 FIREFOX_143_0_1_RELEASE
   _multiSelectChangeStarted = false;
+  // upstream: _multiSelectChangeAdditions@3dff4f8f4e FIREFOX_143_0_1_RELEASE
   _multiSelectChangeAdditions = new Set<any>();
+  // upstream: _multiSelectChangeRemovals@65d7cb33b7 FIREFOX_143_0_1_RELEASE
   _multiSelectChangeRemovals = new Set<any>();
+  // upstream: _multiSelectChangeSelected@561ccd3dcf FIREFOX_143_0_1_RELEASE
   _multiSelectChangeSelected = false;
+  // upstream: _windowIsClosing@9a2cc6de12 FIREFOX_143_0_1_RELEASE
   _windowIsClosing = false;
+  // upstream: preloadedBrowser@271cf2c4d2 FIREFOX_143_0_1_RELEASE
   preloadedBrowser: any = null;
   // upstream: _printPreviewBrowsers@8a83c8e884 FIREFOX_143_0_1_RELEASE
   _printPreviewBrowsers = new Set<any>();
   // upstream: _switcher@f0d2ebed35 FIREFOX_143_0_1_RELEASE
   _switcher: any = null;
+  // upstream: _soundPlayingAttrRemovalTimer@d71e08ee39 FIREFOX_143_0_1_RELEASE
   _soundPlayingAttrRemovalTimer = 0;
+  // upstream: _hoverTabTimer@f3225a41b2 FIREFOX_143_0_1_RELEASE
   _hoverTabTimer: any = null;
+  // upstream: _nextNotificationBoxId@465d14202c FIREFOX_143_0_1_RELEASE
   _nextNotificationBoxId = 0;
   _tabNotificationDeck: any = null;
+  // upstream: _dataURLRegEx@4c2b990609 FIREFOX_143_0_1_RELEASE
   _dataURLRegEx = /^data:/;
+  // upstream: _nonPrintingRegEx@413d04aa9b FIREFOX_143_0_1_RELEASE
   _nonPrintingRegEx = /^(?:\s|\u00A0)*$/;
 
   // ---- Ours. --------------------------------------------------------------
@@ -311,14 +339,18 @@ export class TabbrowserCompat {
       const state = appState.value.tabs[id];
       const uri = state?.uri ?? "about:blank";
 
+      // What the browser is told to be for: a lazy tab says about:blank
+      // here (its real URL is SessionStore's), the store keeps the real one.
+      const uriString = options.uriString ?? uri;
+
       // Create tab element using module-provided helper if available.
       const tabEl = (this as any)._createTab ? (this as any)._createTab({
-        uriString: uri,
+        uriString,
         userContextId: state?.userContextId,
         openerTab: state?.openerTabId ? DOMRegistry.getTab(state.openerTabId) : null,
         pinned: state?.isPinned,
-        noInitialLabel: false,
-        skipBackgroundNotify: false,
+        noInitialLabel: !!options.noInitialLabel,
+        skipBackgroundNotify: !!options.skipBackgroundNotify,
         animate: false,
       }) : this._xulEl("tab");
 
@@ -335,20 +367,30 @@ export class TabbrowserCompat {
       // tabs.js caches `allTabs`; tabbrowser.js drops that cache on every
       // insertion, and selectedIndex/selectedItem look the tab up through it.
       this.tabContainer?._invalidateCachedTabs?.();
+      // ... and renumbers _tPos (SessionStore refuses a tab without one).
+      this._updateTabsAfterInsert();
 
       // Create actual browser element for the tab.
       const res = (this as any)._createBrowserForTab ? (this as any)._createBrowserForTab(tabEl, {
-        uriString: uri,
+        uriString,
         uri: options.uri,
         uriIsAboutBlank: options.uriIsAboutBlank,
         skipLoad: options.skipLoad,
-        userContextId: state?.userContextId,
-        remoteType: options.remoteType,
+        preferredRemoteType: options.preferredRemoteType,
+        openerBrowser: options.openerBrowser,
+        referrerInfo: options.referrerInfo,
+        forceNotRemote: options.forceNotRemote,
+        name: options.name,
+        initialBrowsingContextGroupId: options.initialBrowsingContextGroupId,
+        openWindowInfo: options.openWindowInfo,
+        triggeringRemoteType: options.triggeringRemoteType,
       }) : { browser: null };
       const browser = res?.browser;
       if (browser) {
         DOMRegistry.registerBrowser(id, browser);
-        this._insertBrowser(tabEl, true);
+        // A lazy tab keeps its browser out of the deck until first use
+        // (addTab turns it into a lazy browser right after this).
+        if (!options.createLazyBrowser) this._insertBrowser(tabEl, true);
       }
     } catch (e) {
       console.error("Failed to synchronously create browser DOM for tab", id, e);
@@ -361,6 +403,7 @@ export class TabbrowserCompat {
    * (getRelatedElement) when a selected tab has no linkedPanel yet, and what
    * a lazy browser's first real use goes through.
    */
+  // upstream: _insertBrowser@289fa96bb0 FIREFOX_143_0_1_RELEASE
   _insertBrowser(aTab: any, aInsertedOnTabCreation = false) {
     const window = this.window as any;
 
@@ -484,6 +527,7 @@ export class TabbrowserCompat {
   showFullScreenViewContextMenuItems(...args: any[]) { /* no-op compat */ }
   // upstream: shouldActivateDocShell@3e49d252af FIREFOX_143_0_1_RELEASE
   shouldActivateDocShell(browser?: any) { const b = browser || this.selectedBrowser; return !!(b && (b as any).docShell); }
+  // upstream: updateTitlebar@38aaae9f15 FIREFOX_143_0_1_RELEASE
   updateTitlebar() {
     (this.window as any).document.title = this.getWindowTitleForBrowser(this.selectedBrowser!);
   }

@@ -91,6 +91,7 @@ export class TabProgressListener {
   mTotalProgress = 0;
   mRequestCount: number;
 
+  // upstream: TabProgressListener.constructor@c2cb709749 FIREFOX_143_0_1_RELEASE
   constructor(
     tabbrowser: TabbrowserCompat,
     aTab: any,
@@ -129,16 +130,19 @@ export class TabProgressListener {
     return this.mTabBrowser.window;
   }
 
+  // upstream: TabProgressListener.destroy@cb485550fb FIREFOX_143_0_1_RELEASE
   destroy() {
     this.mTab = undefined;
     this.mBrowser = undefined;
   }
 
+  // upstream: TabProgressListener._callProgressListeners@f789eb12b9 FIREFOX_143_0_1_RELEASE
   _callProgressListeners(...args: any[]) {
     args.unshift(this.mBrowser);
     return (this.mTabBrowser._callProgressListeners as any).apply(this.mTabBrowser, args);
   }
 
+  // upstream: TabProgressListener._shouldShowProgress@986e7589cb FIREFOX_143_0_1_RELEASE
   _shouldShowProgress(aRequest: any) {
     if (this.mBlank) {
       return false;
@@ -153,6 +157,7 @@ export class TabProgressListener {
     return true;
   }
 
+  // upstream: TabProgressListener._isForInitialAboutBlank@cb982b3768 FIREFOX_143_0_1_RELEASE
   _isForInitialAboutBlank(aWebProgress: any, aStateFlags: number, aLocation: any) {
     if (!this.mBlank || !aWebProgress.isTopLevel) {
       return false;
@@ -172,6 +177,7 @@ export class TabProgressListener {
     return location == "about:blank";
   }
 
+  // upstream: TabProgressListener.onProgressChange@374d44308f FIREFOX_143_0_1_RELEASE
   onProgressChange(
     aWebProgress: any,
     aRequest: any,
@@ -201,6 +207,7 @@ export class TabProgressListener {
     ]);
   }
 
+  // upstream: TabProgressListener.onProgressChange64@e42b02954d FIREFOX_143_0_1_RELEASE
   onProgressChange64(
     aWebProgress: any,
     aRequest: any,
@@ -219,6 +226,7 @@ export class TabProgressListener {
     );
   }
 
+  // upstream: TabProgressListener.onStateChange@02448d67eb FIREFOX_143_0_1_RELEASE
   onStateChange(aWebProgress: any, aRequest: any, aStateFlags: number, aStatus: number) {
     if (!aRequest) {
       return;
@@ -449,6 +457,7 @@ export class TabProgressListener {
     this.mStatus = aStatus;
   }
 
+  // upstream: TabProgressListener.onLocationChange@77c8a07f01 FIREFOX_143_0_1_RELEASE
   onLocationChange(aWebProgress: any, aRequest: any, aLocation: any, aFlags: number) {
     const gBrowser = this.mTabBrowser;
     const win = this.win;
@@ -611,6 +620,7 @@ export class TabProgressListener {
     }
   }
 
+  // upstream: TabProgressListener.onStatusChange@008c0bdbd7 FIREFOX_143_0_1_RELEASE
   onStatusChange(aWebProgress: any, aRequest: any, aStatus: number, aMessage: string) {
     if (this.mBlank) {
       return;
@@ -626,6 +636,7 @@ export class TabProgressListener {
     this.mMessage = aMessage;
   }
 
+  // upstream: TabProgressListener.onSecurityChange@abc58a59db FIREFOX_143_0_1_RELEASE
   onSecurityChange(aWebProgress: any, aRequest: any, aState: number) {
     this._callProgressListeners("onSecurityChange", [
       aWebProgress,
@@ -634,6 +645,7 @@ export class TabProgressListener {
     ]);
   }
 
+  // upstream: TabProgressListener.onContentBlockingEvent@7746972cda FIREFOX_143_0_1_RELEASE
   onContentBlockingEvent(aWebProgress: any, aRequest: any, aEvent: number) {
     this._callProgressListeners("onContentBlockingEvent", [
       aWebProgress,
@@ -642,6 +654,7 @@ export class TabProgressListener {
     ]);
   }
 
+  // upstream: TabProgressListener.onRefreshAttempted@454af87c0e FIREFOX_143_0_1_RELEASE
   onRefreshAttempted(aWebProgress: any, aURI: any, aDelay: number, aSameURI: boolean) {
     return this._callProgressListeners("onRefreshAttempted", [
       aWebProgress,
@@ -662,6 +675,7 @@ export class TabProgressListener {
  * so loads started through the browser go through fixup and chrome handling.
  */
 export const URILoadingWrapper = {
+  // upstream: URILoadingWrapper._normalizeLoadURIOptions@dc7b7f664e FIREFOX_143_0_1_RELEASE
   _normalizeLoadURIOptions(browser: any, loadURIOptions: any) {
     if (!loadURIOptions.triggeringPrincipal) {
       throw new Error("Must load with a triggering Principal");
@@ -680,6 +694,7 @@ export const URILoadingWrapper = {
       browser.ownerDocument.hasValidTransientUserGestureActivation;
   },
 
+  // upstream: URILoadingWrapper._loadFlagsToFixupFlags@11fafd2711 FIREFOX_143_0_1_RELEASE
   _loadFlagsToFixupFlags(browser: any, loadFlags: number) {
     // Attempt to perform URI fixup to see if we can handle this URI in chrome.
     let fixupFlags: number = FIXUP.FIXUP_FLAG_NONE;
@@ -695,6 +710,7 @@ export const URILoadingWrapper = {
     return fixupFlags;
   },
 
+  // upstream: URILoadingWrapper._fixupURIString@c3ad8084dc FIREFOX_143_0_1_RELEASE
   _fixupURIString(browser: any, uriString: string, loadURIOptions: any) {
     const fixupFlags = this._loadFlagsToFixupFlags(browser, loadURIOptions.loadFlags);
 
@@ -721,6 +737,7 @@ export const URILoadingWrapper = {
    * @param aUri the nsIURI that is being loaded
    * @returns true if the URI is handled, otherwise false
    */
+  // upstream: URILoadingWrapper._handleUriInChrome@301670c26e FIREFOX_143_0_1_RELEASE
   _handleUriInChrome(aBrowser: any, aUri: any) {
     if (aUri.scheme == "file") {
       try {
@@ -745,6 +762,7 @@ export const URILoadingWrapper = {
     return false;
   },
 
+  // upstream: URILoadingWrapper._updateTriggerMetadataForLoad@937820b6a0 FIREFOX_143_0_1_RELEASE
   _updateTriggerMetadataForLoad(
     browser: any,
     uriString: string,
@@ -782,15 +800,18 @@ export const URILoadingWrapper = {
   },
 
   // Both of these are used to override functions on browser-custom-element.
+  // upstream: URILoadingWrapper.fixupAndLoadURIString@25440bc9ab FIREFOX_143_0_1_RELEASE
   fixupAndLoadURIString(browser: any, uriString: string, loadURIOptions: any = {}) {
     this._internalMaybeFixupLoadURI(browser, uriString, null, loadURIOptions);
   },
+  // upstream: URILoadingWrapper.loadURI@6b340f41a6 FIREFOX_143_0_1_RELEASE
   loadURI(browser: any, uri: any, loadURIOptions: any = {}) {
     this._internalMaybeFixupLoadURI(browser, "", uri, loadURIOptions);
   },
 
   // A shared function used by both remote and non-remote browsers to
   // load a string URI or redirect it to the correct process.
+  // upstream: URILoadingWrapper._internalMaybeFixupLoadURI@8a3d6b73d5 FIREFOX_143_0_1_RELEASE
   _internalMaybeFixupLoadURI(browser: any, uriString: string, uri: any, loadURIOptions: any) {
     this._normalizeLoadURIOptions(browser, loadURIOptions);
     // Some callers pass undefined/null when calling

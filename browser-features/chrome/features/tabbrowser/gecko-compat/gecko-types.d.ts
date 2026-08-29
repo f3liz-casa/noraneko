@@ -214,7 +214,7 @@ declare const gURLBar: any;
 declare const SessionStore: {
   resetBrowserToLazyState(tab: MozTabbrowserTab): void;
   getTabState(tab: MozTabbrowserTab): string;
-  setTabState(tab: MozTabbrowserTab, state: string): void;
+  setTabState(tab: any, state: string | object): void;
   promiseInitialized: Promise<void>;
   [key: string]: any;
 };

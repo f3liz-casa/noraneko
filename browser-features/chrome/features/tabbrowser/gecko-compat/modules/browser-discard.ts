@@ -9,8 +9,7 @@ declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
     discardBrowser(aTab: MozTabbrowserTab, aForceDiscard?: boolean): boolean;
     prepareDiscardBrowser(aTab: MozTabbrowserTab): Promise<void>;
-    /** Not ported yet: discarded browsers stay eager (see addTab in tab-crud). */
-    _createLazyBrowser?(aTab: MozTabbrowserTab): void;
+    _createLazyBrowser(aTab: MozTabbrowserTab): void;
     // Methods provided by this module
     _mayDiscardBrowser(tab: MozTabbrowserTab, skipBeforeUnloadCheck?: boolean): boolean;
     getNotificationBox(browser?: any): any;
@@ -61,6 +60,7 @@ export const methods = {
   },
 
   /** The deck that holds every tab's notification box; stamped out of its template on first use. */
+  // upstream: getTabNotificationDeck@e4aa6cb463 FIREFOX_143_0_1_RELEASE
   getTabNotificationDeck() {
     if (!this._tabNotificationDeck) {
       const doc = this.window.document;
@@ -72,11 +72,13 @@ export const methods = {
   },
 
   /** The notification box `browser` already has, or null; never creates one. */
+  // upstream: readNotificationBox@1695a544bc FIREFOX_143_0_1_RELEASE
   readNotificationBox(browser?: XULBrowserElement | null) {
     browser = browser || this.selectedBrowser;
     return (browser as any)?._notificationBox || null;
   },
 
+  // upstream: _updateVisibleNotificationBox@1505e553ae FIREFOX_143_0_1_RELEASE
   _updateVisibleNotificationBox(browser?: XULBrowserElement | null) {
     if (!this._tabNotificationDeck) {
       // If the deck hasn't been created we don't need to create it here.
@@ -105,6 +107,129 @@ export const methods = {
   // Browser Management & Discard (discardBrowser, etc.)
   // tabbrowser.js L2714~L2896
   // ==========================================================================
+
+  /**
+   * Turn `aTab.linkedBrowser` into a lazy browser: every member in
+   * _browserBindingProperties becomes an accessor that answers from
+   * SessionStore's lazy tab data, and the first one with no such answer
+   * inserts the real browser (_insertBrowser) on the spot.
+   */
+  // upstream: _createLazyBrowser@878cf4049f FIREFOX_143_0_1_RELEASE
+  _createLazyBrowser(aTab: MozTabbrowserTab) {
+    const tab = aTab as any;
+    const browser = tab.linkedBrowser;
+
+    const names = this._browserBindingProperties;
+
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      let getter: () => any;
+      let setter: ((value: any) => any) | undefined;
+      switch (name) {
+        case "audioMuted":
+          getter = () => tab.hasAttribute("muted");
+          break;
+        case "contentTitle":
+          getter = () => SessionStore.getLazyTabValue(tab, "title");
+          break;
+        case "currentURI":
+          getter = () => {
+            // Avoid recreating the same nsIURI object over and over again...
+            if (browser._cachedCurrentURI) {
+              return browser._cachedCurrentURI;
+            }
+            const url = SessionStore.getLazyTabValue(tab, "url") || "about:blank";
+            return (browser._cachedCurrentURI = Services.io.newURI(url));
+          };
+          break;
+        case "didStartLoadSinceLastUserTyping":
+          getter = () => () => false;
+          break;
+        case "fullZoom":
+        case "textZoom":
+          getter = () => 1;
+          break;
+        case "tabHasCustomZoom":
+          getter = () => false;
+          break;
+        case "getTabBrowser":
+          getter = () => () => this;
+          break;
+        case "isRemoteBrowser":
+          getter = () => browser.getAttribute("remote") == "true";
+          break;
+        case "permitUnload":
+          getter = () => () => ({ permitUnload: true });
+          break;
+        case "reload":
+        case "reloadWithFlags":
+          getter = () => (params: any) => {
+            // Wait for load handler to be instantiated before
+            // initializing the reload.
+            tab.addEventListener(
+              "SSTabRestoring",
+              () => {
+                browser[name](params);
+              },
+              { once: true },
+            );
+            this._insertBrowser(tab);
+          };
+          break;
+        case "remoteType":
+          getter = () => {
+            const url = SessionStore.getLazyTabValue(tab, "url") || "about:blank";
+            // Avoid recreating the same nsIURI object over and over again...
+            let uri;
+            if (browser._cachedCurrentURI) {
+              uri = browser._cachedCurrentURI;
+            } else {
+              uri = browser._cachedCurrentURI = Services.io.newURI(url);
+            }
+            const oa = E10SUtils.predictOriginAttributes({
+              browser,
+              userContextId: tab.getAttribute("usercontextid"),
+            });
+            return E10SUtils.getRemoteTypeForURI(
+              url,
+              gMultiProcessBrowser,
+              gFissionBrowser,
+              undefined,
+              uri,
+              oa,
+            );
+          };
+          break;
+        case "userTypedValue":
+        case "userTypedClear":
+          getter = () => SessionStore.getLazyTabValue(tab, name);
+          break;
+        default:
+          getter = () => {
+            if (AppConstants.NIGHTLY_BUILD) {
+              const message = `[bug 1345098] Lazy browser prematurely inserted via '${name}' property access:\n`;
+              Services.console.logStringMessage(message + new Error().stack);
+            }
+            this._insertBrowser(tab);
+            return browser[name];
+          };
+          setter = (value: any) => {
+            if (AppConstants.NIGHTLY_BUILD) {
+              const message = `[bug 1345098] Lazy browser prematurely inserted via '${name}' property access:\n`;
+              Services.console.logStringMessage(message + new Error().stack);
+            }
+            this._insertBrowser(tab);
+            return (browser[name] = value);
+          };
+      }
+      Object.defineProperty(browser, name, {
+        get: getter,
+        set: setter,
+        configurable: true,
+        enumerable: true,
+      });
+    }
+  },
 
   // upstream: _mayDiscardBrowser@f7b632b942 FIREFOX_143_0_1_RELEASE
   _mayDiscardBrowser(aTab: MozTabbrowserTab, aForceDiscard?: boolean): boolean {

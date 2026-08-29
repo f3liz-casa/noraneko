@@ -211,6 +211,7 @@ export const methods = {
   },
 
   /** Keep `browser` rendering while it is in print preview, even in the background. */
+  // upstream: activateBrowserForPrintPreview@ae73a225be FIREFOX_143_0_1_RELEASE
   activateBrowserForPrintPreview(browser: XULBrowserElement) {
     this._printPreviewBrowsers.add(browser);
     if (this._switcher) {
@@ -219,6 +220,7 @@ export const methods = {
     (browser as any).docShellIsActive = true;
   },
 
+  // upstream: deactivatePrintPreviewBrowsers@844d41d718 FIREFOX_143_0_1_RELEASE
   deactivatePrintPreviewBrowsers() {
     const browsers = this._printPreviewBrowsers;
     this._printPreviewBrowsers = new Set();
