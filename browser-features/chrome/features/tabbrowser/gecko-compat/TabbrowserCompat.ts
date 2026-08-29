@@ -203,6 +203,8 @@ export class TabbrowserCompat {
   _previousURL: string | null = null;
   _tabpanelsSelectHandler: any = null;
   _asyncTabSwitching = false;
+  /** Read by `set selectedTab`; browser-fullScreenAndPointerLock.js sets it. */
+  _allowTabChange?: boolean;
 
   constructor(public window: Window) {
     this.ownerGlobal = window;

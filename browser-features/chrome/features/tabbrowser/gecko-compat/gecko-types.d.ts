@@ -292,12 +292,18 @@ interface XULBrowserElement {
   webProgress?: any;
   sessionHistory?: any;
   contentPrincipal?: any;
-  userTypedValue?: string;
+  userTypedValue: string;
   isNavigating?: boolean;
-  fixupAndLoadURIString?(uriString: string, options?: any): void;
+  loadURI(uri: nsIURI, params?: any): void;
+  fixupAndLoadURIString(uriString: string, params?: any): void;
   permitUnload?(action?: any): { permitUnload: boolean };
   asyncPermitUnload?(action?: any): Promise<{ permitUnload: boolean }>;
-  // Session history, forwarded by tabbrowser.js ("FORWARDED BROWSER PROPERTIES").
+  // Forwarded by tabbrowser.js ("FORWARDED BROWSER PROPERTIES").
+  securityUI: any;
+  finder: any;
+  isSyntheticDocument: boolean;
+  fullZoom: number;
+  textZoom: number;
   canGoBack: boolean;
   canGoBackIgnoringUserInteraction: boolean;
   canGoForward: boolean;

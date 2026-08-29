@@ -23,8 +23,8 @@ declare module "../TabbrowserCompat.ts" {
     fullZoom: number;
     textZoom: number;
     userTypedValue: string;
-    loadURI(uri: string, options?: any): void;
-    fixupAndLoadURIString(uri: string, options?: any): void;
+    loadURI(uri: nsIURI, params?: any): void;
+    fixupAndLoadURIString(uriString: string, params?: any): void;
     goBack(requireUserInteraction?: boolean): boolean;
     goForward(requireUserInteraction?: boolean): boolean;
     readonly canGoBack: boolean;
@@ -42,7 +42,7 @@ declare module "../TabbrowserCompat.ts" {
     readonly tabGroups: any[];
     readonly tabsInCollapsedTabGroups: MozTabbrowserTab[];
     selectedTab: any;
-    readonly selectedBrowser: XULBrowserElement | null;
+    readonly selectedBrowser: XULBrowserElement;
     readonly selectedBrowsers: XULBrowserElement[];
     readonly activeSplitView: any;
     readonly splitViewBrowsers: XULBrowserElement[];
@@ -68,61 +68,61 @@ export const methods = {
 
   /** The `docShell` of the selected browser. */
   // upstream: get docShell@9dbc5ff5bc FIREFOX_143_0_1_RELEASE
-  get docShell() { return (this.selectedBrowser as any)?.docShell; },
+  get docShell() { return this.selectedBrowser.docShell; },
   /** The `nsIWebNavigation` interface of the selected browser. */
   // upstream: get webNavigation@14005fafac FIREFOX_143_0_1_RELEASE
-  get webNavigation() { return (this.selectedBrowser as any)?.webNavigation; },
+  get webNavigation() { return this.selectedBrowser.webNavigation; },
   /** The `nsIWebProgress` interface of the selected browser. */
   // upstream: get webProgress@da1670dae8 FIREFOX_143_0_1_RELEASE
-  get webProgress() { return (this.selectedBrowser as any)?.webProgress; },
+  get webProgress() { return this.selectedBrowser.webProgress; },
   /** The page title of the document currently loaded in the selected browser. */
   // upstream: get contentTitle@3015665376 FIREFOX_143_0_1_RELEASE
-  get contentTitle() { return (this.selectedBrowser as any)?.contentTitle ?? ""; },
+  get contentTitle() { return this.selectedBrowser.contentTitle; },
   /** The content `window` of the selected browser. */
   // upstream: get contentWindow@60302c58fb FIREFOX_143_0_1_RELEASE
-  get contentWindow() { return (this.selectedBrowser as any)?.contentWindow; },
+  get contentWindow() { return this.selectedBrowser.contentWindow; },
   /** The content `document` of the selected browser. */
   // upstream: get contentDocument@e5b39a2c93 FIREFOX_143_0_1_RELEASE
-  get contentDocument() { return (this.selectedBrowser as any)?.contentDocument; },
+  get contentDocument() { return this.selectedBrowser.contentDocument; },
   /** The security principal of the content loaded in the selected browser. */
   // upstream: get contentPrincipal@201c5cd652 FIREFOX_143_0_1_RELEASE
-  get contentPrincipal() { return (this.selectedBrowser as any)?.contentPrincipal; },
+  get contentPrincipal() { return this.selectedBrowser.contentPrincipal; },
   /** The security UI object for the selected browser. */
   // upstream: get securityUI@219f8e6726 FIREFOX_143_0_1_RELEASE
-  get securityUI() { return (this.selectedBrowser as any)?.securityUI; },
+  get securityUI() { return this.selectedBrowser.securityUI; },
   /** The session history of the selected browser. */
   // upstream: get sessionHistory@393aa3cecb FIREFOX_143_0_1_RELEASE
-  get sessionHistory() { return (this.selectedBrowser as any)?.sessionHistory; },
+  get sessionHistory() { return this.selectedBrowser.sessionHistory; },
   /** The `Finder` instance for the selected browser. */
   // upstream: get finder@4e290ed15a FIREFOX_143_0_1_RELEASE
-  get finder() { return (this.selectedBrowser as any)?.finder; },
+  get finder() { return this.selectedBrowser.finder; },
   /** The URI currently loaded in the selected browser. */
   // upstream: get currentURI@43cc7a9167 FIREFOX_143_0_1_RELEASE
-  get currentURI() { return (this.selectedBrowser as any)?.currentURI; },
+  get currentURI() { return this.selectedBrowser.currentURI; },
   /** Whether the selected browser has a synthetic (non-HTML/XML) document. */
   // upstream: get isSyntheticDocument@7fab09b591 FIREFOX_143_0_1_RELEASE
-  get isSyntheticDocument() { return (this.selectedBrowser as any)?.isSyntheticDocument ?? false; },
+  get isSyntheticDocument() { return this.selectedBrowser.isSyntheticDocument; },
 
   /** The full-page zoom factor of the selected browser. */
   // upstream: get fullZoom@11fb616f8d FIREFOX_143_0_1_RELEASE
-  get fullZoom() { return (this.selectedBrowser as any)?.fullZoom ?? 1; },
+  get fullZoom() { return this.selectedBrowser.fullZoom; },
   /** Set the full-page zoom factor of the selected browser. */
   // upstream: set fullZoom@0257c531b1 FIREFOX_143_0_1_RELEASE
-  set fullZoom(val: number) { const b = this.selectedBrowser as any; if (b) b.fullZoom = val; },
+  set fullZoom(val: number) { this.selectedBrowser.fullZoom = val; },
 
   /** The text-only zoom factor of the selected browser. */
   // upstream: get textZoom@caa300e96d FIREFOX_143_0_1_RELEASE
-  get textZoom() { return (this.selectedBrowser as any)?.textZoom ?? 1; },
+  get textZoom() { return this.selectedBrowser.textZoom; },
   /** Set the text-only zoom factor of the selected browser. */
   // upstream: set textZoom@aa15967e25 FIREFOX_143_0_1_RELEASE
-  set textZoom(val: number) { const b = this.selectedBrowser as any; if (b) b.textZoom = val; },
+  set textZoom(val: number) { this.selectedBrowser.textZoom = val; },
 
   /** The URL string the user typed into the address bar for the selected browser. */
   // upstream: get userTypedValue@370c799454 FIREFOX_143_0_1_RELEASE
-  get userTypedValue() { return (this.selectedBrowser as any)?.userTypedValue ?? ""; },
+  get userTypedValue() { return this.selectedBrowser.userTypedValue; },
   /** Set the URL string the user typed into the address bar for the selected browser. */
   // upstream: set userTypedValue@c1cc1829bd FIREFOX_143_0_1_RELEASE
-  set userTypedValue(val: string) { const b = this.selectedBrowser as any; if (b) b.userTypedValue = val; },
+  set userTypedValue(val: string) { this.selectedBrowser.userTypedValue = val; },
 
   // ==========================================================================
   // Navigation
@@ -139,26 +139,11 @@ export const methods = {
    * @param options - Navigation options; must include `triggeringPrincipal`.
    */
   // upstream: loadURI@09edb025ec FIREFOX_143_0_1_RELEASE
-  loadURI(uri: string, options: any = {}) {
-    const browser = this.selectedBrowser as any;
-    if (!browser) return;
-    if (!options.triggeringPrincipal) throw new Error("Must load with a triggering Principal");
-    let uriObj;
-    if (uri && uri !== "about:blank") {
-      try { uriObj = (Services as any).uriFixup.getFixupURIInfo(uri, 0).preferredURI; }
-      catch (_) { uriObj = (Services as any).io.newURI(uri); }
-    } else {
-      uriObj = (Services as any).io.newURI("about:blank");
-    }
-    try {
-      browser.isNavigating = true;
-      browser.webNavigation?.loadURI(uriObj, options);
-    } finally { browser.isNavigating = false; }
-  },
+  loadURI(uri: nsIURI, params?: any) { return this.selectedBrowser.loadURI(uri, params); },
 
-  /** Load a URI string into the selected browser, delegating to {@link loadURI}. */
+  /** Load a URI string into the selected browser; throws for unknown schemes. */
   // upstream: fixupAndLoadURIString@934392cf64 FIREFOX_143_0_1_RELEASE
-  fixupAndLoadURIString(uri: string, options: any = {}) { this.loadURI(uri, options); },
+  fixupAndLoadURIString(uriString: string, params?: any) { return this.selectedBrowser.fixupAndLoadURIString(uriString, params); },
 
   /**
    * Navigate the selected browser back one step in session history.
@@ -168,7 +153,7 @@ export const methods = {
    */
   // upstream: goBack@c1a0456985 FIREFOX_143_0_1_RELEASE
   goBack(requireUserInteraction = false): boolean {
-    return this.selectedBrowser!.goBack(requireUserInteraction);
+    return this.selectedBrowser.goBack(requireUserInteraction);
   },
 
   /**
@@ -179,39 +164,39 @@ export const methods = {
    */
   // upstream: goForward@09bcaa28d5 FIREFOX_143_0_1_RELEASE
   goForward(requireUserInteraction = false): boolean {
-    return this.selectedBrowser!.goForward(requireUserInteraction);
+    return this.selectedBrowser.goForward(requireUserInteraction);
   },
 
   /** Whether the selected browser can navigate back in session history. */
   // upstream: get canGoBack@03c2482adf FIREFOX_143_0_1_RELEASE
-  get canGoBack(): boolean { return this.selectedBrowser!.canGoBack; },
+  get canGoBack(): boolean { return this.selectedBrowser.canGoBack; },
   /** Whether the selected browser can navigate forward in session history. */
   // upstream: get canGoForward@4f434264ca FIREFOX_143_0_1_RELEASE
-  get canGoForward(): boolean { return this.selectedBrowser!.canGoForward; },
+  get canGoForward(): boolean { return this.selectedBrowser.canGoForward; },
   /** Whether the selected browser can navigate back, regardless of user-interaction requirements. */
   // upstream: get canGoBackIgnoringUserInteraction@1b0230e4b1 FIREFOX_143_0_1_RELEASE
-  get canGoBackIgnoringUserInteraction(): boolean { return this.selectedBrowser!.canGoBackIgnoringUserInteraction; },
+  get canGoBackIgnoringUserInteraction(): boolean { return this.selectedBrowser.canGoBackIgnoringUserInteraction; },
 
   /** Reload the current page in the selected browser. */
   // upstream: reload@0c5f2b081d FIREFOX_143_0_1_RELEASE
-  reload(): void { this.selectedBrowser!.reload(); },
+  reload(): void { this.selectedBrowser.reload(); },
   /**
    * Reload the current page in the selected browser with specific load flags.
    *
    * @param flags - A bitmask of `nsIWebNavigation.LOAD_FLAGS_*` constants.
    */
   // upstream: reloadWithFlags@c3ceacc96e FIREFOX_143_0_1_RELEASE
-  reloadWithFlags(flags: number): void { this.selectedBrowser!.reloadWithFlags(flags); },
+  reloadWithFlags(flags: number): void { this.selectedBrowser.reloadWithFlags(flags); },
   /** Abort the current page load in the selected browser. */
   // upstream: stop@e08321bf1b FIREFOX_143_0_1_RELEASE
-  stop(): void { this.selectedBrowser!.stop(); },
+  stop(): void { this.selectedBrowser.stop(); },
   /**
    * Navigate to a specific entry in the selected browser's session history.
    *
    * @param index - Zero-based index into the session history list.
    */
   // upstream: gotoIndex@12dbc14070 FIREFOX_143_0_1_RELEASE
-  gotoIndex(index: number): void { this.selectedBrowser!.gotoIndex(index); },
+  gotoIndex(index: number): void { this.selectedBrowser.gotoIndex(index); },
 
   // ==========================================================================
   // Tab Collection Accessors — the tab strip (tabs.js) keeps these lists
@@ -288,19 +273,19 @@ export const methods = {
    */
   // upstream: set selectedTab@aeac3f54b9 FIREFOX_143_0_1_RELEASE
   set selectedTab(val: any) {
-    const el = val;
-    if (!el || el === this.selectedTab) return;
     if (
-      document.documentElement?.hasAttribute("window-modal-open") ||
-      ((this.window as any).gNavToolbox?.collapsed && !(this as any)._allowTabChange)
+      (this.window as any).gSharedTabWarning.willShowSharedTabWarning(val) ||
+      this.window.document.documentElement.hasAttribute("window-modal-open") ||
+      ((this.window as any).gNavToolbox.collapsed && !this._allowTabChange)
     ) {
       return;
     }
-    this.tabbox.selectedTab = el;
+    // Update the tab
+    this.tabbox.selectedTab = val;
   },
 
   // upstream: get selectedBrowser@0338e1fbc8 FIREFOX_143_0_1_RELEASE
-  get selectedBrowser(): XULBrowserElement | null {
+  get selectedBrowser(): XULBrowserElement {
     return this._selectedBrowser;
   },
 

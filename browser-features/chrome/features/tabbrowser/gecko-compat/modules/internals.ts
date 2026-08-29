@@ -18,8 +18,6 @@ declare module "../TabbrowserCompat.ts" {
     _handleKeyPressEvent(event: KeyboardEvent): void;
     tabLocalization: any;
     // Methods — Internal URI/Load
-    loadURI(uri: string, params?: any): void;
-    fixupAndLoadURIString(uri: string, params?: any): void;
     loadTabs(uris: string[], options?: any): void;
     _kickOffBrowserLoad(browser: XULBrowserElement, options: any): void;
     _getTriggeringPrincipalFromHistory(browser: XULBrowserElement): any;
