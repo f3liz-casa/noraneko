@@ -4,15 +4,13 @@
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
 import { TabProgressListener, updateUserContextUIIndicator } from "../tabbrowser-scope.ts";
 import { resolveTabId, dispatch } from "../compat-helpers.ts";
-import { DOMRegistry } from "../DOMRegistry.ts";
 import { appState, send } from "../../state/store.ts";
-import type { TabId } from "../../types/TabState.ts";
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
     swapBrowsers(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab): void;
-    swapBrowsersAndCloseOther(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab): void;
+    swapBrowsersAndCloseOther(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab): boolean;
     _swapBrowserDocShells(ourTab: MozTabbrowserTab, otherBrowser: XULBrowserElement, stateFlags?: number): void;
     _swapRegisteredOpenURIs(browser: XULBrowserElement, otherBrowser: any): void;
     setIcon(tab: MozTabbrowserTab, iconUrl: string): void;
@@ -28,14 +26,9 @@ declare module "../TabbrowserCompat.ts" {
 export const swapBrowserMethods = {
   // upstream: swapBrowsers@694109d5b3 FIREFOX_143_0_1_RELEASE
   swapBrowsers(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab) {
-    const id1 = resolveTabId(ourTab);
-    const id2 = resolveTabId(otherTab);
-    if (!id1 || !id2) return;
-
-    const otherTabBrowser = (otherTab as any).ownerGlobal?.gBrowser;
-    const ourBrowser = DOMRegistry.getBrowser(id1) as any;
-    const otherBrowser = otherTabBrowser?.getBrowserForTab?.(otherTab) ?? DOMRegistry.getBrowser(id2);
-    if (!ourBrowser || !otherBrowser) return;
+    const otherTabBrowser = (otherTab as any).ownerGlobal.gBrowser;
+    const ourBrowser = ourTab.linkedBrowser as any;
+    const otherBrowser = otherTabBrowser.getBrowserForTab(otherTab);
 
     if (!ourBrowser.mIconURL && (otherBrowser as any).mIconURL) {
       this.setIcon(ourTab, (otherBrowser as any).mIconURL);
@@ -47,19 +40,14 @@ export const swapBrowserMethods = {
 
   // upstream: swapBrowsersAndCloseOther@f28a7412fb FIREFOX_143_0_1_RELEASE
   swapBrowsersAndCloseOther(ourTab: MozTabbrowserTab, otherTab: MozTabbrowserTab) {
-    const id1 = resolveTabId(ourTab);
-    const id2 = resolveTabId(otherTab);
-    if (!id1 || !id2) return;
-
-    const otherTabBrowser = (otherTab as any).ownerGlobal?.gBrowser;
-    const ourBrowser = DOMRegistry.getBrowser(id1) as any;
-    const otherBrowser = otherTabBrowser?.getBrowserForTab?.(otherTab) ?? DOMRegistry.getBrowser(id2);
-    if (!ourBrowser || !otherBrowser) return;
+    const otherTabBrowser = (otherTab as any).ownerGlobal.gBrowser;
+    const ourBrowser = ourTab.linkedBrowser as any;
+    const otherBrowser = otherTabBrowser.getBrowserForTab(otherTab);
 
     try {
       const isPrivate = (globalThis as any).PrivateBrowsingUtils?.isWindowPrivate?.(this.window);
       const otherIsPrivate = (globalThis as any).PrivateBrowsingUtils?.isWindowPrivate?.((otherTab as any).ownerGlobal);
-      if (isPrivate !== otherIsPrivate) return;
+      if (isPrivate !== otherIsPrivate) return false;
     } catch (_) { /* */ }
 
     const isPending = (otherTab as any).hasAttribute?.("pending");
@@ -164,6 +152,7 @@ export const swapBrowserMethods = {
     if (modifiedAttrs.length) {
       this._tabAttrModified(ourTab, modifiedAttrs);
     }
+    return true;
   },
 
   // upstream: _swapBrowserDocShells@853247ab91 FIREFOX_143_0_1_RELEASE
@@ -203,10 +192,6 @@ export const swapBrowserMethods = {
     otherBrowser.permanentKey = ourPermanentKey;
     (ourTab as any).permanentKey = ourBrowser.permanentKey;
 
-    const ourId = resolveTabId(ourTab);
-    if (ourId) {
-      send({ type: "SET_PERMANENT_KEY", tabId: ourId, permanentKey: ourBrowser.permanentKey });
-    }
 
     // Restore the progress listener
     if (filter) {

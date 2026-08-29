@@ -37,7 +37,6 @@ declare module "../TabbrowserCompat.ts" {
     _kickOffBrowserLoad(browser: XULBrowserElement, options: any): void;
     _getTriggeringPrincipalFromHistory(browser: XULBrowserElement): any;
     _maybeRequestReplyFromRemoteContent(event: KeyboardEvent): boolean;
-    _updateTriggerMetadataForLoad(browser: XULBrowserElement, options: any): void;
     // Internal tab ops
     _insertTabAtIndex(tab: any, options?: any): void;
     _tabAttrModified(tab: MozTabbrowserTab, changed: string[]): void;
@@ -51,7 +50,6 @@ declare module "../TabbrowserCompat.ts" {
     _isFirstOrLastInTabGroup(tab: MozTabbrowserTab): boolean;
     _elementIndexToTabIndex(elementIndex: number): number;
     // Group/split view
-    _createTabGroup(id: string, color: string, collapsed: boolean, label?: string, isAdoptingGroup?: boolean): any;
     _createTabSplitView(tabEls: any[], options?: any): any;
     _insertSplitViewFooter(tab: MozTabbrowserTab): void;
     ungroupSplitView(splitView: any): void;
@@ -514,19 +512,6 @@ export const methods = {
   // tabbrowser.js L3368~L3704
   // ==========================================================================
 
-  // upstream: _createTabGroup@4e18b5f86e FIREFOX_143_0_1_RELEASE
-  _createTabGroup(options: any): any {
-    const { id, color, collapsed, label = "", isAdoptingGroup = false } = options;
-    const group = this.window.document.createXULElement?.("tab-group", { is: "tab-group" }) as MozTabbrowserTabGroup | undefined;
-    if (group) {
-      group.id = id;
-      group.collapsed = collapsed;
-      group.color = color;
-      group.label = label;
-      (group as any).wasCreatedByAdoption = isAdoptingGroup;
-    }
-    return group;
-  },
 
   _createTabGroupMenuItem(group: MozTabbrowserTabGroup, isSaved = false): any {
     const item = this.window.document.createXULElement?.("menuitem");
@@ -622,19 +607,6 @@ export const methods = {
   // tabbrowser.js L1784~L2153
   // ==========================================================================
 
-  _shouldShowProgress(request: any): boolean {
-    if ((this as any).mBlank) {
-      return false;
-    }
-
-    try {
-      if (request?.originalURI?.schemeIs?.("about")) {
-        return false;
-      }
-    } catch (_) { /* */ }
-
-    return true;
-  },
 
   // upstream: _handleKeyDownEvent@1c5fb13ad8 FIREFOX_143_0_1_RELEASE
   _handleKeyDownEvent(event: KeyboardEvent): void {

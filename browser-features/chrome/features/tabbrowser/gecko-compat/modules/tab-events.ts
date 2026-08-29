@@ -3,9 +3,7 @@
 // Section: Events — "how are tab DOM events dispatched and handled?"
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState } from "../../state/store.ts";
-import * as TabOps from "../../ops/tab-ops.ts";
-import { resolveTabId, dispatch } from "../compat-helpers.ts";
+import { dispatch } from "../compat-helpers.ts";
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
@@ -111,11 +109,8 @@ export const methods = {
       case "DOMAudioPlaybackStopped": {
         const t = this.getTabFromAudioEvent(event) ?? this.getTabForBrowser(event.target);
         if (t) {
-          const id = resolveTabId(t);
           const playing = event.type === "DOMAudioPlaybackStarted";
-          if (id) {
-            appState.value = TabOps.updateAudioState(appState.value, id, { soundPlaying: playing });
-
+          {
             if (playing) {
               // Clear any pending removal timer
               if ((t as any)._soundPlayingAttrRemovalTimer) {
@@ -159,10 +154,8 @@ export const methods = {
       case "DOMAudioPlaybackBlockStopped": {
         const t = this.getTabFromAudioEvent(event) ?? this.getTabForBrowser(event.target);
         if (t) {
-          const id = resolveTabId(t);
           const blocked = event.type === "DOMAudioPlaybackBlockStarted";
-          if (id) {
-            appState.value = TabOps.updateAudioState(appState.value, id, { activeMediaBlocked: blocked });
+          {
             (t as any).toggleAttribute?.("activemedia-blocked", blocked);
             this._tabAttrModified(t, ["activemedia-blocked"]);
           }

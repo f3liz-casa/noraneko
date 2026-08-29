@@ -1,65 +1,69 @@
 // SPDX-License-Identifier: MPL-2.0
-// Ported from tabbrowser.js L3325~L3596
-// Section: Tab Groups · Multi-Selection
+// Ported from tabbrowser.js L828~L832, L2991~L3283, L3791~L3804, L4082~L4132,
+// L4259~L4283, L5339~L5408, L5727~L5751, L6131~L6151, L6568~L6854, L7912~L7944
+// Section: Tab Groups · Multi-Selection · Succession
+//
+// A tab group is a <tab-group> element in the strip; a multi-selected tab
+// carries the `multiselected` attribute and sits in _multiSelectedTabsSet.
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { pipe, A, O } from "@mobily/ts-belt";
-import { appState, send } from "../../state/store.ts";
-import * as TabOps from "../../ops/tab-ops.ts";
-import * as GroupOps from "../../ops/group-ops.ts";
-import { DOMRegistry } from "../DOMRegistry.ts";
-import type { GroupId } from "../../types/TabState.ts";
-import { resolveTabId, dispatch } from "../compat-helpers.ts";
+
+const { BrowserWindowTracker } = ChromeUtils.importESModule(
+  "resource:///modules/BrowserWindowTracker.sys.mjs",
+);
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
   interface TabbrowserCompat {
-    createTabGroup(tabs?: MozTabbrowserTab[], options?: any): any;
-    // Methods
+    // Tab groups
+    _createTabGroup(id: string, color: string, collapsed: boolean, label?: string, isAdoptingGroup?: boolean): any;
     addTabGroup(tabs: MozTabbrowserTab[], options?: any): any;
     removeTabGroup(group: MozTabbrowserTabGroup, options?: any): Promise<void>;
     ungroupTab(tab: MozTabbrowserTab): void;
-    getTabGroupById(groupId: GroupId): any;
+    getTabGroupById(groupId: string): any;
     getAllTabGroups(options?: any): any[];
-    moveTabToExistingGroup(tab: MozTabbrowserTab, groupId: GroupId): void;
     moveTabToGroup(tab: MozTabbrowserTab, group: any, metricsContext?: any): void;
-    adoptTabGroup(group: MozTabbrowserTabGroup): void;
+    moveTabToExistingGroup(tab: MozTabbrowserTab, group: any): void;
+    adoptTabGroup(group: MozTabbrowserTabGroup, options?: any): any;
+    // Multi-selection
     selectedTabs: MozTabbrowserTab[];
-    multiSelectedTabsCount: number;
+    readonly multiSelectedTabsCount: number;
     lastMultiSelectedTab: MozTabbrowserTab | null;
     addToMultiSelectedTabs(tab: MozTabbrowserTab): void;
+    addRangeToMultiSelectedTabs(startTab: MozTabbrowserTab, endTab: MozTabbrowserTab): void;
     removeFromMultiSelectedTabs(tab: MozTabbrowserTab): void;
-    clearMultiSelectedTabs(options?: any): void;
+    clearMultiSelectedTabs(): void;
     selectAllTabs(): void;
     allTabsSelected(): boolean;
-    _avoidSingleSelectedTab(): void;
-    addRangeToMultiSelectedTabs(startTab: MozTabbrowserTab, endTab: MozTabbrowserTab): void;
     lockClearMultiSelectionOnce(): void;
     unlockClearMultiSelection(): void;
+    _avoidSingleSelectedTab(): void;
+    _switchToNextMultiSelectedTab(): void;
+    _mayTabBeMultiselected(tab: MozTabbrowserTab): boolean;
     _startMultiSelectChange(): void;
     _endMultiSelectChange(): void;
-    _mayTabBeMultiselected(tab: MozTabbrowserTab): boolean;
-    _switchToNextMultiSelectedTab(): void;
     _updateMultiselectedTabCloseButtonTooltip(): void;
     toggleMuteAudioOnMultiSelectedTabs(tab: MozTabbrowserTab): void;
     resumeDelayedMediaOnMultiSelectedTabs(): void;
+    pinMultiSelectedTabs(): void;
+    unpinMultiSelectedTabs(): void;
     reloadMultiSelectedTabs(): void;
     reloadTab(tab: MozTabbrowserTab): void;
     reloadTabs(tabs: MozTabbrowserTab[]): void;
-    pinMultiSelectedTabs(): void;
-    unpinMultiSelectedTabs(): void;
+    // Succession, blur
     setSuccessor(tab: MozTabbrowserTab, successor: MozTabbrowserTab | null): void;
     replaceInSuccession(tab: MozTabbrowserTab, otherTab: MozTabbrowserTab | null): void;
     _blurTab(tab: MozTabbrowserTab): void;
     _findTabToBlurTo(tab: MozTabbrowserTab, excludeTabs?: MozTabbrowserTab[]): MozTabbrowserTab | null;
+    // Ranges and bulk moves
     _getTabsToTheEndFrom(tab: MozTabbrowserTab): MozTabbrowserTab[];
     _getTabsToTheStartFrom(tab: MozTabbrowserTab): MozTabbrowserTab[];
     removeTabsToTheEndFrom(tab: MozTabbrowserTab, options?: any): void;
     removeTabsToTheStartFrom(tab: MozTabbrowserTab, options?: any): void;
     moveTabsToEnd(contextTab: MozTabbrowserTab): void;
     moveTabsToStart(contextTab: MozTabbrowserTab): void;
-    moveTabsAfter(tabs: MozTabbrowserTab[], targetTab: MozTabbrowserTab, metricsContext?: any): void;
-    moveTabsBefore(tabs: MozTabbrowserTab[], targetTab: MozTabbrowserTab, metricsContext?: any): void;
+    moveTabsAfter(elements: any[], targetElement: any, metricsContext?: any): void;
+    moveTabsBefore(elements: any[], targetElement: any, metricsContext?: any): void;
     _updateTabBarForPinnedTabs(): void;
     _updateTabsAfterInsert(): void;
     _determineURIToLoad(uriString: string, createLazyBrowser: boolean): any;
@@ -68,222 +72,323 @@ declare module "../TabbrowserCompat.ts" {
 
 export const methods = {
   // ==========================================================================
-  // Tab Groups (addTabGroup, removeTabGroup, etc.)
-  // tabbrowser.js L3368~L5086
+  // Tab Groups
+  // tabbrowser.js L2991~L3283
   // ==========================================================================
 
-  /**
-   * Creates a new tab group and assigns the given tabs to it.
-   *
-   * @param tabs - Tabs to include in the new group.
-   * @param options.id    - Explicit group ID; auto-generated if omitted.
-   * @param options.title - Display name for the group.
-   * @param options.color - Color key for the group label (e.g. `"blue"`).
-   * @returns The newly created group object.
-   */
-  createTabGroup(tabs: MozTabbrowserTab[] = [], options: any = {}): any {
-    const id = options.id ?? GroupOps.generateLegacyId();
-    send({ type: "CREATE_GROUP", id, title: options.title ?? "", color: options.color ?? "blue" });
-    for (const t of tabs) {
-      const tid = resolveTabId(t);
-      if (tid) send({ type: "ADD_TAB_TO_GROUP", tabId: tid, groupId: id });
-    }
-    return appState.value.groups[id];
+  _createTabGroup(id: string, color: string, collapsed: boolean, label = "", isAdoptingGroup = false): any {
+    const group: any = this.window.document.createXULElement("tab-group", { is: "tab-group" });
+    group.id = id;
+    group.collapsed = collapsed;
+    group.color = color;
+    group.label = label;
+    group.wasCreatedByAdoption = isAdoptingGroup;
+    return group;
   },
 
   /**
-   * Creates a new tab group from `tabs`, auto-assigning the next unused color.
-   * Pinned tabs are silently excluded — they cannot belong to a group.
-   *
-   * @param tabs - Candidate tabs; pinned tabs are filtered out automatically.
-   * @param options.title - Display name for the group.
-   * @param options.color - Override the auto-selected color.
-   * @returns The new group object, or `null` when no groupable tabs remain.
+   * Make a group out of `tabs` (a new <tab-group> in the strip, the tabs
+   * moved into it). Returns null when nothing groupable was given.
    */
-  // upstream: addTabGroup@1697b981cf FIREFOX_143_0_1_RELEASE
-  addTabGroup(tabs: MozTabbrowserTab[], options: any = {}) {
-    // Filter out pinned tabs (can't be in groups)
-    const groupableTabs = tabs.filter(t => !t.pinned);
-    if (!groupableTabs.length) return null;
-    const color = options.color ?? (this as any).tabGroupMenu?.nextUnusedColor?.() ?? "blue";
-    return this.createTabGroup(groupableTabs, { ...options, color });
+  addTabGroup(
+    tabs: MozTabbrowserTab[],
+    {
+      id = null,
+      color = null,
+      label = "",
+      insertBefore = null,
+      isAdoptingGroup = false,
+      isUserTriggered = false,
+      telemetryUserCreateSource = "unknown",
+    }: any = {},
+  ): any {
+    if (!tabs?.length) {
+      throw new Error("Cannot create tab group with zero tabs");
+    }
+
+    if (!color) {
+      color = this.tabGroupMenu.nextUnusedColor;
+    }
+
+    if (!id) {
+      // Note: If this changes, make sure to also update the
+      // getExtTabGroupIdForInternalTabGroupId implementation in
+      // browser/components/extensions/parent/ext-browser.js.
+      // See: Bug 1960104 - Improve tab group ID generation in addTabGroup
+      id = `${Date.now()}-${Math.round(Math.random() * 100)}`;
+    }
+    const group = this._createTabGroup(id, color, false, label, isAdoptingGroup);
+    this.tabContainer.insertBefore(group, insertBefore?.group ?? insertBefore);
+    group.addTabs(tabs);
+
+    // Bail out if the group is empty at this point. This can happen if all
+    // provided tabs are pinned and therefore cannot be grouped.
+    if (!group.tabs.length) {
+      group.remove();
+      return null;
+    }
+
+    if (isUserTriggered) {
+      group.dispatchEvent(
+        new CustomEvent("TabGroupCreateByUser", {
+          bubbles: true,
+          detail: {
+            telemetryUserCreateSource,
+          },
+        }),
+      );
+    }
+
+    // Fixes bug1953801 and bug1954689
+    // Ensure that the tab state cache is updated immediately after creating
+    // a group. This is necessary because we consider group creation a
+    // deliberate user action indicating the tab has importance for the user.
+    // Without this, it is not possible to save and close a tab group with
+    // a short lifetime.
+    group.tabs.forEach((tab: any) => {
+      this.TabStateFlusher.flush(tab.linkedBrowser);
+    });
+
+    return group;
+  },
+
+  /**
+   * Close a group and every tab in it. TabGroupRemoveRequested goes out
+   * first, while the tabs are still grouped, so SessionStore can save it.
+   */
+  async removeTabGroup(group: MozTabbrowserTabGroup, options: any = {}): Promise<void> {
+    options = { isUserTriggered: false, telemetrySource: this.TabMetrics.METRIC_SOURCE.UNKNOWN, ...options };
+    if (this.tabGroupMenu.panel.state != "closed") {
+      this.tabGroupMenu.panel.hidePopup(options.animate);
+    }
+
+    if (!options.skipPermitUnload) {
+      // Process permit unload handlers and allow user cancel
+      const cancel = await this.runBeforeUnloadForTabs(group.tabs);
+      if (cancel) {
+        if (SessionStore.getSavedTabGroup(group.id)) {
+          // If this group is currently saved, it's being removed as part of a
+          // save & close operation. We need to forget the saved group
+          // if the close is canceled.
+          SessionStore.forgetSavedTabGroup(group.id);
+        }
+        return;
+      }
+      options.skipPermitUnload = true;
+    }
+
+    if (group.tabs.length == this.tabs.length) {
+      // explicit calls to removeTabGroup are not expected to save groups.
+      // if removing this group closes a window, we need to tell the window
+      // not to save the group.
+      (group as any).saveOnWindowClose = false;
+    }
+
+    // This needs to be fired before tabs are removed because session store
+    // needs to respond to this while tabs are still part of the group
+    group.dispatchEvent(
+      new CustomEvent("TabGroupRemoveRequested", {
+        bubbles: true,
+        detail: {
+          skipSessionStore: options.skipSessionStore,
+          isUserTriggered: options.isUserTriggered,
+          telemetrySource: options.telemetrySource,
+        },
+      }),
+    );
+
+    // Skip session store on a per-tab basis since these tabs will get
+    // recorded as part of a group
+    options.skipSessionStore = true;
+
+    // tell removeTabs not to subprocess groups since we're removing a group.
+    options.skipGroupCheck = true;
+
+    this.removeTabs(group.tabs, options);
+  },
+
+  /** Take `tab` out of its group: it lands right after the group in the strip. */
+  ungroupTab(tab: MozTabbrowserTab) {
+    if (!tab.group) {
+      return;
+    }
+
+    this._handleTabMove(tab, () =>
+      this.tabContainer.insertBefore(tab, (tab.group as any).nextElementSibling),
+    );
   },
 
   /** Move one tab into `group` (pinned tabs stay where they are). */
-  // upstream: moveTabToGroup@c409245f77 FIREFOX_143_0_1_RELEASE
-  moveTabToGroup(tab: MozTabbrowserTab, group: any, metricsContext?: any) {
-    if (!this.isTab(tab)) {
+  moveTabToGroup(aTab: MozTabbrowserTab, aGroup: any, metricsContext?: any) {
+    if (!this.isTab(aTab)) {
       throw new Error("Can only move a tab into a tab group");
     }
-    if (tab.pinned) {
+    if (aTab.pinned) {
       return;
     }
-    if (tab.group && tab.group.id === group.id) {
+    if (aTab.group && (aTab.group as any).id === aGroup.id) {
       return;
     }
 
-    this._handleTabMove(tab, () => group.appendChild(tab), metricsContext);
-    this.removeFromMultiSelectedTabs(tab);
-    this.tabContainer._notifyBackgroundTab(tab);
+    this._handleTabMove(aTab, () => aGroup.appendChild(aTab), metricsContext);
+    this.removeFromMultiSelectedTabs(aTab);
+    this.tabContainer._notifyBackgroundTab(aTab);
   },
 
-  /**
-   * Returns the group with the given ID, or `null` if no such group exists.
-   */
-  // upstream: getTabGroupById@004c84576c FIREFOX_143_0_1_RELEASE
-  getTabGroupById(groupId: GroupId) {
-    return appState.value.groups[groupId] ?? null;
+  /** Ours: the name some callers use for moveTabToGroup. */
+  moveTabToExistingGroup(tab: MozTabbrowserTab, group: any) {
+    this.moveTabToGroup(tab, group);
   },
 
-  /**
-   * Returns all currently open tab groups.
-   */
-  // upstream: getAllTabGroups@d054fef402 FIREFOX_143_0_1_RELEASE
-  getAllTabGroups() {
-    return Object.values(appState.value.groups);
-  },
-
-  /**
-   * Moves a tab into an existing group, firing a `TabGrouped` event.
-   */
-  moveTabToExistingGroup(tab: MozTabbrowserTab, groupId: GroupId) {
-    const id = resolveTabId(tab);
-    if (!id) return;
-    send({ type: "ADD_TAB_TO_GROUP", tabId: id, groupId });
-    const el = DOMRegistry.getTab(id);
-    if (el) dispatch(el, "TabGrouped");
-  },
-
-  /**
-   * Registers a tab group originating from another window into this window's state.
-   * No-ops when the group already belongs to this window or is already tracked.
-   */
-  // upstream: adoptTabGroup@2bc10c331f FIREFOX_143_0_1_RELEASE
-  adoptTabGroup(group: MozTabbrowserTabGroup) {
-    if (group?.ownerGlobal === (this as any).window) return;
-    if (group?.id && !appState.value.groups[group.id]) {
-      send({ type: "CREATE_GROUP", id: group.id, title: group.label, color: group.color });
+  /** Bring a group over from another window: adopt its tabs, then regroup them here. */
+  adoptTabGroup(group: MozTabbrowserTabGroup, { elementIndex, tabIndex, selectTab }: any = {}): any {
+    const g = group as any;
+    if (g.ownerDocument == this.window.document) {
+      return group;
     }
-  },
+    g.removedByAdoption = true;
+    g.saveOnWindowClose = false;
 
-  /**
-   * Closes a tab group and all its tabs.
-   *
-   * Fires `TabGroupRemoveRequested` before proceeding; listeners may call
-   * `preventDefault()` to abort the removal (e.g. to save the session).
-   *
-   * @param options.skipSessionStore - Skip SessionStore persistence for the closed tabs.
-   * @param options.isUserTriggered  - Indicate that the user explicitly requested removal.
-   */
-  // upstream: removeTabGroup@2c01e93671 FIREFOX_143_0_1_RELEASE
-  async removeTabGroup(group: MozTabbrowserTabGroup, options: any = {}) {
-    if (!group) return;
-    const { skipSessionStore = false, isUserTriggered = false } = options;
+    const oldSelectedTab = selectTab && g.ownerGlobal.gBrowser.selectedTab;
+    const newTabs: any[] = [];
 
-    // Fire removal request event for SessionStore interception
-    const requestEvent = new CustomEvent("TabGroupRemoveRequested", {
-      bubbles: true,
-      detail: { group, isUserTriggered },
-    });
-    (this as any).tabContainer?.dispatchEvent?.(requestEvent);
-    if (requestEvent.defaultPrevented) return;
+    // bug1969925 adopting a tab group will cause the window to close if it
+    // is the only thing on the tab strip
+    // In this case, the `TabUngrouped` event will not fire, so we have to do it manually
+    const noOtherTabsInWindow = g.ownerGlobal.gBrowser.nonHiddenTabs.every((t: any) => t.group == group);
 
-    // Get all tabs in the group and remove them
-    const tabs = group.tabs ? [...group.tabs] : [];
-    if (tabs.length) {
-      await (this as any).removeTabs(tabs, {
-        animate: true,
-        skipGroupCheck: true,
-        skipSessionStore,
+    for (const tab of g.tabs) {
+      if (noOtherTabsInWindow) {
+        g.dispatchEvent(
+          new CustomEvent("TabUngrouped", {
+            bubbles: true,
+            detail: tab,
+          }),
+        );
+      }
+      const adoptedTab = this.adoptTab(tab, {
+        elementIndex,
+        tabIndex,
+        selectTab: tab === oldSelectedTab,
       });
+      newTabs.push(adoptedTab);
+      // Put next tab after current one.
+      elementIndex = undefined;
+      tabIndex = adoptedTab._tPos + 1;
     }
 
-    // If group element still exists in DOM, remove it
-    try { group.remove?.(); } catch (_) { /* */ }
+    return this.addTabGroup(newTabs, {
+      id: g.id,
+      label: g.label,
+      color: g.color,
+      insertBefore: newTabs[0],
+      isAdoptingGroup: true,
+    });
   },
 
-  /**
-   * Removes a tab from its group without closing it, firing a `TabUngrouped` event.
-   */
-  // upstream: ungroupTab@8837d7e828 FIREFOX_143_0_1_RELEASE
-  ungroupTab(tab: MozTabbrowserTab) {
-    if (!tab) return;
-    const id = tab._tabId ?? tab.id;
-    if (!id) return;
-    send({ type: "REMOVE_TAB_FROM_GROUP", tabId: id });
-    tab.removeAttribute?.("group-id");
-    dispatch(tab, "TabUngrouped");
+  /** Every tab group in every window of this kind (private or not). */
+  getAllTabGroups({ sortByLastSeenActive = false }: any = {}): any[] {
+    const win = this.window as any;
+    const groups: any[] = BrowserWindowTracker.getOrderedWindows({
+      private: win.PrivateBrowsingUtils.isWindowPrivate(win),
+    }).reduce((acc: any[], thisWindow: any) => acc.concat(thisWindow.gBrowser.tabGroups), []);
+    if (sortByLastSeenActive) {
+      groups.sort((group1, group2) => group2.lastSeenActive - group1.lastSeenActive);
+    }
+    return groups;
+  },
+
+  getTabGroupById(id: string): any {
+    const win = this.window as any;
+    for (const w of BrowserWindowTracker.getOrderedWindows({
+      private: win.PrivateBrowsingUtils.isWindowPrivate(win),
+    })) {
+      for (const group of w.gBrowser.tabGroups) {
+        if (group.id === id) {
+          return group;
+        }
+      }
+    }
+    return null;
   },
 
   // ==========================================================================
   // Multi-selection
-  // tabbrowser.js L6304~L7362
+  // tabbrowser.js L6568~L6854
   // ==========================================================================
 
-  /** Returns all currently selected tabs — the active tab plus any multi-selected tabs. */
-  // upstream: get selectedTabs@fa90b92447 FIREFOX_143_0_1_RELEASE
-  get selectedTabs(): MozTabbrowserTab[] {
-    const s = appState.value;
-    return pipe(
-      s.tabOrder,
-      A.filter(id => s.tabs[id].isMultiSelected || id === s.selectedTabId),
-      A.filterMap(id => O.fromNullable(DOMRegistry.getTab(id))),
-    ) as MozTabbrowserTab[];
+  _updateMultiselectedTabCloseButtonTooltip() {
+    const doc = this.window.document as any;
+    const tabCount = this.selectedTabs.length;
+    this.selectedTabs.forEach((selectedTab) => {
+      doc.l10n.setArgs(selectedTab.querySelector(".tab-close-button"), {
+        tabCount,
+      });
+    });
   },
 
-  /** Replaces the multi-selection with the given set of tabs. */
-  // upstream: set selectedTabs@9cac866a4e FIREFOX_143_0_1_RELEASE
-  set selectedTabs(tabs: MozTabbrowserTab[]) {
-    this.clearMultiSelectedTabs();
-    for (const t of tabs) this.addToMultiSelectedTabs(t);
+  addToMultiSelectedTabs(aTab: MozTabbrowserTab) {
+    if (aTab.multiselected) {
+      return;
+    }
+
+    aTab.setAttribute("multiselected", "true");
+    aTab.setAttribute("aria-selected", "true");
+    this._multiSelectedTabsSet.add(aTab);
+    this._startMultiSelectChange();
+    if (this._multiSelectChangeRemovals.has(aTab)) {
+      this._multiSelectChangeRemovals.delete(aTab);
+    } else {
+      this._multiSelectChangeAdditions.add(aTab);
+    }
+
+    this._updateMultiselectedTabCloseButtonTooltip();
   },
 
-  /** Returns the count of tabs that are explicitly multi-selected (excludes the single active tab). */
-  // upstream: get multiSelectedTabsCount@5ebd7d7ea8 FIREFOX_143_0_1_RELEASE
-  get multiSelectedTabsCount(): number {
-    return appState.value.tabOrder.filter(id => appState.value.tabs[id].isMultiSelected).length;
+  /** Every visible tab from one to the other, inclusive, joins the selection. */
+  addRangeToMultiSelectedTabs(aTab1: MozTabbrowserTab, aTab2: MozTabbrowserTab) {
+    if (aTab1 == aTab2) {
+      return;
+    }
+
+    const tabs = this.visibleTabs;
+    const indexOfTab1 = tabs.indexOf(aTab1);
+    const indexOfTab2 = tabs.indexOf(aTab2);
+
+    const [lowerIndex, higherIndex] =
+      indexOfTab1 < indexOfTab2
+        ? [Math.max(0, indexOfTab1), indexOfTab2]
+        : [Math.max(0, indexOfTab2), indexOfTab1];
+
+    for (let i = lowerIndex; i <= higherIndex; i++) {
+      this.addToMultiSelectedTabs(tabs[i]);
+    }
+
+    this._updateMultiselectedTabCloseButtonTooltip();
   },
 
-  /** Returns the most recently added multi-selected tab, or `null` if the reference has been collected. */
-  // upstream: get lastMultiSelectedTab@c9b78d08a9 FIREFOX_143_0_1_RELEASE
-  get lastMultiSelectedTab(): MozTabbrowserTab | null {
-    return this._lastMultiSelectedTabRef?.deref() ?? null;
+  removeFromMultiSelectedTabs(aTab: MozTabbrowserTab) {
+    if (!aTab.multiselected) {
+      return;
+    }
+    aTab.removeAttribute("multiselected");
+    aTab.removeAttribute("aria-selected");
+    this._multiSelectedTabsSet.delete(aTab);
+    this._startMultiSelectChange();
+    if (this._multiSelectChangeAdditions.has(aTab)) {
+      this._multiSelectChangeAdditions.delete(aTab);
+    } else {
+      this._multiSelectChangeRemovals.add(aTab);
+    }
+    // Update labels for Close buttons of the remaining multiselected tabs:
+    this._updateMultiselectedTabCloseButtonTooltip();
+    // Update the label for the Close button of the tab being removed
+    // from the multiselection:
+    (this.window.document as any).l10n.setArgs(aTab.querySelector(".tab-close-button"), {
+      tabCount: 1,
+    });
   },
 
-  /** Stores a weak reference to the most recently multi-selected tab. */
-  // upstream: set lastMultiSelectedTab@1483625711 FIREFOX_143_0_1_RELEASE
-  set lastMultiSelectedTab(tab: MozTabbrowserTab | null) {
-    this._lastMultiSelectedTabRef = tab ? new WeakRef(tab) : null;
-  },
-
-  /**
-   * Adds a tab to the multi-selection and records it as the last multi-selected tab.
-   */
-  // upstream: addToMultiSelectedTabs@e116c23d69 FIREFOX_143_0_1_RELEASE
-  addToMultiSelectedTabs(tab: MozTabbrowserTab) {
-    const id = resolveTabId(tab);
-    if (!id) return;
-    send({ type: "SET_MULTI_SELECTION", tabIds: [id], isSelected: true });
-    this._multiSelectedTabsSet.add(tab);
-    this.lastMultiSelectedTab = tab;
-  },
-
-  /**
-   * Removes a tab from the multi-selection.
-   */
-  // upstream: removeFromMultiSelectedTabs@37a51b83d9 FIREFOX_143_0_1_RELEASE
-  removeFromMultiSelectedTabs(tab: MozTabbrowserTab) {
-    const id = resolveTabId(tab);
-    if (!id) return;
-    send({ type: "SET_MULTI_SELECTION", tabIds: [id], isSelected: false });
-    this._multiSelectedTabsSet.delete(tab);
-  },
-
-  /**
-   * Clears the entire multi-selection.
-   * No-op when clearing is currently locked (see `lockClearMultiSelectionOnce`).
-   */
-  // upstream: clearMultiSelectedTabs@1cb2a0b306 FIREFOX_143_0_1_RELEASE
   clearMultiSelectedTabs() {
     if (this._clearMultiSelectionLocked) {
       if (this._clearMultiSelectionLockedOnce) {
@@ -292,77 +397,113 @@ export const methods = {
       }
       return;
     }
-    send({ type: "CLEAR_MULTI_SELECTION" });
-    this._multiSelectedTabsSet = new WeakSet();
-    this.lastMultiSelectedTab = null;
+
+    if (this.multiSelectedTabsCount < 1) {
+      return;
+    }
+
+    for (const tab of this.selectedTabs) {
+      this.removeFromMultiSelectedTabs(tab);
+    }
+    this._lastMultiSelectedTabRef = null;
   },
 
-  /**
-   * Adds all visible (non-hidden) tabs to the multi-selection.
-   */
-  // upstream: selectAllTabs@6a5310e0cd FIREFOX_143_0_1_RELEASE
   selectAllTabs() {
-    send({
-      type: "SET_MULTI_SELECTION",
-      tabIds: appState.value.tabOrder.filter(id => !appState.value.tabs[id].isHidden),
-      isSelected: true,
-    });
+    const visibleTabs = this.visibleTabs;
+    this.addRangeToMultiSelectedTabs(visibleTabs[0], visibleTabs[visibleTabs.length - 1]);
   },
 
-  // upstream: _avoidSingleSelectedTab@ef83b2d036 FIREFOX_143_0_1_RELEASE
+  allTabsSelected(): boolean {
+    return this.visibleTabs.length == 1 || this.visibleTabs.every((t) => t.multiselected);
+  },
+
+  lockClearMultiSelectionOnce() {
+    this._clearMultiSelectionLockedOnce = true;
+    this._clearMultiSelectionLocked = true;
+  },
+
+  unlockClearMultiSelection() {
+    this._clearMultiSelectionLockedOnce = false;
+    this._clearMultiSelectionLocked = false;
+  },
+
   _avoidSingleSelectedTab() {
-    if (this.multiSelectedTabsCount === 1) {
+    if (this.multiSelectedTabsCount == 1) {
       this.clearMultiSelectedTabs();
     }
   },
 
-  // upstream: _switchToNextMultiSelectedTab@6384a65022 FIREFOX_143_0_1_RELEASE
   _switchToNextMultiSelectedTab() {
     this._clearMultiSelectionLocked = true;
+
+    // Guarantee that _clearMultiSelectionLocked lock gets released.
     try {
-      const lastMultiSelectedTab = this.lastMultiSelectedTab;
-      if (lastMultiSelectedTab && !lastMultiSelectedTab.selected) {
+      const lastMultiSelectedTab = this.lastMultiSelectedTab as any;
+      if (!lastMultiSelectedTab.selected) {
         this.selectedTab = lastMultiSelectedTab;
       } else {
-        const selectedTabs = ChromeUtils.nondeterministicGetWeakSetKeys?.(
-          this._multiSelectedTabsSet
-        )?.filter?.((t: any) => this._mayTabBeMultiselected(t));
-        if (selectedTabs?.length) {
-          this.selectedTab = selectedTabs.at(-1);
-        }
+        const selectedTabs = ChromeUtils.nondeterministicGetWeakSetKeys(this._multiSelectedTabsSet).filter(
+          this._mayTabBeMultiselected,
+        );
+        this.selectedTab = selectedTabs.at(-1);
       }
     } catch (e) {
       console.error(e);
     }
+
     this._clearMultiSelectionLocked = false;
   },
 
-  // upstream: _mayTabBeMultiselected@dd5eadc0a9 FIREFOX_143_0_1_RELEASE
-  _mayTabBeMultiselected(tab: MozTabbrowserTab): boolean {
-    // A tab can be multiselected if it's not hidden and not in process of closing
-    return tab && !tab.hidden && !tab.closing;
+  set selectedTabs(tabs: MozTabbrowserTab[]) {
+    this.clearMultiSelectedTabs();
+    this.selectedTab = tabs[0];
+    if (tabs.length > 1) {
+      for (const tab of tabs) {
+        this.addToMultiSelectedTabs(tab);
+      }
+    }
   },
 
-  /**
-   * Prevents the very next `clearMultiSelectedTabs` call from taking effect.
-   * Useful when a UI interaction would otherwise unintentionally clear the selection.
-   */
-  // upstream: lockClearMultiSelectionOnce@c69d6bd60e FIREFOX_143_0_1_RELEASE
-  lockClearMultiSelectionOnce() {
-    this._clearMultiSelectionLockedOnce = true;
+  /** The multi-selected tabs in strip order; the selected tab counts even when not marked. */
+  get selectedTabs(): MozTabbrowserTab[] {
+    const { selectedTab, _multiSelectedTabsSet } = this;
+    const tabs: any[] = ChromeUtils.nondeterministicGetWeakSetKeys(_multiSelectedTabsSet).filter(
+      this._mayTabBeMultiselected,
+    );
+    if (
+      (!_multiSelectedTabsSet.has(selectedTab) && this._mayTabBeMultiselected(selectedTab)) ||
+      !tabs.length
+    ) {
+      tabs.push(selectedTab);
+    }
+    return tabs.sort((a, b) => a._tPos - b._tPos);
   },
 
-  /**
-   * Unconditionally unlocks multi-selection clearing, cancelling any pending lock.
-   */
-  // upstream: unlockClearMultiSelection@ba40d88c88 FIREFOX_143_0_1_RELEASE
-  unlockClearMultiSelection() {
-    this._clearMultiSelectionLocked = false;
-    this._clearMultiSelectionLockedOnce = false;
+  get multiSelectedTabsCount(): number {
+    return ChromeUtils.nondeterministicGetWeakSetKeys(this._multiSelectedTabsSet).filter(
+      this._mayTabBeMultiselected,
+    ).length;
   },
 
-  /** Batch multi-selection changes; the TabMultiSelect events go out on the next microtask. */
-  // upstream: _startMultiSelectChange@b72dad51cc FIREFOX_143_0_1_RELEASE
+  get lastMultiSelectedTab(): MozTabbrowserTab | null {
+    const tab = this._lastMultiSelectedTabRef ? (this._lastMultiSelectedTabRef as any).get() : null;
+    if (tab && tab.isConnected && this._multiSelectedTabsSet.has(tab)) {
+      return tab;
+    }
+    const selectedTab = this.selectedTab;
+    this.lastMultiSelectedTab = selectedTab;
+    return selectedTab;
+  },
+
+  set lastMultiSelectedTab(aTab: MozTabbrowserTab | null) {
+    this._lastMultiSelectedTabRef = Cu.getWeakReference(aTab);
+  },
+
+  _mayTabBeMultiselected(aTab: MozTabbrowserTab): boolean {
+    return (aTab as any).visible;
+  },
+
+  /** Batch multi-selection changes; the TabMultiSelect event goes out on the next microtask. */
   _startMultiSelectChange() {
     if (!this._multiSelectChangeStarted) {
       this._multiSelectChangeStarted = true;
@@ -370,312 +511,319 @@ export const methods = {
     }
   },
 
-  // upstream: _endMultiSelectChange@e26018c999 FIREFOX_143_0_1_RELEASE
   _endMultiSelectChange() {
-    if (!this._multiSelectChangeStarted) return;
-    this._multiSelectChangeStarted = false;
-
-    const tabs = this.tabs;
-    // Emit events for tabs that changed multi-select state
-    for (const tab of this._multiSelectChangeAdditions) {
-      if (tabs.includes(tab)) {
-        dispatch(tab, "TabMultiSelect");
+    let noticeable = false;
+    const { selectedTab } = this;
+    if (this._multiSelectChangeAdditions.size) {
+      if (!selectedTab.multiselected) {
+        this.addToMultiSelectedTabs(selectedTab);
       }
+      noticeable = true;
     }
-
-    for (const tab of this._multiSelectChangeRemovals) {
-      dispatch(tab, "TabMultiSelect");
+    if (this._multiSelectChangeRemovals.size) {
+      if (this._multiSelectChangeRemovals.has(selectedTab)) {
+        this._switchToNextMultiSelectedTab();
+      }
+      this._avoidSingleSelectedTab();
+      noticeable = true;
     }
-
-    if (this._multiSelectChangeSelected) {
-      this.tabContainer?._handleTabSelect?.();
-    }
-
-    this._multiSelectChangeAdditions.clear();
-    this._multiSelectChangeRemovals.clear();
-    this._multiSelectChangeSelected = false;
-  },
-
-  /**
-   * Adds every visible tab between `tab1` and `tab2` (inclusive) to the multi-selection.
-   * When both arguments refer to the same tab, only that tab is added.
-   */
-  // upstream: addRangeToMultiSelectedTabs@00b2eaa939 FIREFOX_143_0_1_RELEASE
-  addRangeToMultiSelectedTabs(tab1: MozTabbrowserTab, tab2: MozTabbrowserTab) {
-    if (!tab1 || !tab2) return;
-    if (tab1 === tab2) {
-      this.addToMultiSelectedTabs(tab1);
-      return;
-    }
-
-    const tabs = this.visibleTabs;
-    const idx1 = tabs.indexOf(tab1);
-    const idx2 = tabs.indexOf(tab2);
-    if (idx1 === -1 || idx2 === -1) return;
-
-    const [start, end] = idx1 < idx2 ? [idx1, idx2] : [idx2, idx1];
-    
-    for (let i = start; i <= end; i++) {
-      this.addToMultiSelectedTabs(tabs[i]);
+    this._multiSelectChangeStarted = false;
+    if (noticeable || this._multiSelectChangeSelected) {
+      this._multiSelectChangeSelected = false;
+      this._multiSelectChangeAdditions.clear();
+      this._multiSelectChangeRemovals.clear();
+      this.dispatchEvent(new CustomEvent("TabMultiSelect", { bubbles: true }));
     }
   },
 
-  /**
-   * Pins all unpinned tabs in the current multi-selection.
-   * The Firefox View tab is always excluded.
-   */
-  // upstream: pinMultiSelectedTabs@2459160bde FIREFOX_143_0_1_RELEASE
+  toggleMuteAudioOnMultiSelectedTabs(aTab: MozTabbrowserTab) {
+    const tabMuted = aTab.linkedBrowser!.audioMuted;
+    const tabsToToggle = this.selectedTabs.filter((tab) => tab.linkedBrowser!.audioMuted == tabMuted);
+    for (const tab of tabsToToggle) {
+      (tab as any).toggleMuteAudio();
+    }
+  },
+
+  resumeDelayedMediaOnMultiSelectedTabs() {
+    for (const tab of this.selectedTabs) {
+      (tab as any).resumeDelayedMedia();
+    }
+  },
+
   pinMultiSelectedTabs() {
-    const tabs = this.selectedTabs.filter((t: any) => !t.pinned && t !== FirefoxViewHandler?.tab);
-    for (const tab of tabs) {
+    for (const tab of this.selectedTabs) {
       this.pinTab(tab);
     }
   },
 
-  /**
-   * Unpins all pinned tabs in the current multi-selection.
-   */
-  // upstream: unpinMultiSelectedTabs@5153d1675d FIREFOX_143_0_1_RELEASE
   unpinMultiSelectedTabs() {
-    const tabs = this.selectedTabs.filter((t: any) => t.pinned);
-    for (const tab of tabs) {
+    // The selectedTabs getter returns the tabs
+    // in visual order. We need to unpin in reverse
+    // order to maintain visual order.
+    const selectedTabs = this.selectedTabs;
+    for (let i = selectedTabs.length - 1; i >= 0; i--) {
+      const tab = selectedTabs[i];
       this.unpinTab(tab);
     }
   },
 
-  /**
-   * Reloads the page in `tab`.
-   */
-  // upstream: reloadTab@80e91ea62b FIREFOX_143_0_1_RELEASE
-  reloadTab(tab: MozTabbrowserTab) {
-    const browser = this.getBrowserForTab(tab);
-    if (browser) {
-      browser.reload?.();
-    }
-  },
-
-  /**
-   * Reloads the page in each of the given tabs.
-   */
-  // upstream: reloadTabs@0a2073ad06 FIREFOX_143_0_1_RELEASE
-  reloadTabs(tabs: MozTabbrowserTab[]) {
-    for (const tab of tabs) {
-      this.reloadTab(tab);
-    }
-  },
-
-  /**
-   * Reloads all currently selected (including multi-selected) tabs.
-   */
-  // upstream: reloadMultiSelectedTabs@9e9d1ab1a1 FIREFOX_143_0_1_RELEASE
   reloadMultiSelectedTabs() {
     this.reloadTabs(this.selectedTabs);
   },
 
-  /**
-   * Resumes delayed or blocked media playback in all currently selected tabs.
-   */
-  // upstream: resumeDelayedMediaOnMultiSelectedTabs@c636e60903 FIREFOX_143_0_1_RELEASE
-  resumeDelayedMediaOnMultiSelectedTabs() {
-    const tabs = this.selectedTabs;
+  reloadTabs(tabs: MozTabbrowserTab[]) {
     for (const tab of tabs) {
-      const browser = this.getBrowserForTab(tab);
-      browser?.resumeMedia?.();
+      try {
+        (this.getBrowserForTab(tab) as any).reload();
+      } catch (_e) {
+        // ignore failure to reload so others will be reloaded
+      }
     }
   },
 
-  /**
-   * Returns `true` when every visible tab is either selected or multi-selected.
-   */
-  // upstream: allTabsSelected@00b7cd492f FIREFOX_143_0_1_RELEASE
-  allTabsSelected(): boolean {
-    return this.visibleTabs.every((t: any) => t.multiselected || t.selected);
+  /** A user reload: temporary permissions and auth-prompt throttling reset too. */
+  reloadTab(aTab: MozTabbrowserTab) {
+    const win = this.window as any;
+    const browser = this.getBrowserForTab(aTab) as any;
+    // Reset temporary permissions on the current tab. This is done here
+    // because we only want to reset permissions on user reload.
+    win.SitePermissions.clearTemporaryBlockPermissions(browser);
+    // Also reset DOS mitigations for the basic auth prompt on reload.
+    delete browser.authPromptAbuseCounter;
+    win.gIdentityHandler.hidePopup();
+    win.gPermissionPanel.hidePopup();
+    browser.reload();
   },
 
-  // upstream: _blurTab@56393a9e66 FIREFOX_143_0_1_RELEASE
-  _blurTab(tab: MozTabbrowserTab) {
-    const toBlur = this._findTabToBlurTo(tab);
-    if (toBlur) {
-      this.selectedTab = toBlur;
+  // ==========================================================================
+  // Succession and blur
+  // tabbrowser.js L5339~L5408, L7912~L7944
+  // ==========================================================================
+
+  /** The tab to select when `aTab` closes or hides; null when aTab is not selected. */
+  _findTabToBlurTo(aTab: MozTabbrowserTab, aExcludeTabs: MozTabbrowserTab[] = []): MozTabbrowserTab | null {
+    const win = this.window as any;
+    if (!aTab.selected) {
+      return null;
     }
-  },
-
-  // upstream: _findTabToBlurTo@a0c8371b95 FIREFOX_143_0_1_RELEASE
-  _findTabToBlurTo(tab: MozTabbrowserTab, excludeTabs: MozTabbrowserTab[] = []): MozTabbrowserTab | null {
-    if (!tab?.selected) return null;
-
-    // Don't select Firefox View tab
-    if (FirefoxViewHandler?.tab) {
-      excludeTabs.push(FirefoxViewHandler.tab);
+    if (win.FirefoxViewHandler.tab) {
+      aExcludeTabs.push(win.FirefoxViewHandler.tab);
     }
 
-    const excludeSet = new Set(excludeTabs);
+    const excludeTabs = new Set(aExcludeTabs);
 
-    // Try successor first
-    if (tab.successor && !excludeSet.has(tab.successor)) {
-      return tab.successor;
+    // If this tab has a successor, it should be selectable, since
+    // hiding or closing a tab removes that tab as a successor.
+    if (aTab.successor && !excludeTabs.has(aTab.successor)) {
+      return aTab.successor;
     }
 
-    // Try owner if preference enabled
     if (
-      tab.owner?.visible &&
-      !excludeSet.has(tab.owner) &&
-      Services.prefs?.getBoolPref?.("browser.tabs.selectOwnerOnClose")
+      aTab.owner?.visible &&
+      !excludeTabs.has(aTab.owner) &&
+      Services.prefs.getBoolPref("browser.tabs.selectOwnerOnClose")
     ) {
-      return tab.owner;
+      return aTab.owner;
     }
 
-    // Try next visible tab
-    const remainingTabs = this.visibleTabs.filter((t: any) => !excludeSet.has(t));
-    
-    // Find next tab after current
-    let candidate = this.tabContainer?.findNextTab?.(tab, {
+    // Try to find a remaining tab that comes after the given tab
+    const remainingTabs = Array.prototype.filter.call(this.visibleTabs, (tab: any) => !excludeTabs.has(tab));
+
+    let tab = this.tabContainer.findNextTab(aTab, {
       direction: 1,
-      filter: (t: any) => remainingTabs.includes(t),
+      filter: (_tab: any) => remainingTabs.includes(_tab),
     });
 
-    if (!candidate) {
-      // Find previous tab
-      candidate = this.tabContainer?.findNextTab?.(tab, {
+    if (!tab) {
+      tab = this.tabContainer.findNextTab(aTab, {
         direction: -1,
-        filter: (t: any) => remainingTabs.includes(t),
+        filter: (_tab: any) => remainingTabs.includes(_tab),
       });
     }
 
-    if (candidate) return candidate;
+    if (tab) {
+      return tab;
+    }
 
-    // Try collapsed tab groups
-    const eligibleTabs = new Set(this.tabsInCollapsedTabGroups).difference(excludeSet);
-    
-    candidate = this.tabContainer?.findNextTab?.(tab, {
+    // If no qualifying visible tab was found, see if there is a tab in
+    // a collapsed tab group that could be selected.
+    const eligibleTabs = new Set(this.tabsInCollapsedTabGroups).difference(excludeTabs);
+
+    tab = this.tabContainer.findNextTab(aTab, {
       direction: 1,
-      filter: (t: any) => eligibleTabs.has(t),
+      filter: (_tab: any) => eligibleTabs.has(_tab),
     });
 
-    if (!candidate) {
-      candidate = this.tabContainer?.findNextTab?.(tab, {
+    if (!tab) {
+      tab = this.tabContainer.findNextTab(aTab, {
         direction: -1,
-        filter: (t: any) => eligibleTabs.has(t),
+        filter: (_tab: any) => eligibleTabs.has(_tab),
       });
     }
 
-    return candidate;
+    return tab;
   },
 
-  // upstream: _getTabsToTheEndFrom@2fecb7adfc FIREFOX_143_0_1_RELEASE
-  _getTabsToTheEndFrom(tab: MozTabbrowserTab): MozTabbrowserTab[] {
-    const tabs = this.visibleTabs;
-    const idx = tabs.indexOf(tab);
-    return idx >= 0 ? tabs.slice(idx + 1) : [];
+  _blurTab(aTab: MozTabbrowserTab) {
+    this.selectedTab = this._findTabToBlurTo(aTab);
   },
 
-  // upstream: _getTabsToTheStartFrom@6232c189c9 FIREFOX_143_0_1_RELEASE
-  _getTabsToTheStartFrom(tab: MozTabbrowserTab): MozTabbrowserTab[] {
-    const tabs = this.visibleTabs;
-    const idx = tabs.indexOf(tab);
-    return idx > 0 ? tabs.slice(0, idx) : [];
-  },
-
-  /**
-   * Closes all visible tabs that appear after `tab` in the strip.
-   */
-  // upstream: removeTabsToTheEndFrom@5c8e1c89e6 FIREFOX_143_0_1_RELEASE
-  removeTabsToTheEndFrom(tab: MozTabbrowserTab, options?: any) {
-    const tabs = this._getTabsToTheEndFrom(tab);
-    if (tabs.length) {
-      this.removeTabs(tabs, options);
+  setSuccessor(aTab: MozTabbrowserTab, successorTab: MozTabbrowserTab | null) {
+    const win = this.window;
+    if (aTab.ownerGlobal != win) {
+      throw new Error("Cannot set the successor of another window's tab");
+    }
+    if (successorTab == aTab) {
+      successorTab = null;
+    }
+    if (successorTab && successorTab.ownerGlobal != win) {
+      throw new Error("Cannot set the successor to another window's tab");
+    }
+    if (aTab.successor) {
+      (aTab.successor as any).predecessors.delete(aTab);
+    }
+    aTab.successor = successorTab;
+    if (successorTab) {
+      const s = successorTab as any;
+      if (!s.predecessors) {
+        s.predecessors = new Set();
+      }
+      s.predecessors.add(aTab);
     }
   },
 
-  /**
-   * Closes all visible tabs that appear before `tab` in the strip.
-   */
-  // upstream: removeTabsToTheStartFrom@141970b0e1 FIREFOX_143_0_1_RELEASE
-  removeTabsToTheStartFrom(tab: MozTabbrowserTab, options?: any) {
-    const tabs = this._getTabsToTheStartFrom(tab);
-    if (tabs.length) {
-      this.removeTabs(tabs, options);
+  /** Everyone whose successor was `aTab` now points at `aOtherTab`. */
+  replaceInSuccession(aTab: MozTabbrowserTab, aOtherTab: MozTabbrowserTab | null) {
+    const predecessors = (aTab as any).predecessors;
+    if (predecessors) {
+      for (const predecessor of Array.from(predecessors) as any[]) {
+        this.setSuccessor(predecessor, aOtherTab);
+      }
     }
   },
 
-  /**
-   * Moves `contextTab` — or the entire multi-selection when it includes `contextTab` — to the end of the tab strip.
-   */
-  // upstream: moveTabsToEnd@a732d435b6 FIREFOX_143_0_1_RELEASE
+  // ==========================================================================
+  // Ranges and bulk moves
+  // tabbrowser.js L3791~L3804, L4082~L4132, L4259~L4283, L6131~L6151
+  // ==========================================================================
+
+  _getTabsToTheStartFrom(aTab: MozTabbrowserTab): MozTabbrowserTab[] {
+    const tabsToStart: MozTabbrowserTab[] = [];
+    if (!(aTab as any).visible) {
+      return tabsToStart;
+    }
+    const tabs = this.openTabs;
+    for (let i = 0; i < tabs.length; ++i) {
+      if (tabs[i] == aTab) {
+        break;
+      }
+      // Ignore pinned and hidden tabs.
+      if (tabs[i].pinned || tabs[i].hidden) {
+        continue;
+      }
+      // In a multi-select context, select all unselected tabs
+      // starting from the context tab.
+      if (aTab.multiselected && tabs[i].multiselected) {
+        continue;
+      }
+      tabsToStart.push(tabs[i]);
+    }
+    return tabsToStart;
+  },
+
+  _getTabsToTheEndFrom(aTab: MozTabbrowserTab): MozTabbrowserTab[] {
+    const tabsToEnd: MozTabbrowserTab[] = [];
+    if (!(aTab as any).visible) {
+      return tabsToEnd;
+    }
+    const tabs = this.openTabs;
+    for (let i = tabs.length - 1; i >= 0; --i) {
+      if (tabs[i] == aTab) {
+        break;
+      }
+      // Ignore pinned and hidden tabs.
+      if (tabs[i].pinned || tabs[i].hidden) {
+        continue;
+      }
+      // In a multi-select context, select all unselected tabs
+      // starting from the context tab.
+      if (aTab.multiselected && tabs[i].multiselected) {
+        continue;
+      }
+      tabsToEnd.push(tabs[i]);
+    }
+    return tabsToEnd;
+  },
+
+  removeTabsToTheStartFrom(aTab: MozTabbrowserTab, options?: any) {
+    const tabs = this._getTabsToTheStartFrom(aTab);
+    if (!this.warnAboutClosingTabs(tabs.length, this.closingTabsEnum.TO_START)) {
+      return;
+    }
+
+    this.removeTabs(tabs, options);
+  },
+
+  removeTabsToTheEndFrom(aTab: MozTabbrowserTab, options?: any) {
+    const tabs = this._getTabsToTheEndFrom(aTab);
+    if (!this.warnAboutClosingTabs(tabs.length, this.closingTabsEnum.TO_END)) {
+      return;
+    }
+
+    this.removeTabs(tabs, options);
+  },
+
+  moveTabsToStart(contextTab: MozTabbrowserTab) {
+    const tabs = contextTab.multiselected ? this.selectedTabs : [contextTab];
+    // Walk the array in reverse order so the tabs are kept in order.
+    for (let i = tabs.length - 1; i >= 0; i--) {
+      this.moveTabToStart(tabs[i]);
+    }
+  },
+
   moveTabsToEnd(contextTab: MozTabbrowserTab) {
-    const id = resolveTabId(contextTab);
-    if (!id) return;
-    const tabs = this.selectedTabs.includes(contextTab)
-      ? this.selectedTabs
-      : [contextTab];
-    // Move to end of tab order
+    const tabs = contextTab.multiselected ? this.selectedTabs : [contextTab];
     for (const tab of tabs) {
       this.moveTabToEnd(tab);
     }
   },
 
-  /**
-   * Moves `contextTab` — or the entire multi-selection when it includes `contextTab` — to the start of the tab strip (after any pinned tabs).
-   */
-  // upstream: moveTabsToStart@af5470908a FIREFOX_143_0_1_RELEASE
-  moveTabsToStart(contextTab: MozTabbrowserTab) {
-    const id = resolveTabId(contextTab);
-    if (!id) return;
-    const tabs = this.selectedTabs.includes(contextTab)
-      ? this.selectedTabs
-      : [contextTab];
-    // Move to start (after pinned tabs)
-    for (const tab of tabs) {
-      this.moveTabToStart(tab);
-    }
+  moveTabsBefore(elements: any[], targetElement: any, metricsContext?: any) {
+    this._moveTabsNextTo(elements, targetElement, true, metricsContext);
   },
 
-  /**
-   * Moves multiple tabs to appear immediately after `targetTab` in the tab strip.
-   */
-  // upstream: moveTabsAfter@f09cbac032 FIREFOX_143_0_1_RELEASE
-  moveTabsAfter(tabs: MozTabbrowserTab[], targetTab: MozTabbrowserTab, metricsContext?: any) {
-    // Move multiple tabs to appear after target
-    const targetIdx = this.tabs.indexOf(targetTab);
-    if (targetIdx < 0) return;
-    
-    for (let i = tabs.length - 1; i >= 0; i--) {
-      this.moveTabAfter(tabs[i], targetTab, metricsContext);
-    }
+  moveTabsAfter(elements: any[], targetElement: any, metricsContext?: any) {
+    this._moveTabsNextTo(elements, targetElement, false, metricsContext);
   },
 
-  /**
-   * Moves multiple tabs to appear immediately before `targetTab` in the tab strip.
-   */
-  // upstream: moveTabsBefore@86117421eb FIREFOX_143_0_1_RELEASE
-  moveTabsBefore(tabs: MozTabbrowserTab[], targetTab: MozTabbrowserTab, metricsContext?: any) {
-    // Move multiple tabs to appear before target
-    const targetIdx = this.tabs.indexOf(targetTab);
-    if (targetIdx < 0) return;
-
-    for (const tab of tabs) {
-      this.moveTabBefore(tab, targetTab, metricsContext);
-    }
-  },
-
-  // upstream: _updateTabBarForPinnedTabs@17215f04d1 FIREFOX_143_0_1_RELEASE
   _updateTabBarForPinnedTabs() {
-    this.tabContainer?._unlockTabSizing?.();
-    this.tabContainer?._handleTabSelect?.(true);
-    this.tabContainer?._updateCloseButtons?.();
+    this.tabContainer._unlockTabSizing();
+    this.tabContainer._handleTabSelect(true);
+    this.tabContainer._updateCloseButtons();
   },
 
-  // upstream: _updateTabsAfterInsert@c1ffceba0b FIREFOX_143_0_1_RELEASE
   _updateTabsAfterInsert() {
-    const tabs = this.tabs;
-    for (let i = 0; i < tabs.length; i++) {
-      (tabs[i] as any)._tPos = i;
-      (tabs[i] as any)._selected = false;
+    for (let i = 0; i < this.tabs.length; i++) {
+      (this.tabs[i] as any)._tPos = i;
+      (this.tabs[i] as any)._selected = false;
     }
-    // Restore selection on selected tab
-    if (this.selectedTab) {
-      (this.selectedTab as any)._selected = true;
-    }
+
+    // If we're in the midst of an async tab switch while calling
+    // moveTabTo, we can get into a case where _visuallySelected
+    // is set to true on two different tabs.
+    //
+    // What we want to do in moveTabTo is to remove logical selection
+    // from all tabs, and then re-add logical selection to selectedTab
+    // (and visual selection as well if we're not running with e10s, which
+    // setting _selected will do automatically).
+    //
+    // If we're running with e10s, then the visual selection will not
+    // be changed, which is fine, since if we weren't in the midst of a
+    // tab switch, the previously visually selected tab should still be
+    // correct, and if we are in the midst of a tab switch, then the async
+    // tab switcher will set the visually selected tab once the tab switch
+    // has completed.
+    if (this.selectedTab) this.selectedTab._selected = true;
   },
 
   // upstream: _determineURIToLoad@088582c0e6 FIREFOX_143_0_1_RELEASE
@@ -684,7 +832,7 @@ export const methods = {
     let aURIObject = null;
     try {
       aURIObject = Services.io.newURI(uriString);
-    } catch (ex) {
+    } catch (_ex) {
       // Will try to fix up later
     }
 
@@ -696,60 +844,5 @@ export const methods = {
 
     const uriIsAboutBlank = uriString === "about:blank";
     return { uri: aURIObject, uriIsAboutBlank, lazyBrowserURI, uriString };
-  },
-
-  /**
-   * Replaces `tab`'s slot in the successor chain with `otherTab`.
-   *
-   * Any tab that currently points to `tab` as its successor is updated to point
-   * to `otherTab` instead, and `tab`'s own successor is transferred to `otherTab`.
-   */
-  // upstream: replaceInSuccession@b956f16386 FIREFOX_143_0_1_RELEASE
-  replaceInSuccession(tab: MozTabbrowserTab, otherTab: MozTabbrowserTab | null) {
-    // Replace tab's position in successor chain
-    if (tab?.successor === otherTab) return;
-    const predecessors = new Map();
-    for (const t of this.tabs) {
-      if ((t as any).successor) {
-        predecessors.set((t as any).successor, t);
-      }
-    }
-    const predecessor = predecessors.get(tab);
-    if (predecessor) {
-      (predecessor as any).successor = otherTab;
-    }
-    if (otherTab) {
-      (tab as any).successor = (otherTab as any).successor;
-      (otherTab as any).successor = null;
-    }
-  },
-
-  /**
-   * Sets `successorTab` as the successor of `tab`.
-   * No-op when `tab` and `successorTab` are the same element.
-   */
-  // upstream: setSuccessor@8cde3964fa FIREFOX_143_0_1_RELEASE
-  setSuccessor(tab: MozTabbrowserTab, successorTab: MozTabbrowserTab | null) {
-    if (tab && tab !== successorTab) {
-      (tab as any).successor = successorTab;
-    }
-  },
-
-  /**
-   * Toggles muted state on `tab` and all other multi-selected tabs together.
-   * If any of the targeted tabs is currently muted, all are unmuted; otherwise all are muted.
-   */
-  // upstream: toggleMuteAudioOnMultiSelectedTabs@8192419538 FIREFOX_143_0_1_RELEASE
-  toggleMuteAudioOnMultiSelectedTabs(tab: MozTabbrowserTab) {
-    const id = resolveTabId(tab);
-    if (!id) return;
-    const s = appState.value;
-    const targets = s.tabs[id]?.isMultiSelected
-      ? s.tabOrder.filter(i => s.tabs[i].isMultiSelected)
-      : [id];
-    const anyMuted = targets.some(i => s.tabs[i]?.isMuted);
-    for (const tid of targets) {
-      send({ type: "SET_MUTED", tabId: tid, isMuted: !anyMuted });
-    }
   },
 } satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

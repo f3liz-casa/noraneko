@@ -4,9 +4,6 @@
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
 import { FAVICON_DEFAULTS } from "../tabbrowser-scope.ts";
-import { appState, selectedTab as selectedTabSignal, send } from "../../state/store.ts";
-import * as TabOps from "../../ops/tab-ops.ts";
-import { DOMRegistry } from "../DOMRegistry.ts";
 import type { TabId } from "../../types/TabState.ts";
 import { resolveTabId, dispatch } from "../compat-helpers.ts";
 
@@ -52,9 +49,7 @@ export const methods = {
    */
   // upstream: setTabTitle@0022ebd446 FIREFOX_143_0_1_RELEASE
   setTabTitle(tab: MozTabbrowserTab): boolean {
-    const id = resolveTabId(tab);
-    if (!id) return false;
-    const browser = DOMRegistry.getBrowser(id) as any;
+    const browser = this.getBrowserForTab(tab) as any;
     if (!browser) return false;
 
     let title = browser.contentTitle ?? "";
@@ -152,22 +147,12 @@ export const methods = {
       this.updateTitlebar();
     }
 
-    // Update DOP state
-    const id = resolveTabId(tab);
-    if (id) {
-      appState.value = TabOps.updateTabLabel(appState.value, id, {
-        label, isContentTitle: !!isContentTitle, direction: isRTL ? "rtl" : "ltr",
-      });
-    }
-
     return true;
   },
 
   /** Set the favicon URL for a tab. Pass `""` to clear it. */
   // upstream: setIcon@eb813beeca FIREFOX_143_0_1_RELEASE
   setIcon(tab: MozTabbrowserTab, iconUrl: any = "", origUrl: any = iconUrl, clearFirst = false) {
-    const id = resolveTabId(tab);
-    if (!id) return;
     const makeString = (url: any) => (typeof url === "string" ? url : url?.spec ?? "");
     iconUrl = makeString(iconUrl);
     origUrl = makeString(origUrl);
@@ -180,7 +165,6 @@ export const methods = {
 
     const browser = this.getBrowserForTab(tab) as any;
     if (browser) browser.mIconURL = iconUrl;
-    send({ type: "SET_ICON", tabId: id, iconUrl });
 
     // The favicon the strip paints is the tab's `image` attribute; the store
     // alone shows nothing. (tabbrowser.js also reroutes remote SVG data: URIs
@@ -196,28 +180,18 @@ export const methods = {
     if (browser) this._callProgressListeners(browser, "onLinkIconAvailable", [iconUrl, origUrl]);
   },
 
-  /** Return the currently stored favicon URL for a tab (empty string if none). */
-  // upstream: getIcon@2b87848a28 FIREFOX_143_0_1_RELEASE
-  getIcon(tab: MozTabbrowserTab): string {
-    const id = resolveTabId(tab);
-    return id ? appState.value.tabs[id]?.iconUrl ?? "" : "";
+  getIcon(aTab?: MozTabbrowserTab): string {
+    const browser = aTab ? this.getBrowserForTab(aTab) : this.selectedBrowser;
+    return (browser as any).mIconURL;
   },
 
-  /**
-   * Returns the active media-sharing state for a tab.
-   *
-   * @returns Object with boolean `camera`, boolean `microphone`, and string
-   *          `screen` (empty string when no screen is being shared).
-   */
-  // upstream: getTabSharingState@4607466f4a FIREFOX_143_0_1_RELEASE
-  getTabSharingState(tab: MozTabbrowserTab) {
-    const id = resolveTabId(tab);
-    const state = id ? appState.value.tabs[id]?.sharingState : null;
-    const webRTC = (state as any)?.webRTC ?? {};
+  getTabSharingState(aTab: MozTabbrowserTab) {
+    // Normalize the state object for consumers (ie.extensions).
+    const state = Object.assign({}, (aTab as any)._sharingState && (aTab as any)._sharingState.webRTC);
     return {
-      camera: !!webRTC.camera,
-      microphone: !!webRTC.microphone,
-      screen: webRTC.screen ? (webRTC.screen as string).replace("Paused", "") : "",
+      camera: !!state.camera,
+      microphone: !!state.microphone,
+      screen: state.screen && state.screen.replace("Paused", ""),
     };
   },
 
@@ -350,16 +324,11 @@ export const methods = {
     }
   },
 
-  /**
-   * Finds the browser element whose `outerWindowID` matches `id`.
-   *
-   * @returns The matching browser element, or `null` if not found.
-   */
-  // upstream: getBrowserForOuterWindowID@152087e895 FIREFOX_143_0_1_RELEASE
   getBrowserForOuterWindowID(id: number): any {
-    for (let i = 0; i < appState.value.tabOrder.length; i++) {
-      const b = this.browsers[i];
-      if (b && (b as any).outerWindowID === id) return b;
+    for (const b of this.browsers) {
+      if (b.outerWindowID == id) {
+        return b;
+      }
     }
     return null;
   },

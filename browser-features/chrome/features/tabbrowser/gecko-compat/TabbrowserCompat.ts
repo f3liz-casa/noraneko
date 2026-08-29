@@ -129,7 +129,7 @@ export class TabbrowserCompat {
   // upstream: _multiSelectedTabsSet@e23816d97d FIREFOX_143_0_1_RELEASE
   _multiSelectedTabsSet = new WeakSet<any>();
   // upstream: _lastMultiSelectedTabRef@c20988c9f9 FIREFOX_143_0_1_RELEASE
-  _lastMultiSelectedTabRef: WeakRef<any> | null = null;
+  _lastMultiSelectedTabRef: any = null;
   // upstream: _clearMultiSelectionLocked@7dee37d1d8 FIREFOX_143_0_1_RELEASE
   _clearMultiSelectionLocked = false;
   // upstream: _clearMultiSelectionLockedOnce@797d6fe716 FIREFOX_143_0_1_RELEASE
@@ -206,6 +206,8 @@ export class TabbrowserCompat {
   _tabSwitchTelemetry = new Map<string, { count: number; timestamp: number }>();
   _previousURL: string | null = null;
   _tabpanelsSelectHandler: any = null;
+  /** The tab a context menu was opened on (extended.ts updateContextMenu). */
+  contextTab: any = null;
   _asyncTabSwitching = false;
 
   constructor(public window: Window) {
@@ -471,20 +473,19 @@ export class TabbrowserCompat {
     }
   }
 
-  moveTabRelative(tab: any, target: any, position: "before" | "after" = "after") { const id = tab?._tabId; const targetId = target?._tabId; if (id && targetId) send({ type: "MOVE_TAB_RELATIVE", tabId: id, targetId, position }); }
-
-  addRangeToSelection(start: number | any, end: number | any) {
-    const order = appState.value.tabOrder;
-    let s = typeof start === "number" ? start : order.indexOf(start?._tabId);
-    let e = typeof end === "number" ? end : order.indexOf(end?._tabId);
-    if (s === -1 || e === -1) return;
-    if (s > e) [s, e] = [e, s];
-    const tabIds = order.slice(s, e + 1);
-    send({ type: "SET_MULTI_SELECTION", tabIds, isSelected: true });
+  /** Ours: older callers' names for the tabbrowser.js operations. */
+  moveTabRelative(tab: any, target: any, position: "before" | "after" = "after") {
+    if (position === "before") this.moveTabBefore(tab, target);
+    else this.moveTabAfter(tab, target);
   }
-  clearSelection() { send({ type: "CLEAR_MULTI_SELECTION" }); }
-
-  reloadAllTabs() { for (const id of appState.value.tabOrder) { const tabEl = DOMRegistry.getTab(id); if (tabEl) this.reloadTab(tabEl); } }
+  addRangeToSelection(start: any, end: any) {
+    const tabs = this.tabs;
+    const s = typeof start === "number" ? tabs[start] : start;
+    const e = typeof end === "number" ? tabs[end] : end;
+    if (s && e) this.addRangeToMultiSelectedTabs(s, e);
+  }
+  clearSelection() { this.clearMultiSelectedTabs(); }
+  reloadAllTabs() { this.reloadTabs(this.tabs); }
 
   // Minimal compatibility helpers and no-op implementations for legacy callers
   showFullScreenViewContextMenuItems(...args: any[]) { /* no-op compat */ }
@@ -531,9 +532,7 @@ type DuplicateMembers<Ms, Seen = never, Out = never> =
   Ms extends readonly [infer H, ...infer R]
     ? DuplicateMembers<R, Seen | MembersOf<H>, Out | (MembersOf<H> & Seen)>
     : Out;
-// Known, intentional clashes (see the analysis note); remove once merged.
-type KnownClash = "addTabGroup" | "removeTabGroup";
-type Duplicates = Exclude<DuplicateMembers<typeof moduleMethods>, KnownClash>;
+type Duplicates = DuplicateMembers<typeof moduleMethods>;
 // A duplicate shows up here as `Type true is not assignable to { duplicate: "name" }`.
 const _noDuplicateMembers: [Duplicates] extends [never] ? true : { duplicate: Duplicates } = true;
 

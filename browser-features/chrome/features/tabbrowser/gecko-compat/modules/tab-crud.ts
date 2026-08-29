@@ -969,48 +969,107 @@ export const methods = {
   },
 
   /**
-   * Close multiple tabs sequentially.
-   *
-   * Each tab is removed via `removeTab`, which handles animation and
-   * `beforeunload` prompts individually.
-   * Multi-selection clearing is locked during the loop and performed once at the end.
+   * Close several tabs at once: whole groups go through removeTabGroup
+   * (and get saved), beforeunload runs in parallel, prompts run in turn,
+   * and the selected tab goes last so the selection moves only once.
    */
-  // upstream: removeTabs@c87819e103 FIREFOX_143_0_1_RELEASE
-  removeTabs(tabs: MozTabbrowserTab[], options: any = {}) {
+  removeTabs(
+    tabs: MozTabbrowserTab[],
+    {
+      animate = true,
+      suppressWarnAboutClosingWindow = false,
+      skipPermitUnload = false,
+      skipSessionStore = false,
+      skipGroupCheck = false,
+      isUserTriggered = false,
+      telemetrySource,
+    }: any = {},
+  ) {
+    const win = this.window as any;
+    // When 'closeWindowWithLastTab' pref is enabled, closing all tabs
+    // can be considered equivalent to closing the window.
+    if (this.tabs.length == tabs.length && Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab")) {
+      win.closeWindow(true, suppressWarnAboutClosingWindow ? null : win.warnAboutClosingWindow, "close-last-tab");
+      return;
+    }
+
+    if (!skipSessionStore) {
+      SessionStore.resetLastClosedTabCount(win);
+    }
     this._clearMultiSelectionLocked = true;
+
+    // Guarantee that _clearMultiSelectionLocked lock gets released.
     try {
-      if (!options.skipGroupCheck) {
-        const tabIds = new Set(tabs.map((t: any) => resolveTabId(t)).filter(Boolean));
-        const state = appState.value;
-        const groupsToRemove = new Map<string, string[]>();
-        for (const id of tabIds) {
-          const gid = state.tabs[id!]?.groupId;
-          if (gid) {
-            if (!groupsToRemove.has(gid)) groupsToRemove.set(gid, []);
-            groupsToRemove.get(gid)!.push(id!);
+      // If selection includes entire groups, we might want to save them
+      if (!skipGroupCheck) {
+        const [groups, leftoverTabs] = this._separateWholeGroups(tabs);
+        groups.forEach((group: any) => {
+          if (!skipSessionStore) {
+            group.save();
           }
-        }
-        const wholeGroupIds: string[] = [];
-        for (const [gid] of groupsToRemove) {
-          const allGroupTabs = state.tabOrder.filter(id => state.tabs[id]?.groupId === gid);
-          if (allGroupTabs.every(id => tabIds.has(id))) wholeGroupIds.push(gid);
-        }
-        for (const gid of wholeGroupIds) {
-          const group = this.getTabGroupById?.(gid);
-          if (group) {
-            this.removeTabGroup(group, { ...options, skipGroupCheck: true });
-            tabs = tabs.filter((t: any) => {
-              const id = resolveTabId(t);
-              return id ? state.tabs[id]?.groupId !== gid : true;
-            });
-          }
+          this.removeTabGroup(group, {
+            animate,
+            skipSessionStore,
+            skipPermitUnload,
+            isUserTriggered,
+            telemetrySource,
+          });
+        });
+        tabs = leftoverTabs;
+      }
+
+      const { beforeUnloadComplete, tabsWithBeforeUnloadPrompt, lastToClose } = this._startRemoveTabs(tabs, {
+        animate,
+        suppressWarnAboutClosingWindow,
+        skipPermitUnload,
+        skipRemoves: false,
+        skipSessionStore,
+        isUserTriggered,
+        telemetrySource,
+      });
+
+      // Wait for all the beforeunload events to have been processed by content processes.
+      // The permitUnload() promise will, alas, not call its resolution
+      // callbacks after the browser window the promise lives in has closed,
+      // so we have to check for that case explicitly.
+      let done = false;
+      beforeUnloadComplete.then(() => {
+        done = true;
+      });
+      Services.tm.spinEventLoopUntilOrQuit("tabbrowser.js:removeTabs", () => done || win.closed);
+      if (!done) {
+        return;
+      }
+
+      const aParams = {
+        animate,
+        prewarmed: true,
+        skipPermitUnload,
+        skipSessionStore,
+        isUserTriggered,
+        telemetrySource,
+      };
+
+      // Now run again sequentially the beforeunload listeners that will result in a prompt.
+      for (const tab of tabsWithBeforeUnloadPrompt) {
+        this.removeTab(tab, aParams);
+        if (!tab.closing) {
+          // If we abort the closing of the tab.
+          tab._closedInMultiselection = false;
         }
       }
-      for (const t of tabs) this.removeTab(t, options);
-    } finally {
-      this._clearMultiSelectionLocked = false;
-      this._avoidSingleSelectedTab();
+
+      // Avoid changing the selected browser several times by removing it,
+      // if appropriate, lastly.
+      if (lastToClose) {
+        this.removeTab(lastToClose, aParams);
+      }
+    } catch (e) {
+      console.error(e);
     }
+
+    this._clearMultiSelectionLocked = false;
+    this._avoidSingleSelectedTab();
   },
 
   /** Close every open tab but `aTab` (and, by default, pinned and hidden ones). */

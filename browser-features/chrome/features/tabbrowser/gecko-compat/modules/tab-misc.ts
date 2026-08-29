@@ -13,6 +13,7 @@ declare module "../TabbrowserCompat.ts" {
     updateBrowserRemoteness(browser: XULBrowserElement, options: any): boolean;
     // Methods
     clearRelatedTabs(): void;
+    refreshBlocked(actor: any, browser: XULBrowserElement, data: any): void;
   }
 }
 
