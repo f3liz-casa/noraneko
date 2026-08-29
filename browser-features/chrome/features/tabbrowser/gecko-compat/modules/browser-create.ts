@@ -22,27 +22,24 @@ declare module "../TabbrowserCompat.ts" {
 export const methods = {
   // upstream: _setFindbarData@23f26f7c74 FIREFOX_143_0_1_RELEASE
   _setFindbarData() {
-    // Ensure content processes know the find bar keyboard shortcut
-    try {
-      const { sharedData } = Services.ppmm;
-      if (!sharedData.has("Findbar:Shortcut")) {
-        const keyEl = this.window.document.getElementById("key_find");
-        if (keyEl) {
-          let mods = keyEl.getAttribute("modifiers") || "";
-          mods = mods.replace(
-            /accel/i,
-            AppConstants.platform === "macosx" ? "meta" : "control"
-          );
-          sharedData.set("Findbar:Shortcut", {
-            key: keyEl.getAttribute("key"),
-            shiftKey: mods.includes("shift"),
-            ctrlKey: mods.includes("control"),
-            altKey: mods.includes("alt"),
-            metaKey: mods.includes("meta"),
-          });
-        }
-      }
-    } catch (_) { /* */ }
+    // Ensure we know what the find bar key is in the content process:
+    const { sharedData } = Services.ppmm;
+    if (!sharedData.has("Findbar:Shortcut")) {
+      const keyEl = this.window.document.getElementById("key_find")!;
+      const mods = keyEl
+        .getAttribute("modifiers")!
+        .replace(
+          /accel/i,
+          AppConstants.platform === "macosx" ? "meta" : "control"
+        );
+      sharedData.set("Findbar:Shortcut", {
+        key: keyEl.getAttribute("key"),
+        shiftKey: mods.includes("shift"),
+        ctrlKey: mods.includes("control"),
+        altKey: mods.includes("alt"),
+        metaKey: mods.includes("meta"),
+      });
+    }
   },
 
   // upstream: _createTab@bf467c8d1e FIREFOX_143_0_1_RELEASE
@@ -56,19 +53,19 @@ export const methods = {
     animate,
   }: any): any {
     const t = this._xulEl("tab", { is: "tabbrowser-tab" }) as any;
-    
+
     // Tag as being created so extension code can ignore pre-TabOpen events
     (t as any).initializingTab = true;
     (t as any).openerTab = openerTab;
 
     // Inherit user context from opener if not specified
     if (userContextId == null && openerTab) {
-      userContextId = openerTab.getAttribute?.("usercontextid") || 0;
+      userContextId = openerTab.getAttribute("usercontextid") || 0;
     }
 
     if (!noInitialLabel) {
       if (isBlankPageURL(uriString)) {
-        t.setAttribute("label", this.tabContainer?.emptyTabTitle || "New Tab");
+        t.setAttribute("label", this.tabContainer.emptyTabTitle);
       } else {
         this.setInitialTabTitle(t, uriString, {
           beforeTabOpen: true,
@@ -79,11 +76,11 @@ export const methods = {
 
     if (userContextId) {
       t.setAttribute("usercontextid", userContextId);
-      ContextualIdentityService?.setTabStyle?.(t);
+      ContextualIdentityService.setTabStyle(t);
     }
 
     if (skipBackgroundNotify) {
-      t.setAttribute("skipbackgroundnotify", "true");
+      t.setAttribute("skipbackgroundnotify", true);
     }
 
     if (pinned) {
@@ -92,19 +89,18 @@ export const methods = {
 
     t.classList.add("tabbrowser-tab");
 
-    this.tabContainer?._unlockTabSizing?.();
+    this.tabContainer._unlockTabSizing();
 
     if (!animate) {
-      const ui = (this.window as any).UserInteraction;
-      if (ui?.running?.("browser.tabs.opening", this.window)) ui.update("browser.tabs.opening", "not-animated", this.window);
+      (this.window as any).UserInteraction.update("browser.tabs.opening", "not-animated", this.window);
       t.setAttribute("fadein", "true");
-      // Call _handleNewTab asynchronously
+      // Call _handleNewTab asynchronously as it needs to know if the
+      // new tab is selected.
       setTimeout(() => {
-        this.tabContainer?._handleNewTab?.(t);
+        this.tabContainer._handleNewTab(t);
       }, 0);
     } else {
-      const ui = (this.window as any).UserInteraction;
-      if (ui?.running?.("browser.tabs.opening", this.window)) ui.update("browser.tabs.opening", "animated", this.window);
+      (this.window as any).UserInteraction.update("browser.tabs.opening", "animated", this.window);
     }
 
     return t;
@@ -144,7 +140,8 @@ export const methods = {
     if (
       uriIsAboutBlank &&
       !preferredRemoteType &&
-      referrerInfo?.originalReferrer
+      referrerInfo &&
+      referrerInfo.originalReferrer
     ) {
       preferredRemoteType = E10SUtils.getRemoteTypeForURI(
         referrerInfo.originalReferrer.spec,
@@ -173,7 +170,7 @@ export const methods = {
     // Check for preloaded browser (newtab in default context)
     const BROWSER_NEW_TAB_URL = "about:newtab";
     if (uriString === BROWSER_NEW_TAB_URL && !userContextId) {
-      b = (this.window as any).NewTabPagePreloading?.getPreloadedBrowser?.(this.window);
+      b = (this.window as any).NewTabPagePreloading.getPreloadedBrowser(this.window);
       if (b) {
         usingPreloadedContent = true;
       }
@@ -242,14 +239,14 @@ export const methods = {
       uriString
     ) {
       const { URI_INHERITS_SECURITY_CONTEXT } = Ci.nsIProtocolHandler as Required<typeof Ci.nsIProtocolHandler>;
-      try {
-        if (!uri || ((this.window as any).doGetProtocolFlags?.(uri) & URI_INHERITS_SECURITY_CONTEXT)) {
-          browser.createAboutBlankDocumentViewer?.(
-            originPrincipal,
-            originStoragePrincipal
-          );
-        }
-      } catch (_) { /* */ }
+      // Unless we know for sure we're not inheriting principals,
+      // force the about:blank viewer to have the right principal:
+      if (!uri || ((this.window as any).doGetProtocolFlags(uri) & URI_INHERITS_SECURITY_CONTEXT)) {
+        browser.createAboutBlankDocumentViewer!(
+          originPrincipal,
+          originStoragePrincipal
+        );
+      }
     }
 
     // Load the URL if not using preloaded content
@@ -279,7 +276,7 @@ export const methods = {
       }
       if (fromExternal) {
         loadFlags |= LOAD_FLAGS_FROM_EXTERNAL;
-      } else if (!triggeringPrincipal?.isSystemPrincipal) {
+      } else if (!triggeringPrincipal.isSystemPrincipal) {
         loadFlags |= LOAD_FLAGS_FIRST_LOAD;
       }
       if (!allowInheritPrincipal) {
@@ -293,7 +290,7 @@ export const methods = {
       }
 
       try {
-        browser.fixupAndLoadURIString?.(uriString, {
+        browser.fixupAndLoadURIString(uriString, {
           loadFlags,
           triggeringPrincipal,
           referrerInfo,

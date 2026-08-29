@@ -374,10 +374,10 @@ export const methods = {
 
 
   _createTabSplitView(options: any): any {
-    const splitview = this.window.document.createXULElement?.("tab-split-view-wrapper", {
+    const splitview = this.window.document.createXULElement("tab-split-view-wrapper", {
       is: "tab-split-view-wrapper",
     });
-    if (splitview && options?.id) {
+    if (options?.id) {
       (splitview as any).splitViewId = options.id;
     }
     return splitview;
@@ -390,18 +390,13 @@ export const methods = {
    * @param tab - The tab whose linked panel should receive the footer
    */
   _insertSplitViewFooter(tab: MozTabbrowserTab): void {
-    if (!tab) return;
-    try {
-      const panelId = (tab as any).linkedPanel;
-      if (!panelId) return;
-      const panelEl = this.window.document.getElementById(panelId);
-      if (!panelEl) return;
-      if (panelEl.querySelector("split-view-footer")) return;
-      const footer = (this.window.document as any).createXULElement?.("split-view-footer")
-        ?? this.window.document.createElement("split-view-footer");
-      footer.setTab?.(tab);
+    const panelEl = this.window.document.getElementById((tab as any).linkedPanel);
+    if (panelEl?.querySelector("split-view-footer")) return;
+    if (panelEl) {
+      const footer = (this.window.document as any).createXULElement("split-view-footer");
+      footer.setTab(tab);
       panelEl.appendChild(footer);
-    } catch (_) { /* */ }
+    }
   },
 
   /**
@@ -449,24 +444,24 @@ export const methods = {
       return;
     }
 
-    const action = ShortcutUtils?.getSystemActionForEvent?.(event);
+    const action = ShortcutUtils.getSystemActionForEvent(event);
     switch (action) {
-      case ShortcutUtils?.TOGGLE_CARET_BROWSING:
+      case ShortcutUtils.TOGGLE_CARET_BROWSING:
         this._maybeRequestReplyFromRemoteContent(event);
         return;
-      case ShortcutUtils?.MOVE_TAB_BACKWARD:
-        this.moveTabBackward?.();
+      case ShortcutUtils.MOVE_TAB_BACKWARD:
+        this.moveTabBackward();
         event.preventDefault();
         return;
-      case ShortcutUtils?.MOVE_TAB_FORWARD:
-        this.moveTabForward?.();
+      case ShortcutUtils.MOVE_TAB_FORWARD:
+        this.moveTabForward();
         event.preventDefault();
         return;
-      case ShortcutUtils?.CLOSE_TAB:
+      case ShortcutUtils.CLOSE_TAB:
         if (this.multiSelectedTabsCount) {
-          this.removeMultiSelectedTabs?.();
-        } else if (!this.selectedTab?.pinned) {
-          this.removeCurrentTab?.({ animate: true });
+          this.removeMultiSelectedTabs();
+        } else if (!this.selectedTab.pinned) {
+          this.removeCurrentTab({ animate: true });
         }
         event.preventDefault();
         break;
@@ -479,22 +474,22 @@ export const methods = {
       return;
     }
 
-    const action = ShortcutUtils?.getSystemActionForEvent?.(event, { rtl: RTL_UI });
+    const action = ShortcutUtils.getSystemActionForEvent(event, { rtl: RTL_UI });
     switch (action) {
-      case ShortcutUtils?.TOGGLE_CARET_BROWSING:
+      case ShortcutUtils.TOGGLE_CARET_BROWSING:
         if (!event.defaultPrevented && !this._maybeRequestReplyFromRemoteContent(event)) {
-          this.toggleCaretBrowsing?.();
+          this.toggleCaretBrowsing();
         }
         break;
-      case ShortcutUtils?.NEXT_TAB:
-        if (AppConstants?.platform === "macosx") {
-          this.tabContainer?.advanceSelectedTab?.(1, true);
+      case ShortcutUtils.NEXT_TAB:
+        if (AppConstants.platform === "macosx") {
+          this.tabContainer.advanceSelectedTab(1, true);
           event.preventDefault();
         }
         break;
-      case ShortcutUtils?.PREVIOUS_TAB:
-        if (AppConstants?.platform === "macosx") {
-          this.tabContainer?.advanceSelectedTab?.(-1, true);
+      case ShortcutUtils.PREVIOUS_TAB:
+        if (AppConstants.platform === "macosx") {
+          this.tabContainer.advanceSelectedTab(-1, true);
           event.preventDefault();
         }
         break;
@@ -533,31 +528,14 @@ export const methods = {
   observe(subject: any, topic: string) {
     switch (topic) {
       case "contextual-identity-updated": {
-        const identity = subject?.wrappedJSObject;
-        if (identity) {
-          for (const tab of this.tabs) {
-            if ((tab as any).getAttribute?.("usercontextid") == identity.userContextId) {
-              try { ContextualIdentityService?.setTabStyle?.(tab); } catch (_) { /* */ }
-            }
+        const identity = subject.wrappedJSObject;
+        for (const tab of this.tabs) {
+          if ((tab as any).getAttribute("usercontextid") == identity.userContextId) {
+            ContextualIdentityService.setTabStyle(tab);
           }
-          // Invalidate taskbar tab title cache since container names changed
-          this._taskbarTabTitle = null;
-          this._taskbarTabTitleLastProfile = null;
-          this.updateTitlebar();
         }
         break;
       }
-      case "intl:app-locales-changed":
-        // Recreate tabLocalization for new locale
-        try {
-          this.tabLocalization = new (this.window as any).Localization(
-            ["browser/tabbrowser.ftl", "browser/defaultBrowserNotification.ftl"],
-            true,
-          );
-        } catch (_) { /* */ }
-        this._populateTitleCache();
-        this.updateTitlebar();
-        break;
     }
   },
   // ==========================================================================
@@ -571,9 +549,8 @@ export const methods = {
     const win = this.window as any;
     const gURLBar = win.gURLBar;
     const doc: any = this.window.document;
-    const oldBrowser = oldTab?.linkedBrowser;
-    const newBrowser = newTab?.linkedBrowser;
-    if (!oldBrowser || !newBrowser) return;
+    const oldBrowser = oldTab.linkedBrowser;
+    const newBrowser = newTab.linkedBrowser;
 
     gURLBar.getBrowserState(oldBrowser).urlbarFocused = gURLBar.focused;
 
@@ -600,7 +577,7 @@ export const methods = {
       if (!keepFocusOnUrlBar) {
         // Clear focus so that _adjustFocusAfterTabSwitch can detect if
         // some element has been focused and respect that.
-        doc.activeElement?.blur();
+        doc.activeElement.blur();
       }
     }
   },
@@ -614,7 +591,6 @@ export const methods = {
     if (doc.activeElement == newTab) return;
 
     const newBrowser = this.getBrowserForTab(newTab) as any;
-    if (!newBrowser) return;
 
     if (newBrowser.hasAttribute("tabDialogShowing")) {
       newBrowser.tabDialogBox.focus();
@@ -660,7 +636,7 @@ export const methods = {
     }
 
     // Focus the find bar if it was previously focused for that tab.
-    if (win.gFindBarInitialized && !win.gFindBar.hidden && (this.selectedTab as any)?._findBarFocused) {
+    if (win.gFindBarInitialized && !win.gFindBar.hidden && (this.selectedTab as any)._findBarFocused) {
       win.gFindBar._findField.focus();
     }
   },

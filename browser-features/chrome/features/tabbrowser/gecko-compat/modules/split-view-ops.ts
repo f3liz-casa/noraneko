@@ -43,22 +43,20 @@ export const methods = {
    */
   // upstream: addAdjacentNewTab@5ab49fa4ca FIREFOX_143_0_1_RELEASE
   addAdjacentNewTab(tab: MozTabbrowserTab) {
-    try {
-      Services.obs?.notifyObservers?.(
-        {
-          wrappedJSObject: new Promise(resolve => {
-            this.selectedTab = this.addTrustedTab("about:newtab", {
-              tabIndex: (tab as any)._tPos + 1,
-              userContextId: (tab as any).userContextId,
-              tabGroup: (tab as any).group,
-              focusUrlBar: true,
-            });
-            resolve(this.selectedBrowser);
-          }),
-        },
-        "browser-open-newtab-start"
-      );
-    } catch (_) { /* */ }
+    Services.obs.notifyObservers(
+      {
+        wrappedJSObject: new Promise(resolve => {
+          this.selectedTab = this.addTrustedTab("about:newtab", {
+            tabIndex: (tab as any)._tPos + 1,
+            userContextId: (tab as any).userContextId,
+            tabGroup: (tab as any).group,
+            focusUrlBar: true,
+          });
+          resolve(this.selectedBrowser);
+        }),
+      },
+      "browser-open-newtab-start"
+    );
   },
 
   /**
@@ -73,7 +71,7 @@ export const methods = {
     // Insert tab after adjacent tab, or after its group if it's in one
     const tabIndex =
       !options.tabGroup && (adjacentTab as any).group
-        ? (adjacentTab as any).group.tabs.at(-1)?._tPos + 1
+        ? (adjacentTab as any).group.tabs.at(-1)._tPos + 1
         : (adjacentTab as any)._tPos + 1;
 
     return this.addTab(uriString, {
@@ -86,8 +84,7 @@ export const methods = {
    * Returns `true` if `element` is a `tab-split-view-wrapper` custom element.
    */
   isSplitViewWrapper(element: any): boolean {
-    return element?.tagName === "tab-split-view-wrapper" ||
-           element?.localName === "tab-split-view-wrapper";
+    return element?.tagName === "tab-split-view-wrapper";
   },
 
   /**
@@ -112,12 +109,9 @@ export const methods = {
       return;
     }
 
-    // Use native tabContainer methods if available
-    try {
-      this._handleTabMove(tab, () => splitViewWrapper.appendChild(tab));
-      this.removeFromMultiSelectedTabs(tab);
-      this.tabContainer?._notifyBackgroundTab?.(tab);
-    } catch (_) { /* */ }
+    this._handleTabMove(tab, () => splitViewWrapper.appendChild(tab));
+    this.removeFromMultiSelectedTabs(tab);
+    this.tabContainer._notifyBackgroundTab(tab);
   },
 
   /**
@@ -136,17 +130,15 @@ export const methods = {
     }
 
     const splitViewTabs = splitView.tabs;
-    try {
-      (this as any)._handleTabMove?.(
-        splitView,
-        () => group.appendChild(splitView),
-        metricsContext
-      );
-      for (const tab of splitViewTabs) {
-        this.removeFromMultiSelectedTabs(tab);
-        this.tabContainer?._notifyBackgroundTab?.(tab);
-      }
-    } catch (_) { /* */ }
+    this._handleTabMove(
+      splitView,
+      () => group.appendChild(splitView),
+      metricsContext
+    );
+    for (const tab of splitViewTabs) {
+      this.removeFromMultiSelectedTabs(tab);
+      this.tabContainer._notifyBackgroundTab(tab);
+    }
   },
 
   /**
@@ -159,17 +151,14 @@ export const methods = {
     const panels: string[] = [];
     for (const tab of tabs) {
       this._insertBrowser(tab, false);
-      (this as any)._insertSplitViewFooter?.(tab);
+      this._insertSplitViewFooter(tab);
       const browser = (tab as any).linkedBrowser;
       if (browser) {
         browser.docShellIsActive = true;
       }
       panels.push((tab as any).linkedPanel);
     }
-    const tabpanels = this.window.document.getElementById("tabbrowser-tabpanels");
-    if (tabpanels) {
-      (tabpanels as any).splitViewPanels = panels;
-    }
+    this.tabpanels.splitViewPanels = panels;
   },
 
   /**
@@ -186,10 +175,8 @@ export const methods = {
    * Opens the split-view context menu anchored to `anchorElement`.
    */
   openSplitViewMenu(anchorElement: any) {
-    try {
-      const menu = this.window.document.getElementById("split-view-menu") as XULPopupElement | null;
-      menu?.openPopup?.(anchorElement, "after_start");
-    } catch (_) { /* */ }
+    const menu = this.window.document.getElementById("split-view-menu") as XULPopupElement | null;
+    menu!.openPopup(anchorElement, "after_start");
   },
 
   /**
@@ -372,8 +359,8 @@ export const methods = {
       if (
         select &&
         (this.selectedTab as any).userContextId === userContextId &&
-        !SessionStore?.isTabRestoring?.(this.selectedTab) &&
-        !this.tabContainer?.verticalMode
+        !SessionStore.isTabRestoring(this.selectedTab) &&
+        !this.tabContainer.verticalMode
       ) {
         tabWasReused = true;
         tab = this.selectedTab;
@@ -396,13 +383,13 @@ export const methods = {
           url = tabData.entries[activeIndex].url;
         }
 
-        const preferredRemoteType = E10SUtils.getRemoteTypeForURI?.(
+        const preferredRemoteType = E10SUtils.getRemoteTypeForURI(
           url,
           gMultiProcessBrowser,
           gFissionBrowser,
           E10SUtils.DEFAULT_REMOTE_TYPE,
           null,
-          E10SUtils.predictOriginAttributes?.({ window: this.window, userContextId })
+          E10SUtils.predictOriginAttributes({ window: this.window, userContextId })
         );
 
         tab = this.addTrustedTab(createLazyBrowser ? url : "about:blank", {
@@ -434,15 +421,13 @@ export const methods = {
         if (tabGroup) {
           tabGroup.containingTabsFragment.appendChild(tab);
           if (!tabGroup.node) {
-            tabGroup.node = (this as any)._createTabGroup?.(
+            tabGroup.node = this._createTabGroup(
               tabGroup.stateData.id,
               tabGroup.stateData.color,
               tabGroup.stateData.collapsed,
               tabGroup.stateData.name
             );
-            if (tabGroup.node) {
-              tabsFragment.appendChild(tabGroup.node);
-            }
+            tabsFragment.appendChild(tabGroup.node);
           }
         }
       } else {

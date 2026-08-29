@@ -24,12 +24,12 @@ export const methods = {
    */
   // upstream: handleNewTabMiddleClick@3684d91de0 FIREFOX_143_0_1_RELEASE
   handleNewTabMiddleClick(node: any, event: Event) {
-    if (node?.getAttribute?.("disabled") === "true") {
+    if (node.getAttribute("disabled") === "true") {
       return;
     }
 
     if ((event as MouseEvent).button === 1) {
-      (this.window as any).BrowserCommands?.openTab?.({ event });
+      (this.window as any).BrowserCommands.openTab({ event });
       event.stopPropagation();
       event.preventDefault();
     }
@@ -51,35 +51,26 @@ export const methods = {
   // upstream: refreshBlocked@d30b4df956 FIREFOX_143_0_1_RELEASE
   refreshBlocked(actor: any, browser: XULBrowserElement, data: any) {
     // Handle blocked refreshes
-    try {
-      const tab = this.getTabForBrowser(browser);
-      if (tab) {
-        dispatch(tab, "TabRefreshBlocked", data);
-      }
-    } catch (_) { /* */ }
+    const tab = this.getTabForBrowser(browser);
+    if (tab) {
+      dispatch(tab, "TabRefreshBlocked", data);
+    }
   },
 
   // upstream: _hasBeforeUnload@a5da1c67f3 FIREFOX_143_0_1_RELEASE
   _hasBeforeUnload(tab: MozTabbrowserTab): boolean {
-    try {
-      const browser = (tab as any).linkedBrowser;
-      if (!browser) return false;
-      return browser.permitUnload?.()?.permitUnload === false;
-    } catch (_) {
-      return false;
-    }
+    const browser = (tab as any).linkedBrowser;
+    return browser.permitUnload().permitUnload === false;
   },
 
   // upstream: _getTriggeringPrincipalFromHistory@1eb1276cf5 FIREFOX_143_0_1_RELEASE
   _getTriggeringPrincipalFromHistory(browser: XULBrowserElement): any {
-    try {
-      const sh = browser?.sessionHistory;
-      if (!sh) return null;
-      const entry = sh.legacySHistory?.getEntryAtIndex?.(sh.index);
-      return entry?.triggeringPrincipal ?? null;
-    } catch (_) {
-      return null;
+    const sessionHistory = (browser as any)?.browsingContext?.sessionHistory;
+    if (!sessionHistory || !sessionHistory.index || sessionHistory.count == 0) {
+      return undefined;
     }
+    const currentEntry = sessionHistory.getEntryAtIndex(sessionHistory.index);
+    return currentEntry?.triggeringPrincipal;
   },
 
   /**
@@ -248,26 +239,22 @@ export const methods = {
    */
   // upstream: updateBrowserRemotenessByURL@8d7f7ea78f FIREFOX_143_0_1_RELEASE
   updateBrowserRemotenessByURL(browser: XULBrowserElement, url: string, options: any = {}): boolean {
-    try {
-      const currentRemoteType = browser.remoteType;
-      const userContextId = browser.getAttribute?.("usercontextid") || 0;
-      const oa = E10SUtils.predictOriginAttributes?.({ window: this.window, userContextId });
-      const remoteType = E10SUtils.getRemoteTypeForURI?.(
-        url,
-        gMultiProcessBrowser,
-        gFissionBrowser,
-        options.remoteType ?? E10SUtils.DEFAULT_REMOTE_TYPE,
-        null,
-        oa
-      );
+    const currentRemoteType = browser.remoteType;
+    const userContextId = browser.getAttribute("usercontextid") || 0;
+    const oa = E10SUtils.predictOriginAttributes({ window: this.window, userContextId });
+    const remoteType = E10SUtils.getRemoteTypeForURI(
+      url,
+      gMultiProcessBrowser,
+      gFissionBrowser,
+      options.remoteType ?? E10SUtils.DEFAULT_REMOTE_TYPE,
+      null,
+      oa
+    );
 
-      if (currentRemoteType === remoteType) {
-        return false;
-      }
-
-      return this.updateBrowserRemoteness(browser, { remoteType, ...options });
-    } catch (_) {
+    if (currentRemoteType === remoteType) {
       return false;
     }
+
+    return this.updateBrowserRemoteness(browser, { remoteType, ...options });
   },
 } satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

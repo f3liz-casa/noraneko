@@ -296,7 +296,7 @@ export const methods = {
    */
   get selectedBrowsers() {
     const svBrowsers = this.splitViewBrowsers;
-    return svBrowsers.length ? svBrowsers : this.selectedBrowser ? [this.selectedBrowser] : [];
+    return svBrowsers.length ? svBrowsers : [this.selectedBrowser];
   },
 
   // ==========================================================================
@@ -353,8 +353,7 @@ export const methods = {
   /** The tab that owns `browser`, or null. */
   // upstream: getTabForBrowser@44d5f9f1a6 FIREFOX_143_0_1_RELEASE
   getTabForBrowser(browser: XULBrowserElement): any {
-    if (!browser) return null;
-    return this._tabForBrowser.get(browser) ?? null;
+    return this._tabForBrowser.get(browser);
   },
 
   /**
@@ -365,7 +364,7 @@ export const methods = {
    */
   // upstream: getBrowserAtIndex@92b0290b44 FIREFOX_143_0_1_RELEASE
   getBrowserAtIndex(index: number): XULBrowserElement | null {
-    return this.browsers[index] ?? null;
+    return this.browsers[index];
   },
 
   // ==========================================================================
@@ -384,19 +383,16 @@ export const methods = {
   /** Register an event listener on the `#tabbrowser-tabpanels` element. */
   // upstream: addEventListener@29e59c39d6 FIREFOX_143_0_1_RELEASE
   addEventListener(...args: any[]) {
-    const panels = document.getElementById("tabbrowser-tabpanels");
-    if (panels) panels.addEventListener.apply(panels, args as any);
+    this.tabpanels.addEventListener(...args);
   },
   /** Remove an event listener from the `#tabbrowser-tabpanels` element. */
   // upstream: removeEventListener@525f50207c FIREFOX_143_0_1_RELEASE
   removeEventListener(...args: any[]) {
-    const panels = document.getElementById("tabbrowser-tabpanels");
-    if (panels) panels.removeEventListener.apply(panels, args as any);
+    this.tabpanels.removeEventListener(...args);
   },
   /** Dispatch an event on the `#tabbrowser-tabpanels` element. */
   // upstream: dispatchEvent@0ee6345cce FIREFOX_143_0_1_RELEASE
   dispatchEvent(...args: any[]): boolean {
-    const panels = document.getElementById("tabbrowser-tabpanels");
-    return panels ? panels.dispatchEvent.apply(panels, args as any) : false;
+    return this.tabpanels.dispatchEvent(...args);
   },
 } satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

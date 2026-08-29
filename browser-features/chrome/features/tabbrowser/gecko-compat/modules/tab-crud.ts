@@ -47,7 +47,7 @@ export const methods = {
    */
   // upstream: addTab@86fe2b6943 FIREFOX_143_0_1_RELEASE
   addTab(
-    uri: nsIURI | string,
+    uriString: string,
     {
       allowInheritPrincipal,
       allowThirdPartyFixup,
@@ -94,7 +94,6 @@ export const methods = {
     }: any = {},
   ): any {
     const win = this.window as any;
-    let uriString = typeof uri === "string" ? uri : (uri as any)?.spec || String(uri) || "about:blank";
     // all callers of addTab that pass a params object need to pass
     // a valid triggeringPrincipal.
     if (!triggeringPrincipal) {
@@ -548,7 +547,7 @@ export const methods = {
       }
     }
 
-    this.tabContainer._invalidateCachedVisibleTabs?.();
+    this.tabContainer._invalidateCachedVisibleTabs();
 
     // this._switcher would normally cover removing a tab from this
     // cache, but we may not have one at this time.
@@ -628,7 +627,7 @@ export const methods = {
     this.tabContainer._invalidateCachedTabs();
 
     // Invalidate hovered tab state tracking for this closing tab.
-    tab._mouseleave?.();
+    tab._mouseleave();
 
     if (newTab) {
       this.addTrustedTab("about:newtab", {
@@ -639,7 +638,7 @@ export const methods = {
         tabIndex: 0,
       });
     } else {
-      win.TabBarVisibility?.update();
+      win.TabBarVisibility.update();
     }
 
     // Splice this tab out of any lines of succession before any events are
@@ -666,7 +665,7 @@ export const methods = {
       // We're closing one of our two open tabs, inform the other tab that its
       // sibling is going away.
       for (const t of this.tabs) {
-        const bc = t.linkedBrowser?.browsingContext;
+        const bc = t.linkedBrowser.browsingContext;
         if (bc) {
           bc.hasSiblings = false;
         }
@@ -779,7 +778,7 @@ export const methods = {
 
     if (!this._windowIsClosing) {
       // update tab close buttons state
-      this.tabContainer._updateCloseButtons?.();
+      this.tabContainer._updateCloseButtons();
 
       setTimeout(
         (tabs: any) => {
@@ -791,7 +790,7 @@ export const methods = {
     }
 
     // update tab positional properties and attributes
-    if (this.selectedTab) this.selectedTab._selected = true;
+    this.selectedTab._selected = true;
 
     // Removing the panel requires fixing up selectedPanel immediately
     // (see below), which would be hindered by the potentially expensive
@@ -848,7 +847,7 @@ export const methods = {
   ) {
     const win = this.window as any;
     const tab = aTab as any;
-    if (win.UserInteraction?.running("browser.tabs.opening", win)) {
+    if (win.UserInteraction.running("browser.tabs.opening", win)) {
       win.UserInteraction.finish("browser.tabs.opening", win);
     }
 

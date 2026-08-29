@@ -305,7 +305,9 @@ if (fog) {
     const lines = (await Deno.readTextFile(path)).split("\n");
     es.forEach((e, i) => {
       if (!wanted(e)) return;
-      const end = es[i + 1] ? (es[i + 1].stamp?.line ?? es[i + 1].line) : lines.length;
+      let end = es[i + 1] ? (es[i + 1].stamp?.line ?? es[i + 1].line) : lines.length;
+      const close = lines.findIndex((l, k) => k > e.line && /^\}/.test(l));   // the class or object ends first
+      if (close !== -1 && close < end) end = close;
       const here = count(lines.slice(e.line, end).join("\n"));
       const key = e.stamp?.key ?? guessKey(e, from) ?? guessKey(e, to);
       const there = key ? count(to.get(key)?.raw ?? from.get(key)?.raw ?? "") : { opt: 0, cat: 0 };

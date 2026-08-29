@@ -28,9 +28,6 @@ declare module "../TabbrowserCompat.ts" {
     getTabFromAudioEvent(event: Event): any;
     _checkIfShouldTriggerTabSelectMessage(): void;
     _setTabLabel(tab: MozTabbrowserTab, label: string, options?: any): boolean;
-    _determineTaskbarTabTitle(profileIdentifier: string): string | null;
-    _populateTitleCache(): void;
-    _determineContentTitle(browser: XULBrowserElement): string;
   }
 }
 
@@ -49,18 +46,14 @@ export const methods = {
   // upstream: setTabTitle@0022ebd446 FIREFOX_143_0_1_RELEASE
   setTabTitle(tab: MozTabbrowserTab): boolean {
     const browser = this.getBrowserForTab(tab) as any;
-    if (!browser) return false;
+    let title = browser.contentTitle;
 
-    let title = browser.contentTitle ?? "";
-
-    if ((tab as any).hasAttribute?.("customizemode")) {
-      try {
-        title = this.tabLocalization?.formatValueSync?.("tabbrowser-customizemode-tab-title") ?? title;
-      } catch (_) { /* */ }
+    if (tab.hasAttribute("customizemode")) {
+      title = this.tabLocalization.formatValueSync("tabbrowser-customizemode-tab-title");
     }
 
     // Don't replace initially set label with URL while loading
-    if ((tab as any)._labelIsInitialTitle) {
+    if (tab._labelIsInitialTitle) {
       if (!title) return false;
       delete (tab as any)._labelIsInitialTitle;
     }
@@ -76,26 +69,24 @@ export const methods = {
     const isContentTitle = !!title;
     if (!title) {
       // Try URI as title
-      try {
-        if (browser.currentURI?.displaySpec) {
-          try {
-            title = Services.io.createExposableURI(browser.currentURI).displaySpec;
-          } catch (_) {
-            title = browser.currentURI.displaySpec;
-          }
+      if (browser.currentURI.displaySpec) {
+        try {
+          title = Services.io.createExposableURI(browser.currentURI).displaySpec;
+        } catch (_) {
+          title = browser.currentURI.displaySpec;
         }
-      } catch (_) { /* */ }
+      }
 
-      if (title && !(typeof isBlankPageURL === "function" && isBlankPageURL(title))) {
+      if (title && !isBlankPageURL(title)) {
         isURL = true;
         if (title.length <= 500 || !this._dataURLRegEx.test(title)) {
           try {
             const characterSet = browser.characterSet;
-            title = Services.textToSubURI?.unEscapeNonAsciiURI?.(characterSet, title) ?? title;
+            title = Services.textToSubURI.unEscapeNonAsciiURI(characterSet, title);
           } catch (_) { /* */ }
         }
       } else {
-        title = this.tabContainer?.emptyTabTitle ?? "";
+        title = this.tabContainer.emptyTabTitle;
       }
     }
 
@@ -113,7 +104,7 @@ export const methods = {
       label = label.substring(0, 500) + "\u2026";
     }
 
-    (tab as any)._fullLabel = label;
+    tab._fullLabel = label;
 
     if (!isContentTitle) {
       // Remove protocol and "www."
@@ -123,26 +114,23 @@ export const methods = {
       label = label.replace((this as any)._regex_shortenURLForTabLabel, "");
     }
 
-    (tab as any)._labelIsContentTitle = isContentTitle;
+    tab._labelIsContentTitle = isContentTitle;
 
-    if ((tab as any).getAttribute?.("label") === label) return false;
+    if (tab.getAttribute("label") === label) return false;
 
     // RTL detection
-    let isRTL = false;
-    try {
-      const dwu = (this.window as any).windowUtils;
-      isRTL = dwu?.getDirectionFromText?.(label) === Ci.nsIDOMWindowUtils?.DIRECTION_RTL;
-    } catch (_) { /* */ }
+    const dwu = (this.window as any).windowUtils;
+    const isRTL = dwu.getDirectionFromText(label) === Ci.nsIDOMWindowUtils.DIRECTION_RTL;
 
-    (tab as any).setAttribute?.("label", label);
-    (tab as any).setAttribute?.("labeldirection", isRTL ? "rtl" : "ltr");
-    (tab as any).toggleAttribute?.("labelendaligned", isRTL !== (document.dir === "rtl"));
+    tab.setAttribute("label", label);
+    tab.setAttribute("labeldirection", isRTL ? "rtl" : "ltr");
+    tab.toggleAttribute("labelendaligned", isRTL !== (document.dir === "rtl"));
 
     if (!beforeTabOpen) {
       this._tabAttrModified(tab, ["label"]);
     }
 
-    if ((tab as any).selected) {
+    if (tab.selected) {
       this.updateTitlebar();
     }
 
@@ -152,7 +140,7 @@ export const methods = {
   /** Set the favicon URL for a tab. Pass `""` to clear it. */
   // upstream: setIcon@eb813beeca FIREFOX_143_0_1_RELEASE
   setIcon(tab: MozTabbrowserTab, iconUrl: any = "", origUrl: any = iconUrl, clearFirst = false) {
-    const makeString = (url: any) => (typeof url === "string" ? url : url?.spec ?? "");
+    const makeString = (url: any) => (url instanceof Ci.nsIURI ? url.spec : url);
     iconUrl = makeString(iconUrl);
     origUrl = makeString(origUrl);
 
@@ -163,7 +151,7 @@ export const methods = {
     }
 
     const browser = this.getBrowserForTab(tab) as any;
-    if (browser) browser.mIconURL = iconUrl;
+    browser.mIconURL = iconUrl;
 
     // The favicon the strip paints is the tab's `image` attribute; the store
     // alone shows nothing. (tabbrowser.js also reroutes remote SVG data: URIs
@@ -176,7 +164,7 @@ export const methods = {
     }
 
     // The origUrl argument is currently only used by tests.
-    if (browser) this._callProgressListeners(browser, "onLinkIconAvailable", [iconUrl, origUrl]);
+    this._callProgressListeners(browser, "onLinkIconAvailable", [iconUrl, origUrl]);
   },
 
   // upstream: getIcon@2b87848a28 FIREFOX_143_0_1_RELEASE
@@ -188,7 +176,7 @@ export const methods = {
   // upstream: getTabSharingState@4607466f4a FIREFOX_143_0_1_RELEASE
   getTabSharingState(aTab: MozTabbrowserTab) {
     // Normalize the state object for consumers (ie.extensions).
-    const state = Object.assign({}, (aTab as any)._sharingState && (aTab as any)._sharingState.webRTC);
+    const state = Object.assign({}, aTab._sharingState && aTab._sharingState.webRTC);
     return {
       camera: !!state.camera,
       microphone: !!state.microphone,
@@ -207,11 +195,11 @@ export const methods = {
     const tab = this.getTabForBrowser(browser);
     if (!tab) return;
     // If WebRTC was used, leave object to enable tracking of grace periods
-    (tab as any)._sharingState = (tab as any)._sharingState?.webRTC ? { webRTC: {} } : {};
-    (tab as any).removeAttribute?.("sharing");
+    tab._sharingState = tab._sharingState?.webRTC ? { webRTC: {} } : {};
+    tab.removeAttribute("sharing");
     this._tabAttrModified(tab, ["sharing"]);
     if (browser === this.selectedBrowser) {
-      try { gPermissionPanel?.updateSharingIndicator?.(); } catch (_) { /* */ }
+      gPermissionPanel.updateSharingIndicator();
     }
   },
 
@@ -224,23 +212,23 @@ export const methods = {
   updateBrowserSharing(browser: XULBrowserElement, state: any) {
     const tab = this.getTabForBrowser(browser);
     if (!tab) return;
-    if ((tab as any)._sharingState == null) (tab as any)._sharingState = {};
-    (tab as any)._sharingState = Object.assign((tab as any)._sharingState, state);
+    if (tab._sharingState == null) tab._sharingState = {};
+    tab._sharingState = Object.assign(tab._sharingState, state);
 
     if ("webRTC" in state) {
-      if ((tab as any)._sharingState.webRTC?.sharing) {
-        if ((tab as any)._sharingState.webRTC.paused) {
-          (tab as any).removeAttribute?.("sharing");
+      if (tab._sharingState!.webRTC?.sharing) {
+        if (tab._sharingState!.webRTC.paused) {
+          tab.removeAttribute("sharing");
         } else {
-          (tab as any).setAttribute?.("sharing", state.webRTC.sharing);
+          tab.setAttribute("sharing", state.webRTC.sharing);
         }
       } else {
-        (tab as any).removeAttribute?.("sharing");
+        tab.removeAttribute("sharing");
       }
       this._tabAttrModified(tab, ["sharing"]);
     }
     if (browser === this.selectedBrowser) {
-      try { gPermissionPanel?.updateSharingIndicator?.(); } catch (_) { /* */ }
+      gPermissionPanel.updateSharingIndicator();
     }
   },
 
@@ -250,13 +238,10 @@ export const methods = {
    * Does nothing when `uri` is not in the built-in defaults map.
    */
   // upstream: setDefaultIcon@e9a29056bc FIREFOX_143_0_1_RELEASE
-  setDefaultIcon(tab: MozTabbrowserTab, uri: nsIURI | string) {
-    try {
-      const spec = typeof uri === "string" ? uri : uri?.spec;
-      if (spec && spec in FAVICON_DEFAULTS) {
-        this.setIcon(tab, FAVICON_DEFAULTS[spec]);
-      }
-    } catch (_) { /* */ }
+  setDefaultIcon(tab: MozTabbrowserTab, uri: nsIURI) {
+    if (uri && uri.spec in FAVICON_DEFAULTS) {
+      this.setIcon(tab, FAVICON_DEFAULTS[uri.spec]);
+    }
   },
 
   /**
@@ -269,10 +254,8 @@ export const methods = {
   // upstream: setPageInfo@e42a56cbd4 FIREFOX_143_0_1_RELEASE
   setPageInfo(_tab: MozTabbrowserTab, url: string, description: string, previewImage: string) {
     if (url) {
-      try {
-        PlacesUtils?.history?.update?.({ url, description, previewImageURL: previewImage })
-          ?.catch?.((e: any) => console.error(e));
-      } catch (_) { /* */ }
+      const pageInfo = { url, description, previewImageURL: previewImage };
+      PlacesUtils.history.update(pageInfo).catch(console.error);
     }
     if (_tab) (_tab as any).description = description;
   },
@@ -286,12 +269,12 @@ export const methods = {
    */
   // upstream: setInitialTabTitle@797bbb6ee3 FIREFOX_143_0_1_RELEASE
   setInitialTabTitle(tab: MozTabbrowserTab, title: string, options: any = {}) {
-    if (!options.isContentTitle && typeof isBlankPageURL === "function" && isBlankPageURL(title)) {
-      title = this.tabContainer?.emptyTabTitle ?? "";
+    if (!options.isContentTitle && isBlankPageURL(title)) {
+      title = this.tabContainer.emptyTabTitle;
     }
     if (title) {
-      if (!(tab as any).getAttribute?.("label")) {
-        (tab as any)._labelIsInitialTitle = true;
+      if (!tab.getAttribute("label")) {
+        tab._labelIsInitialTitle = true;
       }
       this._setTabLabel(tab, title, options);
     }
@@ -342,7 +325,7 @@ export const methods = {
    */
   // upstream: getTabFromAudioEvent@9e2e55fd72 FIREFOX_143_0_1_RELEASE
   getTabFromAudioEvent(event: Event): any {
-    if (!(event as any).isTrusted) return null;
+    if (!event.isTrusted) return null;
     const browser = (event as any).originalTarget;
     return this.getTabForBrowser(browser);
   },
@@ -399,159 +382,98 @@ export const methods = {
     } catch (_) { /* */ }
   },
 
-  /**
-   * Computes the full window title string for the given browser.
-   *
-   * Combines content title, taskbar-tab name, profile identifier, and
-   * private-browsing suffix as appropriate for the current platform and
-   * window configuration.
-   *
-   * @returns A `" — "`-joined title string, or the brand name alone when no
-   *          content title is available.
-   */
   // upstream: getWindowTitleForBrowser@91b1a79b27 FIREFOX_143_0_1_RELEASE
-  getWindowTitleForBrowser(browser: XULBrowserElement): string {
-    if (!this._cachedTitleInfo) this._populateTitleCache();
-
-    const contentTitle = this._determineContentTitle(browser);
-    const docElement = document.documentElement;
-    const isTemporaryPrivateWindow =
-      docElement?.getAttribute?.("privatebrowsingmode") === "temporary";
-
-    let profileIdentifier: string | false = false;
-    try {
-      profileIdentifier =
-        SelectableProfileService?.isEnabled &&
-        SelectableProfileService.currentProfile?.name?.replace(/\0/g, "");
-    } catch (_) { /* */ }
-
-    const taskbarTabTitle = this._determineTaskbarTabTitle(profileIdentifier || "");
-    const parts = [contentTitle, taskbarTabTitle ?? (profileIdentifier || "")].filter(Boolean);
-
-    // macOS private window suffix with content title
-    if (
-      AppConstants?.platform === "macosx" &&
-      contentTitle &&
-      isTemporaryPrivateWindow
-    ) {
-      parts.push(this._cachedTitleInfo!["privateWindowSuffixForContent"] || "");
-    }
-
-    // Brand name (non-taskbar-tab)
-    if (
-      !taskbarTabTitle &&
-      (!contentTitle || AppConstants?.platform !== "macosx")
-    ) {
-      parts.push(
-        this._cachedTitleInfo![
-          isTemporaryPrivateWindow ? "privateWindowTitle" : "mainWindowTitle"
-        ] || "",
-      );
-    }
-
-    return parts.filter(Boolean).join(" \u2014 ");
-  },
-
-  _determineTaskbarTabTitle(profileIdentifier: string): string | null {
-    if (!this._shouldExposeContentTitle) return null;
-
-    if (this._taskbarTabTitle && this._taskbarTabTitleLastProfile === profileIdentifier) {
-      return this._taskbarTabTitle;
-    }
-
-    let ttId: string | null = null;
-    try {
-      ttId = this.TaskbarTabsUtils?.getTaskbarTabIdFromWindow?.(this.window) ?? null;
-    } catch (_) { /* */ }
-    if (!ttId) return null;
-
-    if (!this._taskbarTab) {
-      try {
-        this.TaskbarTabs?.getTaskbarTab?.(ttId)
-          ?.then?.((tt: any) => {
-            this._taskbarTab = tt;
-            this.updateTitlebar();
-          })
-          ?.catch?.(() => { /* */ });
-      } catch (_) { /* */ }
-      return null;
-    }
-
-    let containerLabel = "";
-    try {
-      if (this._taskbarTab.userContextId) {
-        containerLabel = ContextualIdentityService?.getUserContextLabel?.(this._taskbarTab.userContextId) ?? "";
-      }
-    } catch (_) { /* */ }
-
-    let stringName = "taskbar-tab-title-default";
-    if (containerLabel && profileIdentifier) {
-      stringName = "taskbar-tab-title-container-profile";
-    } else if (containerLabel) {
-      stringName = "taskbar-tab-title-container";
-    } else if (profileIdentifier) {
-      stringName = "taskbar-tab-title-profile";
-    }
-
-    try {
-      this._taskbarTabTitle = this.tabLocalization?.formatValueSync?.(stringName, {
-        name: this._taskbarTab.name,
-        container: containerLabel,
-        profile: profileIdentifier,
-      }) ?? null;
-    } catch (_) { this._taskbarTabTitle = null; }
-    this._taskbarTabTitleLastProfile = profileIdentifier;
-    return this._taskbarTabTitle;
-  },
-
-  _populateTitleCache() {
-    this._cachedTitleInfo = {};
-    for (const id of ["mainWindowTitle", "privateWindowTitle", "privateWindowSuffixForContent"]) {
-      this._cachedTitleInfo[id] = document.getElementById(id)?.textContent || "";
-    }
-  },
-
-  _determineContentTitle(browser: XULBrowserElement): string {
-    if (!this._shouldExposeContentTitle) return "";
-    try {
-      if (
-        PrivateBrowsingUtils?.isWindowPrivate?.(this.window) &&
-        !this._shouldExposeContentTitlePbm
-      ) return "";
-    } catch (_) { /* */ }
-
+  getWindowTitleForBrowser(aBrowser: XULBrowserElement): string {
+    const docElement = this.window.document.documentElement;
     let title = "";
-    const docElement = document.documentElement;
+    let dataSuffix =
+      docElement.getAttribute("privatebrowsingmode") == "temporary"
+        ? "Private"
+        : "Default";
 
-    // If location bar is hidden, add scheme+host to prevent spoofing
+    if (
+      SelectableProfileService?.isEnabled &&
+      SelectableProfileService.currentProfile
+    ) {
+      dataSuffix += "WithProfile";
+    }
+    const defaultTitle = docElement.dataset["title" + dataSuffix]!.replace(
+      "PROFILENAME",
+      () => SelectableProfileService.currentProfile.name.replace(/\0/g, "")
+    );
+
+    if (
+      !this._shouldExposeContentTitle ||
+      (PrivateBrowsingUtils.isWindowPrivate(this.window) &&
+        !this._shouldExposeContentTitlePbm)
+    ) {
+      return defaultTitle;
+    }
+
+    // If location bar is hidden and the URL type supports a host,
+    // add the scheme and host to the title to prevent spoofing.
+    // XXX https://bugzilla.mozilla.org/show_bug.cgi?id=22183#c239
     try {
-      if (docElement?.getAttribute?.("chromehidden")?.includes("location")) {
-        const uri = Services.io.createExposableURI(browser?.currentURI);
+      if (docElement.getAttribute("chromehidden")!.includes("location")) {
+        const uri = Services.io.createExposableURI(aBrowser.currentURI);
         let prefix = uri.prePath;
-        if (uri.scheme === "about") {
+        if (uri.scheme == "about") {
           prefix = uri.spec;
-        } else if (uri.scheme === "moz-extension") {
-          try {
-            const ext = WebExtensionPolicy?.getByHostname?.(uri.host);
-            if (ext?.name) {
-              const extensionLabel = document.getElementById("urlbar-label-extension");
-              prefix = `${(extensionLabel as any)?.value ?? "Extension"} (${ext.name})`;
-            }
-          } catch (_) { /* */ }
+        } else if (uri.scheme == "moz-extension") {
+          const ext = WebExtensionPolicy.getByHostname(uri.host);
+          if (ext && ext.name) {
+            const extensionLabel = this.window.document.getElementById(
+              "urlbar-label-extension"
+            );
+            prefix = `${(extensionLabel as any).value} (${ext.name})`;
+          }
         }
         title = prefix + " - ";
       }
-    } catch (_) { /* */ }
+    } catch (e) {
+      // ignored
+    }
 
-    if (docElement?.hasAttribute?.("titlepreface")) {
+    if (docElement.hasAttribute("titlepreface")) {
       title += docElement.getAttribute("titlepreface");
     }
 
-    const tab = this.getTabForBrowser(browser);
-    if (tab && (tab as any)._labelIsContentTitle) {
-      title += ((tab as any).getAttribute?.("label") ?? "").replace(/\0/g, "");
+    const tab = this.getTabForBrowser(aBrowser) as any;
+    if (tab._labelIsContentTitle) {
+      // Strip out any null bytes in the content title, since the
+      // underlying widget implementations of nsWindow::SetTitle pass
+      // null-terminated strings to system APIs.
+      title += tab.getAttribute("label").replace(/\0/g, "");
     }
 
-    return title;
+    if (this.TaskbarTabsUtils.isTaskbarTabWindow(this.window)) {
+      const userContextId = this.getTabForBrowser(aBrowser)?.userContextId;
+      if (userContextId) {
+        const container =
+          ContextualIdentityService.getUserContextLabel(userContextId);
+        title += (title && container ? " — " : "") + container;
+      }
+    }
+
+    if (title) {
+      // We're using a function rather than just using `title` as the
+      // new substring to avoid `$$`, `$'` etc. having a special
+      // meaning to `replace`.
+      // See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/replace#specifying_a_string_as_a_parameter
+      // and the documentation for functions for more info about this.
+      return docElement.dataset["contentTitle" + dataSuffix]!
+        .replace("CONTENTTITLE", () => title)
+        .replace(
+          "PROFILENAME",
+          () =>
+            SelectableProfileService?.currentProfile?.name.replace(
+              /\0/g,
+              ""
+            ) ?? ""
+        );
+    }
+
+    return defaultTitle;
   },
+
 } satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

@@ -16,7 +16,7 @@
 - `initCompat` は本家インスタンスから**引き取る**: `mProgressListeners` の配列を共有、初期タブの filter に自分の listener を差し替え、本家が自分を handler にして登録したリスナーを外す。
 - `ui/` の帯は鏡から Preact で描き、鏡が変わると描き直す。描いたタブを押すと本物が選ばれる(`mirror.js` の `drawnFollows`・`clickSelects`)。
 - 走らせて確かめた: `deno task check` 0、headless の六 suite 緑(下の「動かし方」)。
-- 刻印 273/382。154 に対する drift は最後に測ったとき 186。
+- 刻印 273/340。154 に対する drift は最後に測ったとき 186。
 
 ### 列の持ち主(この表に無い列を触るときは、まず持ち主を探す)
 
@@ -45,7 +45,7 @@ gecko-compat/
 state/store.ts          鏡。attachMirror(gBrowser)、appState/orderedTabs/selectedTab、tabById
 types/TabState.ts       鏡が言えること(全部 <tab> から読む)
 ui/                     鏡を読む Preact。操作は gBrowser を呼ぶ。XUL の箱に描く(下の石)
-upstream-diff.ts        本家との差分をメンバー単位で。UPSTREAM = 最後に照合した tag
+upstream-diff.ts        本家との差分をメンバー単位で(`--fog` で霧の数、本家に無い ours の一覧も)。UPSTREAM = 最後に照合した tag
 tests/headless/         Marionette で叩く試験(下)
 ```
 
@@ -100,8 +100,8 @@ grep -a -i "error\|JavaScript" /tmp/nora.log | grep -v GFX1     # 空である�
 
 1. **154 との照合。** `deno task upstream-diff --to FIREFOX_154_0_RELEASE` で 186 メンバーが drift。`--diff --only name` で一つずつ見て、直したら `--stamp FIREFOX_154_0_RELEASE --only name`。runtime を 154 に上げるときにまとめてやるのが自然。`UrlbarProviderOpenTabs` の path が 143/154 で違う(両方試す getter が `TabbrowserCompat.ts` にある)、`TabNotes` は 143 に無い。
 2. **split view** は 154 の `<tab-split-view-wrapper>` を前提にしていて、143 には要素が無く、呼び元も無い。154 で初めて動かせる。
-3. **compat にしか無いもの**(本家に無い): `clearSelection`・`reloadAllTabs`・`showFullScreenViewContextMenuItems`・`createUserContextMenu`・`moveTabRelative`・`addRangeToSelection`・`discardTab`・`moveTabToExistingGroup`・`moveTabsToGroup`・`ungroupTabs`・`contextTab`。誰が呼んでいるか確かめて、要らなければ消す。
-4. **防御の霧**: `?.` と `catch (_) {}` が古い移植に残っている(`grep -c "?\." gecko-compat -r`)。本家がそう書いていない所は外す。落ちたらそこが穴(今日 `_tPos` と `disableTRR` がそうやって見つかった)。
+3. **霧の残り 14 メンバー**(`deno task upstream-diff --fog` で出る。`?.` と `catch (` の数を本家と比べて多いものだけ)。残した理由: `_xulEl`・`constructor`(UrlbarProviderOpenTabs の path 探し)は ours で比べる本家が無い。`_reregisterOpenTab` 系・`_insertSplitViewFooter`・`isSplitViewWrapper`・`hideSplitViewPanels`・`createTabsForSessionRestore`(arrowscrollbox の分岐)は split view/154 と一緒に見る。`replaceTabWithWindow`/`replaceTabsWithWindow`/`replaceGroupWithWindow` は **143 とも 154 とも別の古い書き方**(observer + swapBrowsersAndCloseOther)で、本家は `openDialog`/`BrowserWindowTracker.openWindow` に tab を渡すだけ。`translateTabContextMenu` は古い `translateFragment` API で、本家は `data-lazy-l10n-id` の昇格。書き直しは霧取りでなく移植の仕事。
+4. **霧を取ったら見えた、未移植・設計違い**(直していない): `handleEvent` の `GloballyAutoplayBlocked` は本家が `SitePermissions.setForPrincipal` で永続化するのに compat は属性を立てるだけ / `updateBrowserRemotenessByURL` の式が三か所違う(`!gMultiProcessBrowser` 分岐・`predictOriginAttributes` の引数・`getRemoteTypeForURI` の引数) / `tab-dedup.ts` は本家と別アルゴリズム(コンテナ無視・`lastSeenActive` で並べない) / `_adjustFocusAfterTabSwitch` の末尾(`Services.focus.setFocus`)と `pagetitlechanged` の `pending` 判定が無い / `createTabsForSessionRestore` の後半(`tab.initialize()`・`TabHide`/`TabOpen`/`TabBrowserInserted` の発火・leftover の `removeTab`)が無い / `setIcon` に `aLoadingPrincipal` が無く `iconloadingprincipal` を管理していない / `_checkIfShouldTriggerTabSelectMessage`・`_cleanupTabSwitchTelemetry` は 143 に無く 154 とも中身が違う。
 5. `tabbrowser-scope.ts` の `TabProgressListener` は本家をそのまま写したので、`gInitialPages`・`gReduceMotion`・`BrowserUIUtils`・`gURLBar` を `this.mTabBrowser.window` 経由で読む。window global が無い場所(別 window の browser)で使うときは注意。
 
 ## 転んだ石(踏まないで)
@@ -117,6 +117,10 @@ grep -a -i "error\|JavaScript" /tmp/nora.log | grep -v GFX1     # 空である�
 - **preact が二つ束ねられる**: `libs/preact-xul/node_modules/preact` は deno が張った symlink(実体は root と同じ)だが、vite の `preserveSymlinks: true` では別モジュール。`resolve.dedupe: ["preact"]` で一本に。数えるのは `_dist/core.js.map` の `sources` に `preact` が何回出るか。
 - **preact-xul は親の namespace を継ぐ**(preact ≥10.16 は `render(vnode, parent)` を `parent.namespaceURI` から始める)。`xul:` は接頭辞を剥がすだけ。だから帯は XUL の箱に描く。HTML 要素として作ってから ref で XUL に差し替える古い形は、preact が捨てた要素を覚えたままになって二回目から描けなかった。XUL の中の `<div>` は XUL の div になる(downloadbar にそれがある、未対応)。
 - **描いた帯は custom element を借りない**: `<tab>` を document に付けると MozTab が目を覚まし、自分の中身を組み立てて `.tab-text` の `value` を `label` 属性から継承させる(手で描いたラベルが消える)。だから `ui/` は `<hbox class="tabbrowser-tab">` で描く。class は CSS のために借りるだけ。
+- **`class` で宣言された browser.js の global は window のプロパティにならない**(`TabDialogBox`)。`this.window.X` では undefined。`declare const X: any` して裸の名前で呼ぶ ── loadSubScript で同じ global に載った compat からは見える(discard で確認)。
+- **154 の名前が 143 の中に紛れる**(`popupAndRedirectBlocker` は 154、143 は `popupBlocker`)。刻印の tag と中身が合っているかは `--fog` では出ない。落ちて初めて分かる。
+- 窓のタイトルは 143 では `docElement.dataset.titleDefault` 等の data 属性から作る。`#mainWindowTitle` などの要素は 154 のもので 143 の chrome に無い(読むと空になり brand が消える)。
+- `?.` は穴を隠す: `updateCurrentBrowser` は `listener?._stateFlags`(154 の名前、143 は `mStateFlags`)で一度も `onUpdateCurrentBrowser` を呼んでいなかった。`_hasBeforeUnload` は `permitUnload()`(交渉を発火する)を呼んでいた。`_getTriggeringPrincipalFromHistory` は存在しない `legacySHistory` を読んで常に null だった。
 - `XULElement.click()` は document に付いていない要素では鳴らない。試験で押すなら先に `appendChild`。`dispatchEvent(new MouseEvent("click"))` なら detached でも届く。
 
 ## 正本

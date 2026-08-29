@@ -81,10 +81,7 @@ export const methods = {
     }
 
     // Register observers
-    try {
-      Services.obs.addObserver(this, "contextual-identity-updated");
-      Services.obs.addObserver(this, "intl:app-locales-changed");
-    } catch (_) { /* */ }
+    Services.obs.addObserver(this, "contextual-identity-updated");
 
     this._setupEventListeners();
     this._initialized = true;
@@ -98,77 +95,69 @@ export const methods = {
    */
   // upstream: destroy@2ad058f3b7 FIREFOX_143_0_1_RELEASE
   destroy() {
-    try { this.tabContainer?.destroy?.(); } catch (_) { /* */ }
+    this.tabContainer.destroy();
 
     // Remove observers
-    try {
-      Services.obs.removeObserver(this, "contextual-identity-updated");
-      Services.obs.removeObserver(this, "intl:app-locales-changed");
-    } catch (_) { /* */ }
+    Services.obs.removeObserver(this, "contextual-identity-updated");
 
     // Unregister open URIs and remove progress listeners for all tabs
     for (const tab of this.tabs) {
-      try {
-        const browser = (tab as any).linkedBrowser;
-        if (browser?.registeredOpenURI) {
-          const uci = browser.getAttribute?.("usercontextid") || 0;
-          this.UrlbarProviderOpenTabs?.unregisterOpenTab?.(
-            browser.registeredOpenURI.spec, uci,
-            (tab as any).group?.id,
-            PrivateBrowsingUtils?.isWindowPrivate?.(this.window),
-          );
-          delete browser.registeredOpenURI;
+      const browser = (tab as any).linkedBrowser;
+      if (browser.registeredOpenURI) {
+        const uci = browser.getAttribute("usercontextid") || 0;
+        this.UrlbarProviderOpenTabs.unregisterOpenTab(
+          browser.registeredOpenURI.spec, uci,
+          (tab as any).group?.id,
+          PrivateBrowsingUtils.isWindowPrivate(this.window),
+        );
+        delete browser.registeredOpenURI;
+      }
+      const filter = this._tabFilters.get(tab);
+      if (filter) {
+        browser.webProgress.removeProgressListener(filter);
+        const listener = this._tabListeners.get(tab);
+        if (listener) {
+          filter.removeProgressListener(listener);
+          listener.destroy();
         }
-        const filter = this._tabFilters.get(tab);
-        if (filter) {
-          browser?.webProgress?.removeProgressListener?.(filter);
-          const listener = this._tabListeners.get(tab);
-          if (listener) {
-            filter.removeProgressListener(listener);
-            listener.destroy?.();
-          }
-          this._tabFilters.delete(tab);
-          this._tabListeners.delete(tab);
-        }
-      } catch (_) { /* */ }
+        this._tabFilters.delete(tab);
+        this._tabListeners.delete(tab);
+      }
     }
 
     // Remove event listeners
     const doc = this.window.document;
-    try {
-      doc.removeEventListener("keydown", this, { mozSystemGroup: true } as any);
+    doc.removeEventListener("keydown", this, { mozSystemGroup: true } as any);
+    if (AppConstants.platform == "macosx") {
       doc.removeEventListener("keypress", this, { mozSystemGroup: true } as any);
-    } catch (_) { /* */ }
-    try {
-      this.window.removeEventListener("framefocusrequested", this);
-      this.window.removeEventListener("visibilitychange", this);
-      this.removeEventListener("DOMAudioPlaybackStarted", this);
-      this.removeEventListener("DOMAudioPlaybackStopped", this);
-      this.removeEventListener("DOMAudioPlaybackBlockStarted", this);
-      this.removeEventListener("DOMAudioPlaybackBlockStopped", this);
-      this.removeEventListener("GloballyAutoplayBlocked", this);
-      this.removeEventListener("pagetitlechanged", this);
-      this.window.removeEventListener("activate", this);
-      this.window.removeEventListener("deactivate", this);
-    } catch (_) { /* */ }
-    try {
-      // Remove tab group and split view event listeners
-      this.tabContainer?.removeEventListener?.("TabGroupCollapse", this);
-      this.tabContainer?.removeEventListener?.("TabGroupCreateByUser", this);
-      this.tabContainer?.removeEventListener?.("TabGrouped", this);
-      this.tabContainer?.removeEventListener?.("TabUngrouped", this);
-      this.tabContainer?.removeEventListener?.("TabSplitViewActivate", this);
-      this.tabContainer?.removeEventListener?.("TabSplitViewDeactivate", this);
-      const tabpanels = doc.getElementById("tabbrowser-tabpanels");
-      if (tabpanels && this._tabpanelsSelectHandler) {
-        tabpanels.removeEventListener("select", this._tabpanelsSelectHandler);
-        this._tabpanelsSelectHandler = null;
-      }
-    } catch (_) { /* */ }
+    }
+    this.window.removeEventListener("framefocusrequested", this);
+    this.window.removeEventListener("visibilitychange", this);
+    this.removeEventListener("DOMAudioPlaybackStarted", this);
+    this.removeEventListener("DOMAudioPlaybackStopped", this);
+    this.removeEventListener("DOMAudioPlaybackBlockStarted", this);
+    this.removeEventListener("DOMAudioPlaybackBlockStopped", this);
+    this.removeEventListener("GloballyAutoplayBlocked", this);
+    this.removeEventListener("pagetitlechanged", this);
+    this.window.removeEventListener("activate", this);
+    this.window.removeEventListener("deactivate", this);
+
+    // Remove tab group and split view event listeners
+    this.tabContainer.removeEventListener("TabGroupCollapse", this);
+    this.tabContainer.removeEventListener("TabGroupCreateByUser", this);
+    this.tabContainer.removeEventListener("TabGrouped", this);
+    this.tabContainer.removeEventListener("TabUngrouped", this);
+    this.tabContainer.removeEventListener("TabSplitViewActivate", this);
+    this.tabContainer.removeEventListener("TabSplitViewDeactivate", this);
+    const tabpanels = doc.getElementById("tabbrowser-tabpanels");
+    if (tabpanels && this._tabpanelsSelectHandler) {
+      tabpanels.removeEventListener("select", this._tabpanelsSelectHandler);
+      this._tabpanelsSelectHandler = null;
+    }
 
     // Destroy switcher
     if (this._switcher) {
-      try { this._switcher.destroy(); } catch (_) { /* */ }
+      this._switcher.destroy();
       this._switcher = null;
     }
 

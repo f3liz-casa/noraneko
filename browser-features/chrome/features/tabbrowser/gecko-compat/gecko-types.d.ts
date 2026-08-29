@@ -231,7 +231,7 @@ declare const BrowserWindowTracker: {
 };
 declare const StatusPanel: any;
 declare const MozElements: {
-  NotificationBox: new (callback: (el: Element) => void) => any;
+  NotificationBox: new (callback: (el: Element) => void, delayOverride?: number) => any;
   [key: string]: any;
 };
 declare const ShortcutUtils: any;
@@ -377,8 +377,9 @@ interface Document {
 //   `Node.parentNode` is typed as `Node | null`; `insertAdjacentElement` is
 //   only on `Element`. Use `parentElement` for a properly typed alternative.
 //
-// NOTE: `(this as any).showPidAndActiveness`, `(this as any)._isFirstOrLastInTabGroup`,
-//   `(this as any)._showTabCardPreview`, `(this as any)._allowTransparentBrowser` —
-//   internal TabbrowserCompat fields declared in feature modules; cannot be
-//   added here without importing TabbrowserCompat.
+// NOTE: `(this as any)._allowTransparentBrowser` — internal TabbrowserCompat
+//   field declared in a feature module; cannot be added here without
+//   importing TabbrowserCompat. (`showPidAndActiveness`, `_isFirstOrLastInTabGroup`,
+//   and `_showTabCardPreview` turned out to already be declared directly on
+//   TabbrowserCompat, so those three no longer need the cast.)
 

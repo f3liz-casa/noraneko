@@ -24,14 +24,10 @@ export const methods = {
   getDuplicateTabsToClose(tab: MozTabbrowserTab): any[] {
     const uri = (tab as any).linkedBrowser?.currentURI;
     if (!uri) return [];
-    
+
     return this.tabs.filter((t: any) => {
       if (t === tab || t.pinned) return false;
-      try {
-        return t.linkedBrowser?.currentURI?.equals?.(uri);
-      } catch (_) {
-        return false;
-      }
+      return t.linkedBrowser.currentURI.equals(uri);
     });
   },
 
@@ -46,16 +42,14 @@ export const methods = {
 
     for (const tab of this.tabs) {
       if ((tab as any).pinned) continue;
-      try {
-        const uri = (tab as any).linkedBrowser?.currentURI;
-        if (!uri) continue;
-        const uriSpec = uri.spec;
-        if (seenURIs.has(uriSpec)) {
-          duplicates.push(tab);
-        } else {
-          seenURIs.add(uriSpec);
-        }
-      } catch (_) { /* */ }
+      const uri = (tab as any).linkedBrowser?.currentURI;
+      if (!uri) continue;
+      const uriSpec = uri.spec;
+      if (seenURIs.has(uriSpec)) {
+        duplicates.push(tab);
+      } else {
+        seenURIs.add(uriSpec);
+      }
     }
 
     return duplicates;

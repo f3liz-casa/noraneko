@@ -193,12 +193,6 @@ export class TabbrowserCompat {
   documentGlobal: Window;
   // upstream: ownerDocument@fdbc07a646 FIREFOX_143_0_1_RELEASE
   ownerDocument: Document;
-  // Window-title pieces (title-icon.ts); tabbrowser.js keeps these on the
-  // instance too, just without declaring them.
-  _taskbarTab: any = null;
-  _taskbarTabTitle: string | null = null;
-  _taskbarTabTitleLastProfile: any = null;
-  _cachedTitleInfo: Record<string, string> | null = null;
   _tabSwitchTelemetry = new Map<string, { count: number; timestamp: number }>();
   _previousURL: string | null = null;
   _tabpanelsSelectHandler: any = null;
@@ -219,7 +213,6 @@ export class TabbrowserCompat {
       TabMetrics: "moz-src:///browser/components/tabbrowser/TabMetrics.sys.mjs",
       TabStateFlusher: "resource:///modules/sessionstore/TabStateFlusher.sys.mjs",
       TaskbarTabsUtils: "resource:///modules/taskbartabs/TaskbarTabsUtils.sys.mjs",
-      TaskbarTabs: "resource:///modules/taskbartabs/TaskbarTabs.sys.mjs",
       GenAI: "resource:///modules/GenAI.sys.mjs",
       TabNotes: "moz-src:///browser/components/tabnotes/TabNotes.sys.mjs",
     });
@@ -244,7 +237,6 @@ export class TabbrowserCompat {
   declare readonly TabMetrics: any;
   declare readonly TabStateFlusher: any;
   declare readonly TaskbarTabsUtils: any;
-  declare readonly TaskbarTabs: any;
   declare readonly UrlbarProviderOpenTabs: any;
   declare readonly GenAI: any;
   declare readonly TabNotes: any;
@@ -289,7 +281,7 @@ export class TabbrowserCompat {
     // Firefox's Tabbrowser already numbered the panels it made (panel-<win>-1
     // for the first tab). Two counters starting at 0 would hand the next tab
     // the same id, and a tabbox cannot tell two tabs apart by one panel.
-    for (const panel of Array.from(this.tabpanels?.children ?? []) as Element[]) {
+    for (const panel of Array.from(this.tabpanels.children) as Element[]) {
       const m = /^panel-\d+-(\d+)$/.exec(panel.id);
       if (m) this._uniquePanelIDCounter = Math.max(this._uniquePanelIDCounter, Number(m[1]));
     }

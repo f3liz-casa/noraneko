@@ -57,12 +57,10 @@ export const methods = {
   _maybeRequestReplyFromRemoteContent(event: KeyboardEvent): boolean {
     // If the selected browser is remote, ask it to handle the caret browsing toggle
     const browser = this.selectedBrowser as any;
-    if (!browser?.isRemoteBrowser) return false;
-    try {
-      browser.sendMessageToActor?.("ToggleCaretBrowsing", {}, "BrowserKeyHandler");
-      event.preventDefault();
-      return true;
-    } catch (_) { return false; }
+    if (!browser.isRemoteBrowser) return false;
+    browser.sendMessageToActor("ToggleCaretBrowsing", {}, "BrowserKeyHandler");
+    event.preventDefault();
+    return true;
   },
 
   /**

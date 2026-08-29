@@ -27,8 +27,10 @@ export const methods = {
     if (!this._uniquePanelIDCounter) {
       this._uniquePanelIDCounter = 0;
     }
-    const outerID = this.window.docShell?.outerWindowID;
-    // Use monotonic counter to avoid collisions
+    const outerID = this.window.docShell!.outerWindowID;
+    // We want panel IDs to be globally unique, that's why we include the
+    // window ID. We switched to a monotonic counter as Date.now() lead
+    // to random failures because of colliding IDs.
     return `panel-${outerID}-${++this._uniquePanelIDCounter}`;
   },
 
@@ -38,26 +40,23 @@ export const methods = {
     this.selectedBrowser!.insertAdjacentElement("afterend", (this.window as any).StatusPanel.panel);
   },
 
-  /** Ours: the same for any browser, and forgiving when StatusPanel is not there yet. */
+  /** Ours: same as upstream's 154 `appendStatusPanel`, which takes any browser (default selectedBrowser). */
+  // upstream: appendStatusPanel@?? FIREFOX_154_0_RELEASE
   appendStatusPanel(browser?: any) {
-    const target = browser ?? this.selectedBrowser;
-    const panel = (this.window as any).StatusPanel?.panel;
-    if (target && panel) target.insertAdjacentElement("afterend", panel);
+    browser ??= this.selectedBrowser;
+    browser.insertAdjacentElement("afterend", (this.window as any).StatusPanel.panel);
   },
 
   // upstream: _setupInitialBrowserAndTab@d31fbac6db FIREFOX_143_0_1_RELEASE
   _setupInitialBrowserAndTab() {
     // See browser.js for the meaning of window.arguments
-    let userContextId = (this.window as any).arguments?.[5];
-    
-    let openWindowInfo;
-    try {
-      openWindowInfo = this.window.docShell?.treeOwner
-        ?.QueryInterface?.(Ci.nsIInterfaceRequestor)
-        ?.getInterface(Ci.nsIAppWindow)?.initialOpenWindowInfo;
-    } catch (_) { /* */ }
+    let userContextId = (this.window as any).arguments && (this.window as any).arguments[5];
 
-    if (!openWindowInfo && (this.window as any).arguments?.[11]) {
+    let openWindowInfo = (this.window.docShell as any).treeOwner
+      .QueryInterface(Ci.nsIInterfaceRequestor)
+      .getInterface(Ci.nsIAppWindow).initialOpenWindowInfo;
+
+    if (!openWindowInfo && (this.window as any).arguments && (this.window as any).arguments[11]) {
       openWindowInfo = (this.window as any).arguments[11];
     }
 
@@ -67,33 +66,31 @@ export const methods = {
     }
 
     let triggeringRemoteType;
-    if (extraOptions?.hasKey?.("triggeringRemoteType")) {
-      try {
-        triggeringRemoteType = extraOptions.getPropertyAsACString("triggeringRemoteType");
-      } catch (_) { /* */ }
+    if (extraOptions?.hasKey("triggeringRemoteType")) {
+      triggeringRemoteType = extraOptions.getPropertyAsACString("triggeringRemoteType");
     }
 
-    const tabArgument = gBrowserInit?.getTabToAdopt?.();
+    const tabArgument = gBrowserInit.getTabToAdopt();
 
     let remoteType;
     let initialBrowsingContextGroupId;
 
-    if (tabArgument?.hasAttribute?.("usercontextid")) {
+    if (tabArgument && tabArgument.hasAttribute("usercontextid")) {
       userContextId = parseInt(tabArgument.getAttribute("usercontextid"), 10);
     }
 
-    if (tabArgument?.linkedBrowser) {
+    if (tabArgument && tabArgument.linkedBrowser) {
       remoteType = tabArgument.linkedBrowser.remoteType;
-      initialBrowsingContextGroupId = tabArgument.linkedBrowser.browsingContext?.group?.id;
+      initialBrowsingContextGroupId = tabArgument.linkedBrowser.browsingContext?.group.id;
     } else if (openWindowInfo) {
-      userContextId = openWindowInfo.originAttributes?.userContextId;
+      userContextId = openWindowInfo.originAttributes.userContextId;
       if (openWindowInfo.isRemote) {
         remoteType = triggeringRemoteType ?? E10SUtils.DEFAULT_REMOTE_TYPE;
       } else {
         remoteType = E10SUtils.NOT_REMOTE;
       }
     } else {
-      let uriToLoad = gBrowserInit?.uriToLoadPromise;
+      let uriToLoad = gBrowserInit.uriToLoadPromise;
       if (uriToLoad && Array.isArray(uriToLoad)) {
         uriToLoad = uriToLoad[0];
       }
@@ -149,6 +146,8 @@ export const methods = {
 
     const tab = this.tabs[0] as any;
     tab.linkedPanel = uniqueId;
+    this._selectedTab = tab;
+    this._selectedBrowser = browser;
     tab.permanentKey = browser.permanentKey;
     tab._tPos = 0;
     tab._fullyOpen = true;
@@ -182,14 +181,15 @@ export const methods = {
    */
   // upstream: getPanel@10d14ee553 FIREFOX_143_0_1_RELEASE
   getPanel(browser: XULBrowserElement): any {
-    return this.getBrowserContainer(browser)?.parentNode;
+    return this.getBrowserContainer(browser).parentNode;
   },
 
   /**
    * Returns the `.browserContainer` `<vbox>` that wraps `browser`'s stack.
+   * Defaults to `selectedBrowser` when not provided.
    */
   // upstream: getBrowserContainer@e3461fb2e1 FIREFOX_143_0_1_RELEASE
-  getBrowserContainer(browser: XULBrowserElement): any {
-    return browser?.parentNode?.parentNode;
+  getBrowserContainer(browser?: XULBrowserElement): any {
+    return ((browser || this.selectedBrowser) as any).parentNode.parentNode;
   },
 } satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;
