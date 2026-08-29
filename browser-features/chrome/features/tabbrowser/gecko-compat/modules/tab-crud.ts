@@ -25,18 +25,18 @@ declare module "../TabbrowserCompat.ts" {
     removeCurrentTab(options?: any): void;
     removeTabs(tabs: MozTabbrowserTab[], options?: any): void;
     removeAllTabsBut(keepTab: any, options?: any): void;
-    closeTabsByURI(urisToClose: string[]): Promise<any>;
-    pinTab(tab: MozTabbrowserTab): void;
+    closeTabsByURI(urisToClose: any[]): Promise<number>;
+    pinTab(tab: MozTabbrowserTab, options?: any): void;
     unpinTab(tab: MozTabbrowserTab): void;
     discardTab(tab: MozTabbrowserTab): void;
     showTab(tab: MozTabbrowserTab): void;
-    hideTab(tab: MozTabbrowserTab): void;
-    duplicateTab(tab: MozTabbrowserTab, options?: any): any;
-    moveTabTo(tab: MozTabbrowserTab, options?: any): void;
-    moveTabBefore(tab: MozTabbrowserTab, target: MozTabbrowserTab, metricsContext?: any): void;
-    moveTabAfter(tab: MozTabbrowserTab, target: MozTabbrowserTab, metricsContext?: any): void;
-    moveTabToStart(tab: MozTabbrowserTab): void;
-    moveTabToEnd(tab: MozTabbrowserTab): void;
+    hideTab(tab: MozTabbrowserTab, source?: string): void;
+    duplicateTab(tab: MozTabbrowserTab, restoreTabImmediately?: boolean, options?: any): any;
+    moveTabTo(element: any, options?: any): void;
+    moveTabBefore(element: any, targetElement: any, metricsContext?: any): void;
+    moveTabAfter(element: any, targetElement: any, metricsContext?: any): void;
+    moveTabToStart(tab?: any): void;
+    moveTabToEnd(tab?: any): void;
   }
 }
 
@@ -47,184 +47,296 @@ export const methods = {
   // ==========================================================================
 
   /**
-   * Create and open a new tab.
+   * Open a tab. `<tab>` first (into the strip at the right place), then
+   * its `<browser>`, then TabOpen, then the load. The store hears ADD_TAB
+   * until the mirror takes over.
    *
-   * Drop-in replacement for `gBrowser.addTab()` in tabbrowser.js.
-   *
-   * @param uri - URL to load (string, `nsIURI`, or anything with `.spec`)
-   * @param options.userContextId        - Container (identity) to use
-   * @param options.pinned               - Pin the tab on the left
-   * @param options.inBackground         - Don't select the new tab
-   * @param options.tabIndex             - Explicit insert position
-   * @param options.insertAfterCurrent   - Insert after the current tab
-   * @param options.insertRelatedAfterCurrent - Insert after opener
-   * @param options.openerTab            - Tab that initiated the open
-   * @param options.ownerTab             - Logical owner (used for selection on close)
-   * @param options.createLazyBrowser    - Defer browser creation until tab is selected
-   * @param options.remoteType           - Override remote process type
-   * @returns The newly created tab element (or a stub when the element is not yet in DOM)
+   * @returns The new tab, or null when it could not be created.
    */
-  // upstream: addTab@86fe2b6943 FIREFOX_143_0_1_RELEASE
-  addTab(uri: nsIURI | string, options: any = {}) {
-    const uriStr = typeof uri === "string" ? uri : uri?.spec || String(uri) || "about:blank";
-    // tabbrowser.js: every caller passes a principal (addTrustedTab and
-    // addWebTab supply one). The load below cannot start without it.
-    if (!options.triggeringPrincipal) {
+  addTab(
+    uri: nsIURI | string,
+    {
+      allowInheritPrincipal,
+      allowThirdPartyFixup,
+      bulkOrderedOpen,
+      charset,
+      createLazyBrowser,
+      disableTRR,
+      isCaptivePortalTab,
+      eventDetail,
+      focusUrlBar,
+      forceNotRemote,
+      forceAllowDataURI,
+      fromExternal,
+      inBackground = true,
+      elementIndex,
+      tabIndex,
+      lazyTabTitle,
+      name,
+      noInitialLabel,
+      openWindowInfo,
+      openerBrowser,
+      originPrincipal,
+      originStoragePrincipal,
+      ownerTab,
+      pinned,
+      postData,
+      preferredRemoteType,
+      remoteType,
+      referrerInfo,
+      relatedToCurrent,
+      initialBrowsingContextGroupId,
+      skipAnimation,
+      skipBackgroundNotify,
+      tabGroup,
+      triggeringPrincipal,
+      userContextId,
+      policyContainer,
+      skipLoad = createLazyBrowser,
+      globalHistoryOptions,
+      triggeringRemoteType,
+      schemelessInput,
+      hasValidUserGestureActivation = false,
+      textDirectiveUserActivation = false,
+    }: any = {},
+  ): any {
+    const win = this.window as any;
+    let uriString = typeof uri === "string" ? uri : (uri as any)?.spec || String(uri) || "about:blank";
+    // all callers of addTab that pass a params object need to pass
+    // a valid triggeringPrincipal.
+    if (!triggeringPrincipal) {
       throw new Error("Required argument triggeringPrincipal missing within addTab");
     }
-    const id = crypto.randomUUID();
-    const win = this.window as any;
-    const createLazyBrowser = !!options.createLazyBrowser;
-    // A lazy tab's URL belongs to SessionStore; its browser starts on
-    // about:blank and nothing is loaded until it is first used.
-    const skipLoad = options.skipLoad ?? createLazyBrowser;
-    const { uri: uriObj, uriIsAboutBlank, lazyBrowserURI, uriString } =
-      this._determineURIToLoad(uriStr, createLazyBrowser);
 
-    const tabData = TabOps.createTab(id, uriStr, {
-      userContextId: options.userContextId ?? 0,
-      isPinned: options.pinned ?? false,
-      title: options.title,
-      label: options.label,
-      permanentKey: {},
-      ownerTabId: options.ownerTab ? resolveTabId(options.ownerTab) ?? undefined : undefined,
-      openerTabId: options.openerTabId,
-    });
-
-    const insertAt = TabOps.calculateInsertionIndex(appState.value, {
-      tabIndex: options.tabIndex,
-      openerTabId: options.openerTabId,
-      isPinned: options.pinned,
-      insertAfterCurrent: options.insertAfterCurrent,
-      insertRelatedAfterCurrent: options.insertRelatedAfterCurrent,
-    });
-
-    send({ type: "ADD_TAB", tab: tabData, index: insertAt });
-
-    // Track _lastRelatedTabMap for opener
-    if (options.openerTab) {
-      this._lastRelatedTabMap.set(options.openerTab, DOMRegistry.getTab(id));
+    if (!win.UserInteraction.running("browser.tabs.opening", win)) {
+      win.UserInteraction.start("browser.tabs.opening", "initting", win);
     }
 
-    // <tab> and <browser>; the browser is inserted into the deck right away
-    // unless the tab is lazy.
-    this._createBrowserDOM(id, {
-      uriString,
-      uri: uriObj,
-      uriIsAboutBlank,
-      skipLoad,
-      createLazyBrowser,
-      userContextId: options.userContextId,
-      preferredRemoteType: options.preferredRemoteType ?? options.remoteType,
-      openerBrowser: options.openerBrowser,
-      referrerInfo: options.referrerInfo,
-      forceNotRemote: options.forceNotRemote,
-      name: options.name,
-      initialBrowsingContextGroupId: options.initialBrowsingContextGroupId,
-      openWindowInfo: options.openWindowInfo,
-      triggeringRemoteType: options.triggeringRemoteType,
-      noInitialLabel: options.noInitialLabel,
-      skipBackgroundNotify: options.skipBackgroundNotify,
-    });
+    // If we're opening a foreground tab, set the owner by default.
+    ownerTab ??= inBackground ? null : this.selectedTab;
 
-    const tabEl = DOMRegistry.getTab(id) as any;
-    const browser = DOMRegistry.getBrowser(id) as any;
+    // if we're adding tabs, we're past interrupt mode, ditch the owner
+    if (this.selectedTab.owner) {
+      this.selectedTab.owner = null;
+    }
 
-    if (tabEl && browser) {
-      if (options.focusUrlBar) {
-        win.gURLBar.getBrowserState(browser).urlbarFocused = true;
+    // Find the tab that opened this one, if any. This is used for
+    // determining positioning, and inherited attributes such as the
+    // user context ID.
+    //
+    // If we have a browser opener (which is usually the browser
+    // element from a remote window.open() call), use that.
+    //
+    // Otherwise, if the tab is related to the current tab (e.g.,
+    // because it was opened by a link click), use the selected tab as
+    // the owner. If referrerInfo is set, and we don't have an
+    // explicit relatedToCurrent arg, we assume that the tab is
+    // related to the current tab, since referrerURI is null or
+    // undefined if the tab is opened from an external application or
+    // bookmark (i.e. somewhere other than an existing tab).
+    if (relatedToCurrent == null) {
+      relatedToCurrent = !!(referrerInfo && referrerInfo.originalReferrer);
+    }
+    const openerTab =
+      (openerBrowser && this.getTabForBrowser(openerBrowser)) ||
+      (relatedToCurrent && this.selectedTab) ||
+      null;
+
+    // When overflowing, new tabs are scrolled into view smoothly, which
+    // doesn't go well together with the width transition. So we skip the
+    // transition in that case.
+    const animate =
+      !skipAnimation &&
+      !pinned &&
+      !this.tabContainer.verticalMode &&
+      !this.tabContainer.overflowing &&
+      !win.gReduceMotion;
+
+    const uriInfo = this._determineURIToLoad(uriString, createLazyBrowser);
+    const { uri: uriObj, uriIsAboutBlank, lazyBrowserURI } = uriInfo;
+    // Have to overwrite this if we're lazy-loading. Should go away
+    // with bug 1818777.
+    ({ uriString } = uriInfo);
+
+    let usingPreloadedContent = false;
+    let b: any, t: any;
+
+    try {
+      t = this._createTab({
+        uriString,
+        animate,
+        userContextId,
+        openerTab,
+        pinned,
+        noInitialLabel,
+        skipBackgroundNotify,
+      });
+      // Insert the tab into the tab container in the correct position.
+      this._insertTabAtIndex(t, {
+        elementIndex,
+        tabIndex,
+        ownerTab,
+        openerTab,
+        pinned,
+        bulkOrderedOpen,
+        tabGroup: tabGroup ?? openerTab?.group,
+      });
+
+      ({ browser: b, usingPreloadedContent } = this._createBrowserForTab(t, {
+        uriString,
+        uri: uriObj,
+        preferredRemoteType: preferredRemoteType ?? remoteType,
+        openerBrowser,
+        uriIsAboutBlank,
+        referrerInfo,
+        forceNotRemote,
+        name,
+        initialBrowsingContextGroupId,
+        openWindowInfo,
+        skipLoad,
+        triggeringRemoteType,
+      }));
+
+      if (focusUrlBar) {
+        win.gURLBar.getBrowserState(b).urlbarFocused = true;
       }
 
       // If the caller opts in, create a lazy browser.
       if (createLazyBrowser) {
-        this._createLazyBrowser(tabEl);
+        this._createLazyBrowser(t);
 
         if (lazyBrowserURI) {
           // Lazy browser must be explicitly registered so tab will appear as
           // a switch-to-tab candidate in autocomplete.
           this.UrlbarProviderOpenTabs.registerOpenTab(
             lazyBrowserURI.spec,
-            tabEl.userContextId,
-            options.tabGroup?.id,
+            t.userContextId,
+            tabGroup?.id,
             win.PrivateBrowsingUtils.isWindowPrivate(win),
           );
-          browser.registeredOpenURI = lazyBrowserURI;
+          b.registeredOpenURI = lazyBrowserURI;
         }
         // tabbrowser.js skips this for insertTab: false (session restore
-        // inserting the tabs itself); the compat always inserts the tab.
-        SessionStore.setTabState(tabEl, {
+        // inserting the tabs itself); this compat always inserts the tab.
+        SessionStore.setTabState(t, {
           entries: [
             {
               url: lazyBrowserURI?.spec || "about:blank",
-              title: options.lazyTabTitle,
-              triggeringPrincipal_base64: E10SUtils.serializePrincipal(options.triggeringPrincipal),
+              title: lazyTabTitle,
+              triggeringPrincipal_base64: E10SUtils.serializePrincipal(triggeringPrincipal),
             },
           ],
           // Make sure to store the userContextId associated to the lazy tab
           // otherwise it would be created as a default tab when recreated on a
           // session restore (See Bug 1819794).
-          userContextId: options.userContextId,
+          userContextId,
         });
-      } else if (options.openerBrowser && !options.openWindowInfo) {
+      } else {
+        this._insertBrowser(t, true);
         // If we were called by frontend and don't have openWindowInfo,
         // but we were opened from another browser, set the cross group
         // opener ID:
-        browser.browsingContext.crossGroupOpener = options.openerBrowser.browsingContext;
+        if (openerBrowser && !openWindowInfo) {
+          b.browsingContext.crossGroupOpener = openerBrowser.browsingContext;
+        }
       }
+    } catch (e) {
+      console.error("Failed to create tab");
+      console.error(e);
+      t?.remove();
+      if (t?.linkedBrowser) {
+        this._tabFilters.delete(t);
+        this._tabListeners.delete(t);
+        this.getPanel(t.linkedBrowser).remove();
+      }
+      return null;
     }
 
-    dispatch(tabEl ?? document, "TabOpen", options);
-
-    // tabbrowser.js addTab: the load starts once TabOpen has fired.
-    if (browser) {
-      this._kickOffBrowserLoad(browser, {
-        uri: uriObj,
-        uriString: uriStr,
-        usingPreloadedContent: !!(tabEl as any)?._browserParams?.usingPreloadedContent,
-        triggeringPrincipal: options.triggeringPrincipal,
-        originPrincipal: options.originPrincipal,
-        originStoragePrincipal: options.originStoragePrincipal,
-        uriIsAboutBlank,
-        allowInheritPrincipal: options.allowInheritPrincipal,
-        allowThirdPartyFixup: options.allowThirdPartyFixup,
-        fromExternal: options.fromExternal,
-        // 143 callers say disableTRR, 154 (which _kickOffBrowserLoad follows) isCaptivePortalTab
-        isCaptivePortalTab: options.isCaptivePortalTab ?? options.disableTRR,
-        forceAllowDataURI: options.forceAllowDataURI,
-        skipLoad,
-        referrerInfo: options.referrerInfo,
-        charset: options.charset,
-        postData: options.postData,
-        policyContainer: options.policyContainer,
-        globalHistoryOptions: options.globalHistoryOptions,
-        triggeringRemoteType: options.triggeringRemoteType,
-        schemelessInput: options.schemelessInput,
-        hasValidUserGestureActivation:
-          !!options.hasValidUserGestureActivation ||
-          !!options.openWindowInfo?.hasValidUserGestureActivation,
-        textDirectiveUserActivation:
-          !!options.textDirectiveUserActivation ||
-          !!options.openWindowInfo?.textDirectiveUserActivation,
+    // Until the mirror listens for itself: the store learns of the tab here.
+    {
+      const id = crypto.randomUUID();
+      t._tabId = id;
+      DOMRegistry.registerTab(id, t);
+      DOMRegistry.registerBrowser(id, b);
+      send({
+        type: "ADD_TAB",
+        tab: TabOps.createTab(id, uriString, {
+          userContextId: userContextId ?? 0,
+          isPinned: !!pinned,
+          permanentKey: b.permanentKey,
+          ownerTabId: ownerTab?._tabId,
+          openerTabId: openerTab?._tabId,
+        }),
+        index: t._tPos,
       });
     }
 
+    // Fire a TabOpen event
+    this._fireTabOpen(t, eventDetail);
+
+    this._kickOffBrowserLoad(b, {
+      uri: uriObj,
+      uriString,
+      usingPreloadedContent,
+      triggeringPrincipal,
+      originPrincipal,
+      originStoragePrincipal,
+      uriIsAboutBlank,
+      allowInheritPrincipal,
+      allowThirdPartyFixup,
+      fromExternal,
+      // 143 callers say disableTRR, 154 (which _kickOffBrowserLoad follows) isCaptivePortalTab
+      isCaptivePortalTab: isCaptivePortalTab ?? disableTRR,
+      forceAllowDataURI,
+      skipLoad,
+      referrerInfo,
+      charset,
+      postData,
+      policyContainer,
+      globalHistoryOptions,
+      triggeringRemoteType,
+      schemelessInput,
+      hasValidUserGestureActivation:
+        hasValidUserGestureActivation || !!openWindowInfo?.hasValidUserGestureActivation,
+      textDirectiveUserActivation:
+        textDirectiveUserActivation || !!openWindowInfo?.textDirectiveUserActivation,
+    });
+
     // This field is updated regardless if we actually animate
-    // since it's important that we keep this count correct in all cases;
-    // tabs.js _handleNewTab counts it back down.
+    // since it's important that we keep this count correct in all cases.
     this.tabAnimationsInProgress++;
 
+    if (animate) {
+      // Kick the animation off.
+      // TODO: we should figure out a better solution here. We use RAF
+      // to avoid jank of the animation due to synchronous work happening
+      // on tab open.
+      // With preloaded content though a single RAF happens too early. and
+      // both the transition and the transitionend event don't happen.
+      if (usingPreloadedContent) {
+        win.requestAnimationFrame(() => {
+          win.requestAnimationFrame(() => {
+            t.setAttribute("fadein", "true");
+          });
+        });
+      } else {
+        win.requestAnimationFrame(() => {
+          t.setAttribute("fadein", "true");
+        });
+      }
+    }
+
     // Additionally send pinned tab events
-    if (options.pinned && tabEl) {
-      this._notifyPinnedStatus(tabEl);
+    if (pinned) {
+      this._notifyPinnedStatus(t);
     }
 
-    if (tabEl) win.gSharedTabWarning?.tabAdded(tabEl);
+    win.gSharedTabWarning.tabAdded(t);
 
-    // tabbrowser.js: inBackground defaults to true.
-    if (tabEl && options.inBackground === false) {
-      this.selectedTab = tabEl;
+    if (!inBackground) {
+      this.selectedTab = t;
     }
-    return tabEl ?? this._tabStub(id);
+    return t;
   },
 
   /** Create a new tab with an implicitly trusted (system) principal. */
@@ -901,60 +1013,74 @@ export const methods = {
     }
   },
 
-  /**
-   * Closes every open tab except `keepTab`.
-   *
-   * By default, pinned, selected, and hidden tabs are also spared; pass
-   * `options.skipPinnedOrSelectedTabs = false` to override.
-   *
-   * @param keepTab - The tab that should remain open.
-   */
-  // upstream: removeAllTabsBut@5f46de5ec6 FIREFOX_143_0_1_RELEASE
-  removeAllTabsBut(keepTab: any, options: any = {}) {
-    const keepId = resolveTabId(keepTab);
-    const skipPinnedOrSelected = options.skipPinnedOrSelectedTabs ?? true;
-    const selectedId = selectedTabSignal.value?.id;
+  /** Close every open tab but `aTab` (and, by default, pinned and hidden ones). */
+  removeAllTabsBut(aTab: any, aParams: any = {}) {
+    const { skipWarnAboutClosingTabs = false, skipPinnedOrSelectedTabs = true } = aParams;
 
     let filterFn: (tab: any) => boolean;
-    if (skipPinnedOrSelected) {
-      if ((keepTab as any)?.multiselected) {
-        filterFn = (tab: any) => {
-          const id = resolveTabId(tab);
-          return !appState.value.tabs[id!]?.isMultiSelected
-            && !appState.value.tabs[id!]?.isPinned
-            && !appState.value.tabs[id!]?.isHidden;
-        };
+
+    // If enabled also filter by selected or pinned state.
+    if (skipPinnedOrSelectedTabs) {
+      if (aTab?.multiselected) {
+        filterFn = (tab) => !tab.multiselected && !tab.pinned && !tab.hidden;
       } else {
-        filterFn = (tab: any) => {
-          const id = resolveTabId(tab);
-          return id !== keepId
-            && id !== selectedId  // Also exclude selectedTab when skipPinnedOrSelected is true
-            && !appState.value.tabs[id!]?.isPinned
-            && !appState.value.tabs[id!]?.isHidden;
-        };
+        filterFn = (tab) => tab != aTab && !tab.pinned && !tab.hidden;
       }
     } else {
-      filterFn = (tab: any) => resolveTabId(tab) !== keepId;
+      // Exclude just aTab from being removed.
+      filterFn = (tab) => tab != aTab;
     }
 
-    const tabsToRemove = [...this.openTabs].filter(filterFn);
-    for (const tab of tabsToRemove) {
-      this.removeTab(tab, options);
+    const tabsToRemove = this.openTabs.filter(filterFn);
+
+    // If enabled show the tab close warning.
+    if (
+      !skipWarnAboutClosingTabs &&
+      !this.warnAboutClosingTabs(tabsToRemove.length, this.closingTabsEnum.OTHER)
+    ) {
+      return;
     }
+
+    this.removeTabs(tabsToRemove, aParams);
   },
 
-  /**
-   * Closes all open tabs whose current URL matches one of the given URIs.
-   *
-   * @param urisToClose - List of URL strings to match against open tabs.
-   */
-  // upstream: closeTabsByURI@9fe20b8380 FIREFOX_143_0_1_RELEASE
-  async closeTabsByURI(urisToClose: string[]) {
-    const toRemove = TabOps.getTabsByURI(appState.value, urisToClose);
-    for (const id of toRemove) {
-      const el = DOMRegistry.getTab(id);
-      if (el) this.removeTab(el);
+  /** Close every tab whose current URI equals one of `urisToClose` (nsIURIs); resolves to the count. */
+  async closeTabsByURI(urisToClose: any[]): Promise<number> {
+    const tabsToRemove: any[] = [];
+    for (const tab of this.tabs) {
+      const currentURI = tab.linkedBrowser!.currentURI;
+      // Find any URI that matches the current tab's URI
+      const matchedIndex = urisToClose.findIndex((uriToClose) => uriToClose.equals(currentURI));
+
+      if (matchedIndex > -1) {
+        tabsToRemove.push(tab);
+      }
     }
+
+    let closedCount = 0;
+
+    if (tabsToRemove.length) {
+      const { beforeUnloadComplete, lastToClose } = this._startRemoveTabs(tabsToRemove, {
+        animate: false,
+        suppressWarnAboutClosingWindow: true,
+        skipPermitUnload: false,
+        skipRemoves: false,
+        skipSessionStore: false,
+      });
+
+      // Wait for the beforeUnload handlers to complete.
+      await beforeUnloadComplete;
+
+      closedCount = tabsToRemove.length - (lastToClose ? 1 : 0);
+
+      // _startRemoveTabs doesn't close the last tab in the window
+      // for this use case, we simply close it
+      if (lastToClose) {
+        this.removeTab(lastToClose);
+        closedCount++;
+      }
+    }
+    return closedCount;
   },
 
   // ==========================================================================
@@ -962,31 +1088,40 @@ export const methods = {
   // tabbrowser.js L906~L973
   // ==========================================================================
 
-  /**
-   * Pin a tab to the left side of the tab strip.
-   * Fires a `TabPin` event and updates the `pinned` attribute.
-   */
-  // upstream: pinTab@84399e5062 FIREFOX_143_0_1_RELEASE
-  pinTab(tab: MozTabbrowserTab) {
-    if ((tab as any).pinned) return;
-    this.showTab?.(tab);
-    const id = resolveTabId(tab);
-    if (id) send({ type: "PIN_TAB", tabId: id });
-    dispatch(tab, "TabPin", { changed: ["pinned"] });
-    this._updateTabBarForPinnedTabs?.();
+  /** Pin `aTab`: it moves into the pinned container and gets the `pinned` attribute. */
+  pinTab(aTab: MozTabbrowserTab, { telemetrySource }: any = {}) {
+    telemetrySource ??= this.TabMetrics.METRIC_SOURCE.UNKNOWN;
+    const tab = aTab as any;
+    if (tab.pinned || tab == (this.window as any).FirefoxViewHandler.tab) {
+      return;
+    }
+
+    this.showTab(tab);
+    this._handleTabMove(tab, () => this.pinnedTabsContainer.appendChild(tab));
+
+    tab.setAttribute("pinned", "true");
+    this._updateTabBarForPinnedTabs();
+    this._notifyPinnedStatus(tab, { telemetrySource });
   },
 
-  /**
-   * Unpin a previously pinned tab.
-   * Fires a `TabUnpin` event and removes the `pinned` attribute.
-   */
-  // upstream: unpinTab@487c881bd5 FIREFOX_143_0_1_RELEASE
-  unpinTab(tab: MozTabbrowserTab) {
-    const id = resolveTabId(tab);
-    if (id) send({ type: "UNPIN_TAB", tabId: id });
-    dispatch(tab, "TabUnpin", { changed: ["pinned"] });
-    this._updateTabBarForPinnedTabs?.();
-    if ((tab as any)?.style) (tab as any).style.marginInlineStart = "";
+  unpinTab(aTab: MozTabbrowserTab) {
+    const tab = aTab as any;
+    if (!tab.pinned) {
+      return;
+    }
+
+    this._handleTabMove(tab, () => {
+      // we remove this attribute first, so that allTabs represents
+      // the moving of a tab from the pinned tabs container
+      // and back into arrowscrollbox.
+      tab.removeAttribute("pinned");
+      this.tabContainer.arrowScrollbox.prepend(tab);
+    });
+
+    tab.style.marginInlineStart = "";
+    tab._pinnedUnscrollable = false;
+    this._updateTabBarForPinnedTabs();
+    this._notifyPinnedStatus(tab);
   },
 
   /**
@@ -994,60 +1129,66 @@ export const methods = {
    * Simplified version — just selects the tab.
    */
 
-  /**
-   * Discard a tab's browser to free memory.
-   * The tab remains in the strip; reloading restores the page.
-   */
+  /** Ours: a name some callers use for discardBrowser. */
   discardTab(tab: MozTabbrowserTab) {
-    const id = resolveTabId(tab);
-    if (id) send({ type: "DISCARD_TAB", tabId: id });
+    this.discardBrowser(tab);
   },
 
-  /**
-   * Make a previously hidden tab visible in the tab strip.
-   * Selected/sharing tabs cannot be hidden, so showing is always safe.
-   */
-  // upstream: showTab@65a3fea873 FIREFOX_143_0_1_RELEASE
-  showTab(tab: MozTabbrowserTab) {
-    const id = resolveTabId(tab);
-    if (id) send({ type: "SET_VISIBILITY", tabId: id, isVisible: true });
+  showTab(aTab: MozTabbrowserTab) {
+    const tab = aTab as any;
+    if (!tab.hidden || tab == (this.window as any).FirefoxViewHandler.tab) {
+      return;
+    }
+    tab.removeAttribute("hidden");
+    this.tabContainer._invalidateCachedVisibleTabs();
+
+    this.tabContainer._updateCloseButtons();
+    if (tab.multiselected) {
+      this._updateMultiselectedTabCloseButtonTooltip();
+    }
+
+    const event = this.window.document.createEvent("Events");
+    event.initEvent("TabShow", true, false);
+    tab.dispatchEvent(event);
+    SessionStore.deleteCustomTabValue(tab, "hiddenBy");
   },
 
-  /**
-   * Hide a tab from the tab strip without closing it.
-   * Tabs that are selected or actively sharing (camera/mic/screen) are ignored.
-   */
-  // upstream: hideTab@e42b64e8fc FIREFOX_143_0_1_RELEASE
-  hideTab(tab: MozTabbrowserTab) {
-    const id = resolveTabId(tab);
-    if (id) send({ type: "SET_VISIBILITY", tabId: id, isVisible: false });
+  hideTab(aTab: MozTabbrowserTab, aSource?: string) {
+    const tab = aTab as any;
+    if (
+      tab.hidden ||
+      tab.pinned ||
+      tab.selected ||
+      tab.closing ||
+      // Tabs that are sharing the screen, microphone or camera cannot be hidden.
+      tab._sharingState?.webRTC?.sharing
+    ) {
+      return;
+    }
+    tab.setAttribute("hidden", "true");
+    this.tabContainer._invalidateCachedVisibleTabs();
+
+    this.tabContainer._updateCloseButtons();
+    if (tab.multiselected) {
+      this._updateMultiselectedTabCloseButtonTooltip();
+    }
+
+    // Splice this tab out of any lines of succession before any events are
+    // dispatched.
+    this.replaceInSuccession(tab, tab.successor);
+    this.setSuccessor(tab, null);
+
+    const event = this.window.document.createEvent("Events");
+    event.initEvent("TabHide", true, false);
+    tab.dispatchEvent(event);
+    if (aSource) {
+      SessionStore.setCustomTabValue(tab, "hiddenBy", aSource);
+    }
   },
 
-  /**
-   * Duplicate a tab, inserting the copy immediately after the source.
-   *
-   * @param tab              - Tab to duplicate
-   * @param options.inBackground - Keep the duplicate deselected
-   * @returns Newly created tab element or stub
-   */
-  // upstream: duplicateTab@f037fad4e7 FIREFOX_143_0_1_RELEASE
-  duplicateTab(tab: MozTabbrowserTab, options: any = {}) {
-    const id = resolveTabId(tab);
-    if (!id) return null;
-
-    const prev = appState.value;
-    send({ type: "DUPLICATE_TAB", tabId: id });
-    const next = appState.value;
-
-    const addedId = next.tabOrder.find(i => !prev.tabOrder.includes(i));
-    if (!addedId) return null;
-
-    this._createBrowserDOM(addedId, {});
-
-    const el = DOMRegistry.getTab(addedId);
-    dispatch(el ?? document, "TabOpen", options);
-    if (el && !options.inBackground) this.selectedTab = el;
-    return el ?? this._tabStub(addedId);
+  /** SessionStore clones the tab (history included) right after the original. */
+  duplicateTab(aTab: MozTabbrowserTab, aRestoreTabImmediately?: boolean, aOptions?: any) {
+    return SessionStore.duplicateTab(this.window, aTab, 0, aRestoreTabImmediately, aOptions);
   },
 
   // ==========================================================================
@@ -1056,67 +1197,77 @@ export const methods = {
   // ==========================================================================
 
   /**
-   * Move a tab to an explicit position in the tab strip.
-   *
-   * Pinned tabs are clamped to the pinned region; unpinned tabs are clamped
-   * after the last pinned tab.
-   *
-   * @param tab     - Tab to move
-   * @param options - Number (legacy) or `{ tabIndex }` / `{ elementIndex }`
+   * Move a tab (or a group, or a group's label) to `tabIndex` / `elementIndex`.
+   * Pinned stays with pinned, unpinned with unpinned.
    */
-  // upstream: moveTabTo@21712a66f3 FIREFOX_143_0_1_RELEASE
-  moveTabTo(tab: MozTabbrowserTab, options: any = {}) {
-    const id = resolveTabId(tab);
-    if (!id) return;
-    const newIndex = typeof options === "number" ? options : (options.tabIndex ?? options.elementIndex);
-    if (newIndex === undefined) return;
-    send({ type: "MOVE_TAB", tabId: id, newIndex });
-    const el = DOMRegistry.getTab(id);
-    if (el) dispatch(el, "TabMove");
+  moveTabTo(
+    element: any,
+    {
+      elementIndex,
+      tabIndex,
+      forceUngrouped = false,
+      isUserTriggered = false,
+      telemetrySource,
+    }: any = {},
+  ) {
+    telemetrySource ??= this.TabMetrics.METRIC_SOURCE.UNKNOWN;
+    if (typeof elementIndex == "number") {
+      tabIndex = this._elementIndexToTabIndex(elementIndex);
+    }
+
+    // Don't allow mixing pinned and unpinned tabs.
+    if (this.isTab(element) && element.pinned) {
+      tabIndex = Math.min(tabIndex, this.pinnedTabCount - 1);
+    } else {
+      tabIndex = Math.max(tabIndex, this.pinnedTabCount);
+    }
+
+    // Return early if the tab is already in the right spot.
+    if (this.isTab(element) && element._tPos == tabIndex && !(element.group && forceUngrouped)) {
+      return;
+    }
+
+    // When asked to move a tab group label, we need to move the whole group
+    // instead.
+    if (this.isTabGroupLabel(element)) {
+      element = element.group;
+    }
+    if (this.isTabGroup(element)) {
+      forceUngrouped = true;
+    }
+
+    this._handleTabMove(
+      element,
+      () => {
+        let neighbor: any = this.tabs[tabIndex];
+        if (forceUngrouped && neighbor?.group) {
+          neighbor = neighbor.group;
+        }
+        if (neighbor && this.isTab(element) && tabIndex > element._tPos) {
+          neighbor.after(element);
+        } else {
+          this.tabContainer.insertBefore(element, neighbor);
+        }
+      },
+      { isUserTriggered, telemetrySource },
+    );
   },
 
-  /** Move a tab to appear immediately before `target` in the tab strip. */
-  // upstream: moveTabBefore@a7ae698efc FIREFOX_143_0_1_RELEASE
-  moveTabBefore(tab: MozTabbrowserTab, target: MozTabbrowserTab, _metricsContext?: any) {
-    const id = resolveTabId(tab);
-    const tid = resolveTabId(target);
-    if (!id || !tid) return;
-    send({ type: "MOVE_TAB_RELATIVE", tabId: id, targetId: tid, position: "before" });
-    const el = DOMRegistry.getTab(id);
-    if (el) dispatch(el, "TabMove");
+  moveTabBefore(element: any, targetElement: any, metricsContext?: any) {
+    this._moveTabNextTo(element, targetElement, true, metricsContext);
   },
 
-  /** Move a tab to appear immediately after `target` in the tab strip. */
-  // upstream: moveTabAfter@e962e188bf FIREFOX_143_0_1_RELEASE
-  moveTabAfter(tab: MozTabbrowserTab, target: MozTabbrowserTab, _metricsContext?: any) {
-    const id = resolveTabId(tab);
-    const tid = resolveTabId(target);
-    if (!id || !tid) return;
-    send({ type: "MOVE_TAB_RELATIVE", tabId: id, targetId: tid, position: "after" });
-    const el = DOMRegistry.getTab(id);
-    if (el) dispatch(el, "TabMove");
+  moveTabAfter(element: any, targetElement: any, metricsContext?: any) {
+    this._moveTabNextTo(element, targetElement, false, metricsContext);
   },
 
-  /** Move a tab to the first available position (after any pinned tabs). */
-  // upstream: moveTabToStart@4d90629390 FIREFOX_143_0_1_RELEASE
-  moveTabToStart(tab: MozTabbrowserTab) {
-    const id = resolveTabId(tab);
-    if (!id) return;
-    let pinnedCount = 0;
-    for (const tid of appState.value.tabOrder) if (appState.value.tabs[tid].isPinned) pinnedCount++;
-    send({ type: "MOVE_TAB", tabId: id, newIndex: appState.value.tabs[id].isPinned ? 0 : pinnedCount });
-    const el = DOMRegistry.getTab(id);
-    if (el) dispatch(el, "TabMove");
+  moveTabToStart(aTab?: any) {
+    this.moveTabTo(aTab ?? this.selectedTab, { tabIndex: 0, forceUngrouped: true });
   },
-  /** Move a tab to the very last position in the strip. */
-  // upstream: moveTabToEnd@22d4572adb FIREFOX_143_0_1_RELEASE
-  moveTabToEnd(tab: MozTabbrowserTab) {
-    const id = resolveTabId(tab);
-    if (!id) return;
-    let pinnedCount = 0;
-    for (const tid of appState.value.tabOrder) if (appState.value.tabs[tid].isPinned) pinnedCount++;
-    send({ type: "MOVE_TAB", tabId: id, newIndex: appState.value.tabs[id].isPinned ? pinnedCount - 1 : appState.value.tabOrder.length - 1 });
-    const el = DOMRegistry.getTab(id);
-    if (el) dispatch(el, "TabMove");
+  moveTabToEnd(aTab?: any) {
+    this.moveTabTo(aTab ?? this.selectedTab, {
+      tabIndex: this.tabs.length - 1,
+      forceUngrouped: true,
+    });
   },
 } satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

@@ -39,7 +39,7 @@ declare module "../TabbrowserCompat.ts" {
     _maybeRequestReplyFromRemoteContent(event: KeyboardEvent): boolean;
     _updateTriggerMetadataForLoad(browser: XULBrowserElement, options: any): void;
     // Internal tab ops
-    _insertTabAtIndex(tab: MozTabbrowserTab, options?: any): void;
+    _insertTabAtIndex(tab: any, options?: any): void;
     _tabAttrModified(tab: MozTabbrowserTab, changed: string[]): void;
     _updateTabsAfterInsert(options?: any): void;
     _updateTabBarForPinnedTabs(): void;
@@ -67,11 +67,11 @@ declare module "../TabbrowserCompat.ts" {
     _adjustFocusBeforeTabSwitch(tab: MozTabbrowserTab, newTab: any): void;
     _adjustFocusAfterTabSwitch(newTab: any): void;
     _onTransitionEnd(event: TransitionEvent): void;
-    _moveTabsNextTo(tabs: MozTabbrowserTab[], targetTab: any, relation: string): void;
+    _moveTabsNextTo(elements: any[], targetElement: any, moveBefore?: boolean, metricsContext?: any): void;
     // Utility
     _mirror(source?: any, dest?: any, properties?: string[]): void;
     _notifyPinnedStatus(tab: MozTabbrowserTab, options?: any): void;
-    _separateWholeGroups(tabs: MozTabbrowserTab[]): any[];
+    _separateWholeGroups(tabs: MozTabbrowserTab[]): [any[], MozTabbrowserTab[]];
   }
 }
 
@@ -204,30 +204,54 @@ export const methods = {
   // tabbrowser.js L6461~L7019
   // ==========================================================================
 
-  _handleTabMove(element: any, moveCallback: () => void, metricsContext?: any): void {
+  /** Run `moveActionCallback`, then renumber, refocus, and tell everyone (TabMove / TabGroupMoved). */
+  _handleTabMove(element: any, moveActionCallback: () => void, metricsContext?: any): void {
     let tabs: any[];
     if (this.isTab(element)) {
       tabs = [element];
     } else if (this.isTabGroup(element)) {
-      tabs = element.tabs || [];
-    } else if (this.isSplitViewWrapper?.(element)) {
-      tabs = element.tabs || [];
+      tabs = element.tabs;
     } else {
-      throw new Error("Can only move a tab, tab group, or split view within the tab bar");
+      throw new Error("Can only move a tab or tab group within the tab bar");
     }
 
-    const wasFocused = this.window.document.activeElement === this.selectedTab;
-    const previousTabStates = tabs.map((tab: any) => this._getTabMoveState(tab));
+    const wasFocused = this.window.document.activeElement == this.selectedTab;
+    const previousTabStates = tabs.map((tab) => this._getTabMoveState(tab));
 
-    moveCallback();
+    moveActionCallback();
+
+    // Clear tabs cache after moving nodes because the order of tabs may have
+    // changed.
+    this.tabContainer._invalidateCachedTabs();
+    this._lastRelatedTabMap = new WeakMap();
+    this._updateTabsAfterInsert();
 
     if (wasFocused) {
-      this.selectedTab?.focus?.();
+      this.selectedTab.focus();
     }
 
+    // When a tab group with multiple tabs is moved forwards, emit TabMove in
+    // the reverse order, so that the index in previousTabState values are
+    // still accurate until the event is dispatched. If we were to start with
+    // the front tab, then logically that tab moves, and all following tabs
+    // would shift, which would invalidate the index in previousTabState.
+    const reverseEvents = tabs.length > 1 && tabs[0]._tPos > previousTabStates[0].tabIndex;
+
     for (let i = 0; i < tabs.length; i++) {
-      const currentTabState = this._getTabMoveState(tabs[i]);
-      this._notifyOnTabMove(tabs[i], previousTabStates[i], currentTabState, metricsContext);
+      const ii = reverseEvents ? tabs.length - i - 1 : i;
+      const tab = tabs[ii];
+      if (tab.selected) {
+        this.tabContainer._handleTabSelect(true);
+      }
+
+      const currentTabState = this._getTabMoveState(tab);
+      this._notifyOnTabMove(tab, previousTabStates[ii], currentTabState, metricsContext);
+    }
+
+    const currentFirst = this._getTabMoveState(tabs[0]);
+    if (this.isTabGroup(element) && previousTabStates[0].tabIndex != currentFirst.tabIndex) {
+      const event = new CustomEvent("TabGroupMoved", { bubbles: true });
+      element.dispatchEvent(event);
     }
   },
 
@@ -253,126 +277,218 @@ export const methods = {
       return;
     }
 
-    const changedPosition = previousTabState.tabIndex !== currentTabState.tabIndex;
-    const changedTabGroup = previousTabState.tabGroupId !== currentTabState.tabGroupId;
+    const changedPosition = previousTabState.tabIndex != currentTabState.tabIndex;
+    const changedTabGroup = previousTabState.tabGroupId != currentTabState.tabGroupId;
 
     if (changedPosition || changedTabGroup) {
-      tab.dispatchEvent?.(
+      tab.dispatchEvent(
         new CustomEvent("TabMove", {
           bubbles: true,
           detail: {
             previousTabState,
             currentTabState,
             isUserTriggered: metricsContext?.isUserTriggered ?? false,
-            telemetrySource: metricsContext?.telemetrySource ?? "unknown",
+            telemetrySource: metricsContext?.telemetrySource ?? this.TabMetrics.METRIC_SOURCE.UNKNOWN,
           },
-        })
+        }),
       );
     }
   },
 
   _moveTabNextTo(element: any, targetElement: any, moveBefore = false, metricsContext?: any): void {
-    if (this.isTabGroupLabel?.(targetElement)) {
+    if (this.isTabGroupLabel(targetElement)) {
       targetElement = targetElement.group;
       if (!moveBefore && !targetElement.collapsed) {
-        targetElement = targetElement.tabs?.[0];
+        // Right after the tab group label = before the first tab in the tab group
+        targetElement = targetElement.tabs[0];
         moveBefore = true;
       }
     }
-    if (this.isTabGroupLabel?.(element)) {
+    if (this.isTabGroupLabel(element)) {
       element = element.group;
       if (targetElement?.group) {
         targetElement = targetElement.group;
       }
     }
 
-    if ((element as any).pinned && !targetElement?.pinned) {
+    // Don't allow mixing pinned and unpinned tabs.
+    if (element.pinned && !targetElement?.pinned) {
       targetElement = this.tabs[this.pinnedTabCount - 1];
       moveBefore = false;
-    } else if (!(element as any).pinned && targetElement?.pinned) {
+    } else if (!element.pinned && targetElement && targetElement.pinned) {
+      // If the caller asks to move an unpinned element next to a pinned
+      // tab, move the unpinned element to be the first unpinned element
+      // in the tab strip. Potential scenarios:
+      // 1. Moving an unpinned tab and the first unpinned tab is ungrouped:
+      //    move the unpinned tab right before the first unpinned tab.
+      // 2. Moving an unpinned tab and the first unpinned tab is grouped:
+      //    move the unpinned tab right before the tab group.
+      // 3. Moving a tab group and the first unpinned tab is ungrouped:
+      //    move the tab group right before the first unpinned tab.
+      // 4. Moving a tab group and the first unpinned tab is grouped:
+      //    move the tab group right before the first unpinned tab's tab group.
       targetElement = this.tabs[this.pinnedTabCount];
-      if (targetElement?.group) {
-        targetElement = targetElement.group;
+      if ((targetElement as any).group) {
+        targetElement = (targetElement as any).group;
       }
       moveBefore = true;
     }
 
     const getContainer = () =>
-      (element as any).pinned
-        ? this.tabContainer?.pinnedTabsContainer
-        : this.tabContainer;
+      element.pinned ? this.tabContainer.pinnedTabsContainer : this.tabContainer;
 
     this._handleTabMove(
       element,
       () => {
-        const container = getContainer();
         if (moveBefore) {
-          container?.insertBefore?.(element, targetElement);
+          getContainer().insertBefore(element, targetElement);
         } else if (targetElement) {
-          container?.insertBefore?.(element, targetElement.nextElementSibling);
+          targetElement.after(element);
         } else {
-          container?.appendChild?.(element);
+          getContainer().appendChild(element);
         }
       },
-      metricsContext
+      metricsContext,
     );
   },
 
-  /**
-   * Move multiple tabs next to a target tab.
-   *
-   * Applies `_moveTabNextTo` for each tab in order, preserving relative
-   * ordering via sequential insertions relative to `targetTab`.
-   */
-  _moveTabsNextTo(tabs: MozTabbrowserTab[], targetTab: any, relation: string): void {
-    for (const tab of tabs) {
-      this._moveTabNextTo(tab, targetTab, relation === "before");
+  _moveTabsNextTo(elements: any[], targetElement: any, moveBefore = false, metricsContext?: any): void {
+    this._moveTabNextTo(elements[0], targetElement, moveBefore, metricsContext);
+    for (let i = 1; i < elements.length; i++) {
+      this._moveTabNextTo(elements[i], elements[i - 1], false, metricsContext);
     }
   },
 
-  _insertTabAtIndex(tab: MozTabbrowserTab, index: number, options: any = {}): void {
-    if (options.ownerTab) {
-      (tab as any).owner = options.ownerTab;
+  /**
+   * Put a new `<tab>` into the strip: after its opener / the current tab
+   * when the prefs say so, inside a group when it belongs to one, among the
+   * pinned tabs when pinned, at the end otherwise.
+   */
+  _insertTabAtIndex(
+    tab: any,
+    { tabIndex, elementIndex, ownerTab, openerTab, pinned, bulkOrderedOpen, tabGroup }: any = {},
+  ): void {
+    const win = this.window as any;
+    // If this new tab is owned by another, assert that relationship
+    if (ownerTab) {
+      tab.owner = ownerTab;
     }
 
-    let elementIndex = index;
-    if (typeof options.elementIndex === "number") {
-      elementIndex = options.elementIndex;
-    } else if (typeof options.tabIndex === "number") {
-      elementIndex = this._elementIndexToTabIndex(options.tabIndex);
-    } else {
+    // Ensure we have an index if one was not provided.
+    if (typeof elementIndex != "number" && typeof tabIndex != "number") {
+      // Move the new tab after another tab if needed, to the end otherwise.
       elementIndex = Infinity;
-      
-      if (options.openerTab || this.selectedTab) {
-        const previousTab = options.openerTab || this.selectedTab;
-        if (previousTab?.visible) {
-          elementIndex = (previousTab as any).elementIndex + 1;
+      if (
+        !bulkOrderedOpen &&
+        ((openerTab && Services.prefs.getBoolPref("browser.tabs.insertRelatedAfterCurrent")) ||
+          Services.prefs.getBoolPref("browser.tabs.insertAfterCurrent"))
+      ) {
+        const lastRelatedTab = openerTab && this._lastRelatedTabMap.get(openerTab);
+        const previousTab = lastRelatedTab || openerTab || this.selectedTab;
+        if (!tabGroup) {
+          tabGroup = previousTab.group;
+        }
+        if (
+          Services.prefs.getBoolPref("browser.tabs.insertAfterCurrentExceptPinned") &&
+          previousTab.pinned
+        ) {
+          elementIndex = Infinity;
+        } else if (previousTab.visible) {
+          elementIndex = previousTab.elementIndex + 1;
+        } else if (previousTab == win.FirefoxViewHandler.tab) {
+          elementIndex = 0;
+        }
+
+        if (lastRelatedTab) {
+          lastRelatedTab.owner = null;
+        } else if (openerTab) {
+          tab.owner = openerTab;
+        }
+        // Always set related map if opener exists.
+        if (openerTab) {
+          this._lastRelatedTabMap.set(openerTab, tab);
         }
       }
     }
 
-    const allItems = this.tabContainer?.dragAndDropElements || [];
-    if (elementIndex < allItems.length) {
-      const targetElement = allItems[elementIndex];
-      this.tabContainer?.insertBefore?.(tab, targetElement);
+    let allItems: any[];
+    let index: number;
+    if (typeof elementIndex == "number") {
+      allItems = this.tabContainer.ariaFocusableItems;
+      index = elementIndex;
     } else {
-      this.tabContainer?.appendChild?.(tab);
+      allItems = this.tabs;
+      index = tabIndex;
     }
+    // Ensure index is within bounds.
+    if (tab.pinned) {
+      index = Math.max(index, 0);
+      index = Math.min(index, this.pinnedTabCount);
+    } else {
+      index = Math.max(index, this.pinnedTabCount);
+      index = Math.min(index, allItems.length);
+    }
+    let itemAfter: any = allItems.at(index);
+
+    if (pinned && !itemAfter?.pinned) {
+      itemAfter = null;
+    }
+    // Prevent a flash of unstyled content by setting up the tab content
+    // and inherited attributes before appending it (see Bug 1592054):
+    tab.initialize();
+
+    this.tabContainer._invalidateCachedTabs();
+
+    if (tabGroup) {
+      if (this.isTab(itemAfter) && itemAfter.group == tabGroup) {
+        // Place at the front of, or between tabs in, the same tab group
+        this.tabContainer.insertBefore(tab, itemAfter);
+      } else {
+        // Place tab at the end of the contextual tab group because one of:
+        // 1) no `itemAfter` so `tab` should be the last tab in the tab strip
+        // 2) `itemAfter` is in a different tab group
+        tabGroup.appendChild(tab);
+      }
+    } else if (
+      (this.isTab(itemAfter) && itemAfter.group?.tabs[0] == itemAfter) ||
+      this.isTabGroupLabel(itemAfter)
+    ) {
+      // If there is ambiguity around whether or not a tab should be inserted
+      // into a group (i.e. because the new tab is being inserted on the
+      // edges of the group), prefer not to insert the tab into the group.
+      //
+      // We only need to handle the case where the tab is being inserted at
+      // the starting boundary of a group because `insertBefore` called on
+      // the tab just after a tab group will not add it to the group by
+      // default.
+      this.tabContainer.insertBefore(tab, itemAfter.group);
+    } else {
+      // Place ungrouped tab before `itemAfter` by default
+      const tabContainer = pinned ? this.tabContainer.pinnedTabsContainer : this.tabContainer;
+      tabContainer.insertBefore(tab, itemAfter);
+    }
+
+    this._updateTabsAfterInsert();
+
+    if (pinned) {
+      this._updateTabBarForPinnedTabs();
+    }
+
+    win.TabBarVisibility.update();
   },
 
   _elementIndexToTabIndex(elementIndex: number): number {
     if (elementIndex < 0) {
       return -1;
     }
-    const allElements = this.tabContainer?.dragAndDropElements || [];
-    if (elementIndex >= allElements.length) {
+    if (elementIndex >= this.tabContainer.ariaFocusableItems.length) {
       return this.tabs.length;
     }
-    let element = allElements[elementIndex];
-    if (this.isTabGroupLabel?.(element)) {
-      element = element.group?.tabs?.[0];
+    let element = this.tabContainer.ariaFocusableItems[elementIndex];
+    if (this.isTabGroupLabel(element)) {
+      element = element.group.tabs[0];
     }
-    return element?._tPos ?? -1;
+    return element._tPos;
   },
 
   _isFirstOrLastInTabGroup(tab: MozTabbrowserTab): boolean {
@@ -468,20 +584,37 @@ export const methods = {
     } catch (_) { /* */ }
   },
 
-  _separateWholeGroups(tabs: MozTabbrowserTab[]): any {
-    // Separate whole tab groups from individual tabs
-    const groups = new Set();
-    const individualTabs = [];
-    
-    for (const tab of tabs) {
-      if ((tab as any).group && !groups.has((tab as any).group)) {
-        groups.add((tab as any).group);
-      } else if (!(tab as any).group) {
-        individualTabs.push(tab);
+  /**
+   * Split `tabs` into the groups they would empty out entirely, and the
+   * remaining individual tabs.
+   */
+  _separateWholeGroups(tabs: MozTabbrowserTab[]): [any[], MozTabbrowserTab[]] {
+    /**
+     * Map of tab group to surviving tabs in the group.
+     * If any of the `tabs` to be removed belong to a tab group, keep track
+     * of how many tabs in the tab group will be left after removing `tabs`.
+     * For any tab group with 0 surviving tabs, we can know that that tab
+     * group will be removed as a consequence of removing these `tabs`.
+     */
+    const tabGroupSurvivingTabs = new Map<any, Set<any>>();
+    const wholeGroups: any[] = [];
+    for (const tab of tabs as any[]) {
+      if (tab.group) {
+        if (!tabGroupSurvivingTabs.has(tab.group)) {
+          tabGroupSurvivingTabs.set(tab.group, new Set(tab.group.tabs));
+        }
+        tabGroupSurvivingTabs.get(tab.group)!.delete(tab);
       }
     }
-    
-    return { groups: Array.from(groups), individualTabs };
+
+    for (const [tabGroup, survivingTabs] of tabGroupSurvivingTabs.entries()) {
+      if (!survivingTabs.size) {
+        wholeGroups.push(tabGroup);
+        tabs = tabs.filter((t) => !tabGroup.tabs.includes(t));
+      }
+    }
+
+    return [wholeGroups, tabs];
   },
 
   // ==========================================================================
@@ -595,17 +728,20 @@ export const methods = {
     } catch (_) { /* */ }
   },
 
-  _notifyPinnedStatus(tab: MozTabbrowserTab, options: any = {}): void {
-    try {
-      if (!tab) return;
-      
-      tab.dispatchEvent?.(
-        new CustomEvent("TabPinned", {
-          bubbles: true,
-          detail: options,
-        })
-      );
-    } catch (_) { /* */ }
+  _notifyPinnedStatus(aTab: MozTabbrowserTab, { telemetrySource }: any = {}): void {
+    telemetrySource ??= this.TabMetrics.METRIC_SOURCE.UNKNOWN;
+    const tab = aTab as any;
+    // browsingContext is expected to not be defined on discarded tabs.
+    if (tab.linkedBrowser.browsingContext) {
+      tab.linkedBrowser.browsingContext.isAppTab = tab.pinned;
+    }
+
+    const event = new CustomEvent(tab.pinned ? "TabPinned" : "TabUnpinned", {
+      bubbles: true,
+      cancelable: false,
+      detail: { telemetrySource },
+    });
+    tab.dispatchEvent(event);
   },
 
   /**

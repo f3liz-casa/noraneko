@@ -3,9 +3,9 @@
 // Section: Keyboard Navigation — "how does keyboard navigation in the tab strip work?"
 
 import type { TabbrowserCompat } from "../TabbrowserCompat.ts";
-import { appState } from "../../state/store.ts";
-import * as TabOps from "../../ops/tab-ops.ts";
-import { resolveTabId, dispatch } from "../compat-helpers.ts";
+
+const DIRECTION_FORWARD = 1;
+const DIRECTION_BACKWARD = -1;
 
 /** @augments TabbrowserCompat */
 declare module "../TabbrowserCompat.ts" {
@@ -93,35 +93,66 @@ export const methods = {
     }
   },
 
-  /**
-   * Moves the currently selected tab one position forward in the tab order.
-   */
-  // upstream: moveTabForward@d083ccd217 FIREFOX_143_0_1_RELEASE
+  /** Move the selected tab one step right, stepping over or into groups as tabbrowser.js does. */
   moveTabForward() {
-    const tab = this.selectedTab;
-    if (!tab) return;
-    const id = resolveTabId(tab);
-    if (!id) return;
-    const idx = appState.value.tabOrder.indexOf(id);
-    if (idx < appState.value.tabOrder.length - 1) {
-      appState.value = TabOps.moveTab(appState.value, id, idx + 1);
-      dispatch(tab, "TabMove");
+    const { selectedTab } = this;
+    const nextTab = this.tabContainer.findNextTab(selectedTab, {
+      direction: DIRECTION_FORWARD,
+      filter: (tab: any) => !tab.hidden && selectedTab.pinned == tab.pinned,
+    });
+    if (nextTab) {
+      this._handleTabMove(selectedTab, () => {
+        if (!selectedTab.group && nextTab.group) {
+          if (nextTab.group.collapsed) {
+            // Skip over collapsed tab group.
+            nextTab.group.after(selectedTab);
+          } else {
+            // Enter first position of tab group.
+            nextTab.group.insertBefore(selectedTab, nextTab);
+          }
+        } else if (selectedTab.group != nextTab.group) {
+          // Standalone tab after tab group.
+          selectedTab.group.after(selectedTab);
+        } else {
+          nextTab.after(selectedTab);
+        }
+      });
+    } else if (selectedTab.group) {
+      // selectedTab is the last tab and is grouped.
+      // remove it from its group.
+      selectedTab.group.after(selectedTab);
     }
   },
 
-  /**
-   * Moves the currently selected tab one position backward in the tab order.
-   */
-  // upstream: moveTabBackward@8b778cc537 FIREFOX_143_0_1_RELEASE
   moveTabBackward() {
-    const tab = this.selectedTab;
-    if (!tab) return;
-    const id = resolveTabId(tab);
-    if (!id) return;
-    const idx = appState.value.tabOrder.indexOf(id);
-    if (idx > 0) {
-      appState.value = TabOps.moveTab(appState.value, id, idx - 1);
-      dispatch(tab, "TabMove");
+    const { selectedTab } = this;
+
+    const previousTab = this.tabContainer.findNextTab(selectedTab, {
+      direction: DIRECTION_BACKWARD,
+      filter: (tab: any) => !tab.hidden && selectedTab.pinned == tab.pinned,
+    });
+
+    if (previousTab) {
+      this._handleTabMove(selectedTab, () => {
+        if (!selectedTab.group && previousTab.group) {
+          if (previousTab.group.collapsed) {
+            // Skip over collapsed tab group.
+            previousTab.group.before(selectedTab);
+          } else {
+            // Enter last position of tab group.
+            previousTab.group.append(selectedTab);
+          }
+        } else if (selectedTab.group != previousTab.group) {
+          // Standalone tab before tab group.
+          selectedTab.group.before(selectedTab);
+        } else {
+          previousTab.before(selectedTab);
+        }
+      });
+    } else if (selectedTab.group) {
+      // selectedTab is the first tab and is grouped.
+      // remove it from its group.
+      selectedTab.group.before(selectedTab);
     }
   },
 } satisfies Partial<TabbrowserCompat> & ThisType<TabbrowserCompat>;

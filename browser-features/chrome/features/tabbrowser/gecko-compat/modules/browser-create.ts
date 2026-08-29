@@ -314,12 +314,13 @@ export const methods = {
   },
 
   // upstream: _fireTabOpen@8075e2ff4c FIREFOX_143_0_1_RELEASE
-  _fireTabOpen(tab: MozTabbrowserTab, eventDetail: any = {}) {
+  _fireTabOpen(tab: MozTabbrowserTab, eventDetail?: any) {
+    delete (tab as any).initializingTab;
     const evt = new CustomEvent("TabOpen", {
       bubbles: true,
-      detail: eventDetail,
+      detail: eventDetail || {},
     });
-    (tab as any).dispatchEvent?.(evt);
+    tab.dispatchEvent(evt);
   },
 
   /**
