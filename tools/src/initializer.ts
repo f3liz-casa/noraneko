@@ -222,15 +222,19 @@ export async function decompressBin(): Promise<void> {
           const destDir = path.join(BIN_ROOT_DIR, BRANDING.base_name);
           Deno.mkdirSync(destDir, { recursive: true });
           if (archivePath.endsWith(".tar.xz")) {
-            // aarch64 の .app が tar.xz で来る(中身は Noraneko.app/ 一つ)
+            // aarch64 の .app は mach package(TAR)の staging: noraneko/Noraneko.app/…
+            // linux と同じく BIN_ROOT_DIR に展開すると destDir/Noraneko.app になる。
             logger.info("macOS extraction (tar.xz)");
-            runCommand("tar", ["-xJf", archivePath, "-C", destDir]);
+            runCommand("tar", ["-xJf", archivePath, "-C", BIN_ROOT_DIR]);
             try {
               runCommand("xattr", ["-rc", destDir]);
             } catch {
               // xattr might not be present; ignore
             }
             runCommand("chmod", ["-R", "755", destDir]);
+            // Linux で cross した bundle は無署名。Apple Silicon は署名が無いと
+            // dyld が libxul を拒む("Couldn't load XPCOM")ので ad-hoc で署名する。
+            runCommand("codesign", ["--force", "--deep", "--sign", "-", APP_DIR]);
             break;
           }
           logger.info("macOS extraction (hdiutil)");
