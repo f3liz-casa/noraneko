@@ -139,6 +139,12 @@ export type BinArchive =
       format: "dmg";
       platform: "darwin";
       architecture: "universal";
+    }
+  | {
+      filename: string;
+      format: "tar.xz";
+      platform: "darwin";
+      architecture: "aarch64";
     };
 
 export function getBinArchive(): BinArchive {
@@ -163,6 +169,16 @@ export function getBinArchive(): BinArchive {
   }
 
   if (PLATFORM === "darwin") {
+    // Apple Silicon は noraneko-ci(aarch64 Linux から cross)が出す .app の tar.xz。
+    // universal dmg は Intel 向けの旧形式(旧 release にしか無い)。
+    if (Deno.build.arch === "aarch64") {
+      return {
+        filename: `${BRANDING.base_name}-macos-aarch64-moz-artifact.tar.xz`,
+        format: "tar.xz",
+        platform: "darwin",
+        architecture: "aarch64",
+      };
+    }
     return {
       filename: `${BRANDING.base_name}-macOS-universal-moz-artifact.dmg`,
       format: "dmg",

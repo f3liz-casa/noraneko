@@ -17,8 +17,12 @@ import {
 } from "./defines.ts";
 import { Logger, runCommand, exists, safeRemove } from "./utils.ts";
 
-const NORANEKO_RUNTIME_BASE =
-  "https://github.com/f3liz-dev/noraneko-runtime/releases/latest/download";
+// NORANEKO_RUNTIME_TAG=passed-20260902074154 のように tag を指すと prerelease も飲める。
+// 未指定なら latest(prerelease は含まれない)。
+const NORANEKO_RUNTIME_TAG = Deno.env.get("NORANEKO_RUNTIME_TAG");
+const NORANEKO_RUNTIME_BASE = NORANEKO_RUNTIME_TAG
+  ? `https://github.com/f3liz-casa/noraneko-runtime/releases/download/${NORANEKO_RUNTIME_TAG}`
+  : "https://github.com/f3liz-casa/noraneko-runtime/releases/latest/download";
 
 const logger = new Logger("initializer");
 
@@ -215,9 +219,21 @@ export async function decompressBin(): Promise<void> {
           throw new Error("Non-zip archives not supported on Windows");
 
         case "darwin": {
-          logger.info("macOS extraction (hdiutil)");
           const destDir = path.join(BIN_ROOT_DIR, BRANDING.base_name);
           Deno.mkdirSync(destDir, { recursive: true });
+          if (archivePath.endsWith(".tar.xz")) {
+            // aarch64 の .app が tar.xz で来る(中身は Noraneko.app/ 一つ)
+            logger.info("macOS extraction (tar.xz)");
+            runCommand("tar", ["-xJf", archivePath, "-C", destDir]);
+            try {
+              runCommand("xattr", ["-rc", destDir]);
+            } catch {
+              // xattr might not be present; ignore
+            }
+            runCommand("chmod", ["-R", "755", destDir]);
+            break;
+          }
+          logger.info("macOS extraction (hdiutil)");
           const mountPoint = await Deno.makeTempDir({
             prefix: "nora_dmg_mount_",
           });
