@@ -216,6 +216,9 @@ jobs:
           FINAL=$(curl -sfL -o ~/downloads/noraneko-$OUTPUT_NAME-moz-artifact/$ARTIFACT_FROM_RELEASE_NAME -w '%{url_effective}' "$LATEST")
           echo "runtime: $FINAL"
           echo "RUNTIME_DL_BASE=$(dirname "$FINAL")" >> $GITHUB_ENV
+          # xpt_artifacts.zip(artifact build の mach package が要る)。産物と同じ名前で拡張子だけ違う
+          stem=$(basename "$FINAL"); stem=${stem%.tar.xz}; stem=${stem%.zip}
+          curl -fL "$(dirname "$FINAL")/$stem.xpt_artifacts.zip" -o ~/downloads/noraneko-$OUTPUT_NAME-moz-artifact/$stem.xpt_artifacts.zip
 
       - name: Make Downloaded Artifact to Mozilla Artifact (Actions)
         if: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID != 'false' }}
@@ -242,10 +245,12 @@ jobs:
       - name: Build
         run: |
           ./mach configure
+          # MOZ_ARTIFACT_FILE は : 区切りで複数。xpt_artifacts.zip があれば一緒に渡す(mach package が xpt を要る)
+          XPT=$(ls "$HOME"/artifacts/noraneko-$OUTPUT_NAME-moz-artifact/*.xpt_artifacts.zip 2>/dev/null | head -n 1)
           if [ "${{inputs.platform}}" == "Windows-x86_64" ]; then
-            MOZ_ARTIFACT_FILE=$(echo ~/artifacts/noraneko-windows-x86_64-moz-artifact/noraneko-windows-x86_64-moz-artifact.zip) ./mach build
+            MOZ_ARTIFACT_FILE="$HOME/artifacts/noraneko-windows-x86_64-moz-artifact/noraneko-windows-x86_64-moz-artifact.zip${XPT:+:$XPT}" ./mach build
           elif [ "${{inputs.platform}}" == "Linux-x86_64" ]; then
-            MOZ_ARTIFACT_FILE=$(echo ~/artifacts/noraneko-linux-x86_64-moz-artifact/noraneko-linux-x86_64-moz-artifact.tar.xz) ./mach build
+            MOZ_ARTIFACT_FILE="$HOME/artifacts/noraneko-linux-x86_64-moz-artifact/noraneko-linux-x86_64-moz-artifact.tar.xz${XPT:+:$XPT}" ./mach build
           fi
 
       - name: Inject Noraneko
