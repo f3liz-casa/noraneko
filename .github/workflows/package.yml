@@ -144,7 +144,8 @@ jobs:
           EOF
           fi
           ./mach configure
-          git apply --ignore-space-change --ignore-whitespace .github/patches/packaging/*.patch
+          # -C1: パッチの文脈は上流の版で動く(155 で moz.build の DIRS の後ろが変わった)。要るのは近くの一行だけ
+          git apply -C1 --ignore-space-change --ignore-whitespace .github/patches/packaging/*.patch
 
       - name: Possibly retrieve run ID if not provided
         run: |
