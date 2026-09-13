@@ -192,11 +192,18 @@ jobs:
           repository: ${{ github.repository }}-runtime
           path: ~/downloads
 
-      - name: Download Mozilla Artifact from GitHub Releases
+      # run id が無いときは、箱(noraneko-ci)が最後に焼いた runtime を dl.f3liz.casa から取る。
+      # GitHub の release は 2025-09(143)で止まっている。dl の latest/<target>-<arch> は
+      # /noraneko-runtime/<sha10>/<file> へ 302 するので、添え物(application-ini, dist-host)は同じ場所の隣から取る。
+      # 箱が焼いていない組(Linux-x86_64)は 404 で止まる。
+      - name: Download Mozilla Artifact from dl.f3liz.casa (latest from noraneko-ci)
         if: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID == 'false' }}
         run: |
-          mkdir -p ~/downloads
-          curl -L https://github.com/${{ github.repository }}-runtime/releases/latest/download/${{ env.ARTIFACT_FROM_RELEASE_NAME }} -o ~/downloads/${{ env.ARTIFACT_FROM_RELEASE_NAME }}
+          mkdir -p ~/downloads/noraneko-$OUTPUT_NAME-moz-artifact
+          LATEST="https://dl.f3liz.casa/noraneko-runtime/latest/$OUTPUT_NAME"
+          FINAL=$(curl -sfL -o ~/downloads/noraneko-$OUTPUT_NAME-moz-artifact/$ARTIFACT_FROM_RELEASE_NAME -w '%{url_effective}' "$LATEST")
+          echo "runtime: $FINAL"
+          echo "RUNTIME_DL_BASE=$(dirname "$FINAL")" >> $GITHUB_ENV
 
       - name: Make Downloaded Artifact to Mozilla Artifact (Actions)
         if: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID != 'false' }}
@@ -279,11 +286,11 @@ jobs:
           path: obj-artifact-build-output/dist/host
           merge-multiple: true
 
-      - name: Download artifact of MAR tools (GitHub Releases)
+      - name: Download artifact of MAR tools (dl.f3liz.casa)
         if: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID == 'false' }}
         run: |
-          curl -L https://github.com/${{ github.repository }}-runtime/releases/latest/download/${{ inputs.platform }}-dist-host.zip -o ~/downloads/${{ inputs.platform }}-dist-host.zip
-          unzip ~/downloads/${{ inputs.platform }}-dist-host.zip -d ./obj-artifact-build-output/dist/host
+          curl -fL "$RUNTIME_DL_BASE/$OUTPUT_NAME-dist-host.zip" -o ~/downloads/$OUTPUT_NAME-dist-host.zip
+          unzip ~/downloads/$OUTPUT_NAME-dist-host.zip -d ./obj-artifact-build-output/dist/host
 
       - name: Download artifact of binary for getting build information (Actions)
         if: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID != 'false' }}
@@ -296,11 +303,11 @@ jobs:
           path: ~/noraneko-dev
           merge-multiple: true
 
-      - name: Download artifact of binary for getting build information (GiHub Releases)
+      - name: Download artifact of binary for getting build information (dl.f3liz.casa)
         if: ${{ env.RUNTIME_ARTIFACT_WORKFLOW_RUN_ID == 'false' }}
         run: |
-          curl -L https://github.com/${{ github.repository }}-runtime/releases/latest/download/${{ inputs.platform }}-application-ini.zip -o ~/downloads/${{ inputs.platform }}-application-ini.zip
-          unzip ~/downloads/${{ inputs.platform }}-application-ini.zip -d ~/noraneko-dev
+          curl -fL "$RUNTIME_DL_BASE/$OUTPUT_NAME-application-ini.zip" -o ~/downloads/$OUTPUT_NAME-application-ini.zip
+          unzip ~/downloads/$OUTPUT_NAME-application-ini.zip -d ~/noraneko-dev
 
       - name: Create MAR package
         env:
