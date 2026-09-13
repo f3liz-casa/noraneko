@@ -65,6 +65,16 @@ jobs:
 
       - name: Apply upstream patches
         run: |
+          # overlay(上流を丸ごと差し替えるファイル。焼くときの bsys6 build.sh と同じ)。
+          # artifacts.py の product = "noraneko" がここに居る。無いと mach artifact が zip の中の noraneko/ を見つけられない
+          OVERLAY_DIR=".github/overlays"
+          if [ -d "$OVERLAY_DIR" ]; then
+            (cd "$OVERLAY_DIR" && find . -type f ! -name 'UPSTREAM_BASE' | while read -r f; do
+              mkdir -p "$GITHUB_WORKSPACE/$(dirname "$f")"
+              cp "$f" "$GITHUB_WORKSPACE/$f"
+              echo "overlay: $f"
+            done)
+          fi
           PATCH_DIR=".github/patches/upstream"
           if [ -d "$PATCH_DIR" ]; then
             for patch in "$PATCH_DIR"/*.patch; do
