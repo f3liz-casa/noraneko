@@ -178,7 +178,9 @@ jobs:
               echo "ARTIFACT_NAME=noraneko-windows-x86_64-moz-artifact" >> $GITHUB_ENV
               echo "ARTIFACT_FROM_RELEASE_NAME=noraneko-windows-x86_64-moz-artifact.zip" >> $GITHUB_ENV
               echo "OUTPUT_NAME=windows-x86_64" >> $GITHUB_ENV
-              echo "INSTALLER_PATH=install/sea/*installer.exe" >> $GITHUB_ENV
+              # makensis.mk の installer:: は mach repackage installer に -o $(DIST)/$(PKG_PATH)$(PKG_INST_BASENAME).exe を渡す。
+              # PKG_PATH は空なので、installer は dist/ の直下に出る(install/sea/ ではない)
+              echo "INSTALLER_PATH=noraneko*.installer.exe" >> $GITHUB_ENV
               echo "OUTPUT_INSTALLER_NAME=noraneko-windows-x86_64-installer.exe" >> $GITHUB_ENV
               ;;
             "Linux-x86_64")
