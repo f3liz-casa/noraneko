@@ -33,7 +33,7 @@ module FelesBuild
 
     # [pid, command] の一覧。親だけ(子の plugin-container は親を閉じれば一緒に畳まれる)。
     def self.running
-      `ps -axo pid=,command= 2>/dev/null`.lines.filter_map do |line|
+      Utils.ask("ps", "-axo", "pid=,command=").to_s.lines.filter_map do |line|
         pid, _, command = line.strip.partition(" ")
         next unless ours?(command)
         # 子プロセス(-parentPid を持つもの)は数えない

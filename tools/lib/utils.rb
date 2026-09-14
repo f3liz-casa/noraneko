@@ -20,6 +20,18 @@ module FelesBuild
       raise "Command failed: #{command} #{args.join(' ')}\n#{result[:stderr]}"
     end
 
+    # 外の道具に一つ訊く。答えが無ければ nil。
+    #
+    # shell を通さない。`pgrep ... 2>/dev/null` のように書くと、Windows では cmd が
+    # /dev/null をパスだと読んで「지정된 경로를 찾을 수 없습니다」と言う。道具そのものが
+    # 無い platform(Windows の pgrep / ps / lsof)も、ここで静かに nil になる。
+    def self.ask(command, *args)
+      result = run_checked(command, *args)
+      result[:success] ? result[:stdout] : nil
+    rescue Errno::ENOENT
+      nil
+    end
+
     # 走らせて、行が出るたびに呼ぶ(stdout と stderr は分けたまま)。
     def self.run_with_logging(command)
       Open3.popen3(*command) do |stdin, stdout, stderr, wait|
