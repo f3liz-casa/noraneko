@@ -341,14 +341,55 @@ async function ensureFile(url: string, path: string, sha256: string, label: stri
   }
 }
 
-/** registry の判を確かめる。無ければ ok=false で理由を書く。止めはしない */
-async function checkAttestations(reg: Registry, uuid: string, manifestBytes: Uint8Array, semver?: string) {
-  const { verifyKeylessBundle } = ChromeUtils.importESModule("resource://noraneko/modules/sigstore/Sigstore.sys.mjs");
+type Attestations = import("./sigstore/Sigstore.sys.mjs").AttestationCheck[];
+
+/** 判の bundle を取ってくる(まだ確かめない)。manifest と**同時に**取り始められるように分けてある */
+async function fetchBundle(reg: Registry, uuid: string, semver?: string): Promise<unknown | null> {
   const r = await fetch(`${reg.base}/${dropPath(uuid, semver)}/manifest.json.sigstore.json`, { cache: "no-store" });
-  if (!r.ok) {
+  return r.ok ? await r.json() : null;
+}
+
+/** bundle を manifest の bytes に照らす。判が無ければ ok=false で理由を書く。止めはしない */
+async function verifyBundle(reg: Registry, bundle: unknown | null, manifestBytes: Uint8Array): Promise<Attestations> {
+  if (bundle === null) {
     return [{ who: "registry", identity: reg.identity, issuer: reg.issuer, ok: false, reason: "registry の判(manifest.json.sigstore.json)が無い" }];
   }
-  return [await verifyKeylessBundle("registry", await r.json(), manifestBytes, reg.identity, reg.issuer)];
+  const { verifyKeylessBundle } = ChromeUtils.importESModule("resource://noraneko/modules/sigstore/Sigstore.sys.mjs");
+  return [await verifyKeylessBundle("registry", bundle, manifestBytes, reg.identity, reg.issuer)];
+}
+
+/** registry の判を確かめる。無ければ ok=false で理由を書く。止めはしない */
+async function checkAttestations(reg: Registry, uuid: string, manifestBytes: Uint8Array, semver?: string): Promise<Attestations> {
+  return verifyBundle(reg, await fetchBundle(reg, uuid, semver), manifestBytes);
+}
+
+/**
+ * 版で固定された drop(dep が指すもの)を、一度だけ取って確かめる。
+ *
+ * `/v/<semver>/` が指す bytes は publish で書き換わらない ── 版を固定するとは
+ * そういうこと。なので manifest も判も、この起動のあいだは覚えておいていい。
+ * dep を七つ持つ drop を「見る」たびに、manifest と判で十四往復していた。
+ * (xpi のほうは ensureFile が手元の sha256 で見ているので、ここには要らない)
+ */
+const pinned = new Map<string, Promise<{ manifest: DropManifest; bytes: Uint8Array; attestations: Attestations }>>();
+function pinnedDrop(reg: Registry, uuid: string, version: string) {
+  const key = `${reg.base}|${uuid}|${version}`;
+  let p = pinned.get(key);
+  if (!p) {
+    // manifest と判は別の file。片方を待ってからもう片方、にする理由が無いので同時に
+    p = (async () => {
+      const [{ manifest, bytes }, bundle] = await Promise.all([
+        fetchDropManifest(reg, uuid, version),
+        fetchBundle(reg, uuid, version),
+      ]);
+      return { manifest, bytes, attestations: await verifyBundle(reg, bundle, bytes) };
+    })().catch((e) => {
+      pinned.delete(key); // 転んだものを覚えたままにしない
+      throw e;
+    });
+    pinned.set(key, p);
+  }
+  return p;
 }
 
 /**
@@ -362,12 +403,20 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
   const dir = dropDir(uuid);
   await IOUtils.makeDirectory(dir, { createAncestors: true, ignoreExisting: true });
 
+  // registry は publish のたびに `<uuid>/v/<semver>/` へ、その版のまま凍らせた写しも置く
+  // (semver は entries[0] の版の頭三つ。registry 側の数えかたと同じ)。そちらを名指しで取る:
+  // 凍っているので **いま読んだ manifest が約束した bytes そのもの** が返るし、動かないものと
+  // 分かっている口なので、配る側も長く預かっておける。`<uuid>/<file>` は「最新」を指すので、
+  // manifest を読んだ直後に publish が来ると、別のものが返ってくる。
+  const frozen = (m.entries[0]?.version ?? "").match(/^(\d+\.\d+\.\d+)/)?.[1];
+  const fileBase = `${reg.base}/${dropPath(uuid, frozen)}`;
+
   const oneEntry = async (e: DropManifest["entries"][number]): Promise<DropInspection["entries"][number]> => {
     if (!/^[A-Za-z0-9._-]+$/.test(e.file)) throw new Error(`bad file name: ${e.file}`);
     const edir = entryDir(uuid, e.version);
     await IOUtils.makeDirectory(edir, { createAncestors: true, ignoreExisting: true });
     const path = PathUtils.join(edir, e.file);
-    await ensureFile(`${reg.base}/${uuid}/${e.file}`, path, e.sha256, e.file);
+    await ensureFile(`${fileBase}/${e.file}`, path, e.sha256, e.file);
     console.log(`[noraneko-drops] inspect ${m.name}: ${e.file} sha256 ok, reading zip`);
     const files = readZipEntries(path);
     console.log(`[noraneko-drops] inspect ${m.name}: ${e.file} ${files.size} entries`);
@@ -402,8 +451,7 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
   // 使う library も、同じように落として、sha と判を見て、中を読む(版は manifest に固定されたもの)
   const oneDep = async (d: DepRef): Promise<InspectedDep> => {
     const du = parseUuid(d.uuid);
-    const { manifest: dm, bytes: dbytes } = await fetchDropManifest(reg, du, d.version);
-    const dattest = await checkAttestations(reg, du, dbytes, d.version);
+    const { manifest: dm, attestations: dattest } = await pinnedDrop(reg, du, d.version);
     const ddir = depDir(uuid, d.name, d.version);
     await IOUtils.makeDirectory(ddir, { createAncestors: true, ignoreExisting: true });
     const dentries = await Promise.all(dm.entries.map(async (e) => {
