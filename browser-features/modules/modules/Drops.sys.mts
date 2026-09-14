@@ -227,7 +227,9 @@ function resAlias(uuid: string, version: string): string {
 
 /** manifest.json は bytes のまま持つ(判はその bytes に対して押されている) */
 async function fetchDropManifest(reg: Registry, uuid: string, semver?: string): Promise<{ manifest: DropManifest; bytes: Uint8Array }> {
-  const resp = await fetch(`${reg.base}/${dropPath(uuid, semver)}/manifest.json`, { cache: "no-store" });
+  // 版を名指ししたものは凍っているので cache に任せる。名指ししていない口は「最新」を
+  // 訊いているので、そのつど訊く(no-store)
+  const resp = await fetch(`${reg.base}/${dropPath(uuid, semver)}/manifest.json`, semver ? {} : { cache: "no-store" });
   if (!resp.ok) throw new Error(`no drop ${uuid} in ${reg.name} (${resp.status})`);
   const bytes = new Uint8Array(await resp.arrayBuffer());
   const m = JSON.parse(new TextDecoder().decode(bytes)) as DropManifest;
@@ -332,20 +334,30 @@ async function ensureFile(url: string, path: string, sha256: string, label: stri
     if ((await IOUtils.computeHexDigest(path, "sha256")) === sha256) return;
     await IOUtils.remove(path, { ignoreAbsent: true }); // 違うものが残っていた
   }
-  const resp = await fetch(url, { cache: "no-store" });
-  if (!resp.ok) throw new Error(`download failed: ${url} (${resp.status})`);
-  await IOUtils.write(path, new Uint8Array(await resp.arrayBuffer()), { tmpPath: `${path}.tmp` });
-  if ((await IOUtils.computeHexDigest(path, "sha256")) !== sha256) {
-    await IOUtils.remove(path);
-    throw new Error(`sha256 mismatch: ${label}`);
+  // 凍った写し(`/v/<semver>/`)だけを取りに行くので、HTTP の cache に任せる。
+  // `no-store` を付けると Firefox は `Cache-Control: no-cache` を送り、**配る側の
+  // edge cache まで素通りする** ── 同じ URL が curl で 190ms、ブラウザから 1450ms に
+  // なっていたのはこれ(2026-09-14 実測)。ここは sha256 を照らすので、cache が嘘を
+  // ついたら下で気づく。
+  let got = "";
+  // 二度目は cache を飛ばして取り直す。配る側も sha256 を照らしてから流しているので、
+  // ここで合わないのは手元の cache が傷んだとき ── 詰まったままにしない
+  for (const init of [undefined, { cache: "reload" as const }]) {
+    const resp = await fetch(url, init);
+    if (!resp.ok) throw new Error(`download failed: ${url} (${resp.status})`);
+    await IOUtils.write(path, new Uint8Array(await resp.arrayBuffer()), { tmpPath: `${path}.tmp` });
+    got = await IOUtils.computeHexDigest(path, "sha256");
+    if (got === sha256) return;
   }
+  await IOUtils.remove(path);
+  throw new Error(`sha256 mismatch: ${label} (got ${got})`);
 }
 
 type Attestations = import("./sigstore/Sigstore.sys.mjs").AttestationCheck[];
 
 /** 判の bundle を取ってくる(まだ確かめない)。manifest と**同時に**取り始められるように分けてある */
 async function fetchBundle(reg: Registry, uuid: string, semver?: string): Promise<unknown | null> {
-  const r = await fetch(`${reg.base}/${dropPath(uuid, semver)}/manifest.json.sigstore.json`, { cache: "no-store" });
+  const r = await fetch(`${reg.base}/${dropPath(uuid, semver)}/manifest.json.sigstore.json`, semver ? {} : { cache: "no-store" });
   return r.ok ? await r.json() : null;
 }
 
