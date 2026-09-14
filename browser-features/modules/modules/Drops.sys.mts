@@ -320,6 +320,27 @@ function readZipEntries(path: string): Map<string, string> {
   return out;
 }
 
+/**
+ * manifest が sha256 で指した file を、手元に用意する。
+ *
+ * 同じ bytes がもう置いてあれば、落とさない ── manifest が指しているのは名前では
+ * なく **中身** なので、digest が合えばそれが「その file」。見るたびに何 MB も
+ * 引き直していた(戻って、もう一度見る、を繰り返すとそのぶん待つ)。
+ */
+async function ensureFile(url: string, path: string, sha256: string, label: string): Promise<void> {
+  if (await IOUtils.exists(path)) {
+    if ((await IOUtils.computeHexDigest(path, "sha256")) === sha256) return;
+    await IOUtils.remove(path, { ignoreAbsent: true }); // 違うものが残っていた
+  }
+  const resp = await fetch(url, { cache: "no-store" });
+  if (!resp.ok) throw new Error(`download failed: ${url} (${resp.status})`);
+  await IOUtils.write(path, new Uint8Array(await resp.arrayBuffer()), { tmpPath: `${path}.tmp` });
+  if ((await IOUtils.computeHexDigest(path, "sha256")) !== sha256) {
+    await IOUtils.remove(path);
+    throw new Error(`sha256 mismatch: ${label}`);
+  }
+}
+
 /** registry の判を確かめる。無ければ ok=false で理由を書く。止めはしない */
 async function checkAttestations(reg: Registry, uuid: string, manifestBytes: Uint8Array, semver?: string) {
   const { verifyKeylessBundle } = ChromeUtils.importESModule("resource://noraneko/modules/sigstore/Sigstore.sys.mjs");
@@ -338,25 +359,15 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
   const uuid = parseUuid(ref);
   const { reg, manifest: m, bytes: manifestBytes } = await findDrop(uuid, registryName);
   console.log(`[noraneko-drops] inspect ${uuid} (${m.name}) @ ${reg.name}: manifest`);
-  const attestations = await checkAttestations(reg, uuid, manifestBytes);
   const dir = dropDir(uuid);
   await IOUtils.makeDirectory(dir, { createAncestors: true, ignoreExisting: true });
-  const entries: DropInspection["entries"] = [];
-  for (const e of m.entries) {
+
+  const oneEntry = async (e: DropManifest["entries"][number]): Promise<DropInspection["entries"][number]> => {
     if (!/^[A-Za-z0-9._-]+$/.test(e.file)) throw new Error(`bad file name: ${e.file}`);
-    const url = `${reg.base}/${uuid}/${e.file}`;
-    const resp = await fetch(url, { cache: "no-store" });
-    if (!resp.ok) throw new Error(`download failed: ${url} (${resp.status})`);
-    const bytes = new Uint8Array(await resp.arrayBuffer());
     const edir = entryDir(uuid, e.version);
     await IOUtils.makeDirectory(edir, { createAncestors: true, ignoreExisting: true });
     const path = PathUtils.join(edir, e.file);
-    await IOUtils.write(path, bytes, { tmpPath: `${path}.tmp` });
-    const digest = await IOUtils.computeHexDigest(path, "sha256");
-    if (digest !== e.sha256) {
-      await IOUtils.remove(path);
-      throw new Error(`sha256 mismatch: ${e.file}`);
-    }
+    await ensureFile(`${reg.base}/${uuid}/${e.file}`, path, e.sha256, e.file);
     console.log(`[noraneko-drops] inspect ${m.name}: ${e.file} sha256 ok, reading zip`);
     const files = readZipEntries(path);
     console.log(`[noraneko-drops] inspect ${m.name}: ${e.file} ${files.size} entries`);
@@ -367,7 +378,7 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
     } catch {
       // actor.json が壊れているなら空のまま(表示だけの話。入れるときに改めて読んで失敗する)
     }
-    entries.push({
+    return {
       id: wm.browser_specific_settings?.gecko?.id ?? e.id,
       name: e.name,
       version: wm.version ?? e.version,
@@ -385,8 +396,40 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
         .filter(([n]) => !n.startsWith("source/"))
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([n, text]) => ({ path: n, text })),
-    });
-  }
+    };
+  };
+
+  // 使う library も、同じように落として、sha と判を見て、中を読む(版は manifest に固定されたもの)
+  const oneDep = async (d: DepRef): Promise<InspectedDep> => {
+    const du = parseUuid(d.uuid);
+    const { manifest: dm, bytes: dbytes } = await fetchDropManifest(reg, du, d.version);
+    const dattest = await checkAttestations(reg, du, dbytes, d.version);
+    const ddir = depDir(uuid, d.name, d.version);
+    await IOUtils.makeDirectory(ddir, { createAncestors: true, ignoreExisting: true });
+    const dentries = await Promise.all(dm.entries.map(async (e) => {
+      if (!/^[A-Za-z0-9._-]+$/.test(e.file)) throw new Error(`bad file name: ${e.file}`);
+      const path = PathUtils.join(ddir, e.file);
+      await ensureFile(`${reg.base}/${dropPath(du, d.version)}/${e.file}`, path, e.sha256, `${d.name}/${e.file}`);
+      const files = readZipEntries(path);
+      return {
+        file: e.file,
+        version: e.version,
+        sha256: e.sha256,
+        files: [...files.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([p, text]) => ({ path: p, text })),
+      };
+    }));
+    console.log(`[noraneko-drops] inspect ${m.name}: dep ${d.name} ${d.version} ok`);
+    return { ...d, attestations: dattest, manifest: dm, entries: dentries };
+  };
+
+  // 判・entry・dep は互いを待たない。前は manifest → 判 → entry → dep と一列だった
+  // (それぞれが registry への往復)。Promise.all は並べても **順を保つ**
+  const [attestations, entries, deps] = await Promise.all([
+    checkAttestations(reg, uuid, manifestBytes),
+    Promise.all(m.entries.map(oneEntry)),
+    Promise.all((m.deps ?? []).map(oneDep)),
+  ]);
+
   // 絵: manifest が「どの xpi の中か」を覚えている。落として sha を見たあとの file から読む。
   // 一枚を開いているときは xpi がもう手元にあるので、絵のために取りに行くことはしない
   let icon: string | null = null;
@@ -402,32 +445,6 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
     if (dataUri) shots.push({ file: shot.file, dataUri });
   }
 
-  // 使う library も、同じように落として、sha と判を見て、中を読む(版は manifest に固定されたもの)
-  const deps: InspectedDep[] = [];
-  for (const d of m.deps ?? []) {
-    const du = parseUuid(d.uuid);
-    const { manifest: dm, bytes: dbytes } = await fetchDropManifest(reg, du, d.version);
-    const dattest = await checkAttestations(reg, du, dbytes, d.version);
-    const ddir = depDir(uuid, d.name, d.version);
-    await IOUtils.makeDirectory(ddir, { createAncestors: true, ignoreExisting: true });
-    const dentries: InspectedDep["entries"] = [];
-    for (const e of dm.entries) {
-      if (!/^[A-Za-z0-9._-]+$/.test(e.file)) throw new Error(`bad file name: ${e.file}`);
-      const url = `${reg.base}/${dropPath(du, d.version)}/${e.file}`;
-      const resp = await fetch(url, { cache: "no-store" });
-      if (!resp.ok) throw new Error(`download failed: ${url} (${resp.status})`);
-      const path = PathUtils.join(ddir, e.file);
-      await IOUtils.write(path, new Uint8Array(await resp.arrayBuffer()), { tmpPath: `${path}.tmp` });
-      if ((await IOUtils.computeHexDigest(path, "sha256")) !== e.sha256) {
-        await IOUtils.remove(path);
-        throw new Error(`sha256 mismatch: ${d.name}/${e.file}`);
-      }
-      const files = readZipEntries(path);
-      dentries.push({ file: e.file, version: e.version, sha256: e.sha256, files: [...files.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([p, text]) => ({ path: p, text })) });
-    }
-    console.log(`[noraneko-drops] inspect ${m.name}: dep ${d.name} ${d.version} ok`);
-    deps.push({ ...d, attestations: dattest, manifest: dm, entries: dentries });
-  }
   return { uuid, name: m.name, icon, shots, registry: reg, attestations, manifest: m, deps, entries };
 }
 
@@ -627,41 +644,51 @@ function iconUrlOf(reg: Registry, uuid: string, icon: unknown): string | null {
 }
 
 export async function listCatalog(): Promise<{ items: CatalogItem[]; failed: { registry: string; reason: string }[] }> {
-  const items: CatalogItem[] = [];
-  const seen = new Set<string>();
-  const failed: { registry: string; reason: string }[] = [];
-  for (const reg of listRegistries()) {
+  // registry 同士は関係ないので、/index.json は並べて訊く。前は一つずつ待っていて、
+  // 三つあれば三往復ぶん待たされた。**並べても順は listRegistries のまま** ──
+  // 同じ uuid を二つが持っていたら、先に並んでいるほうを採る(findDrop と同じ順)
+  const shelves = await Promise.all(listRegistries().map(async (reg) => {
     try {
       const resp = await fetch(`${reg.base}/index.json`, { cache: "no-store" });
       if (!resp.ok) throw new Error(`${resp.status}`);
-      const body = (await resp.json()) as { drops?: unknown[] };
-      for (const raw of body.drops ?? []) {
-        const d = raw as Partial<CatalogItem>;
-        const uuid = typeof d.uuid === "string" ? d.uuid.toLowerCase() : "";
-        if (!UUID.test(uuid) || seen.has(uuid)) continue;
-        if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(d.name ?? "")) continue;
-        seen.add(uuid);
-        items.push({
-          uuid,
-          name: d.name as string,
-          note: typeof d.note === "string" ? d.note : "",
-          lib: d.lib === true,
-          // 棚は xpi を落とす前なので、絵は manifest の隣の一枚を指す。file の名前だけ見てから
-          // 組み立てる(sha256 を照らすのは配る側。ここは URL を作るだけ)
-          icon: iconUrlOf(reg, uuid, d.icon),
-          shots: typeof d.shots === "number" ? d.shots : 0,
-          contact: Array.isArray(d.contact) ? d.contact.filter((c) => typeof c === "string") : [],
-          version: typeof d.version === "string" ? d.version : null,
-          entries: Array.isArray(d.entries) ? d.entries : [],
-          deps: Array.isArray(d.deps) ? d.deps : [],
-          source: (d.source as CatalogItem["source"]) ?? null,
-          rekor: typeof d.rekor === "number" ? d.rekor : null,
-          registry: reg.name,
-        });
-      }
+      return { reg, body: (await resp.json()) as { drops?: unknown[] }, error: "" };
     } catch (e) {
-      failed.push({ registry: reg.name, reason: String((e as Error)?.message ?? e) });
       console.warn(`[noraneko-drops] ${reg.name} の棚が読めない:`, e);
+      return { reg, body: null, error: String((e as Error)?.message ?? e) };
+    }
+  }));
+
+  const items: CatalogItem[] = [];
+  const seen = new Set<string>();
+  const failed: { registry: string; reason: string }[] = [];
+  for (const { reg, body, error } of shelves) {
+    if (!body) {
+      failed.push({ registry: reg.name, reason: error });
+      continue;
+    }
+    for (const raw of body.drops ?? []) {
+      const d = raw as Partial<CatalogItem>;
+      const uuid = typeof d.uuid === "string" ? d.uuid.toLowerCase() : "";
+      if (!UUID.test(uuid) || seen.has(uuid)) continue;
+      if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(d.name ?? "")) continue;
+      seen.add(uuid);
+      items.push({
+        uuid,
+        name: d.name as string,
+        note: typeof d.note === "string" ? d.note : "",
+        lib: d.lib === true,
+        // 棚は xpi を落とす前なので、絵は manifest の隣の一枚を指す。file の名前だけ見てから
+        // 組み立てる(sha256 を照らすのは配る側。ここは URL を作るだけ)
+        icon: iconUrlOf(reg, uuid, d.icon),
+        shots: typeof d.shots === "number" ? d.shots : 0,
+        contact: Array.isArray(d.contact) ? d.contact.filter((c) => typeof c === "string") : [],
+        version: typeof d.version === "string" ? d.version : null,
+        entries: Array.isArray(d.entries) ? d.entries : [],
+        deps: Array.isArray(d.deps) ? d.deps : [],
+        source: (d.source as CatalogItem["source"]) ?? null,
+        rekor: typeof d.rekor === "number" ? d.rekor : null,
+        registry: reg.name,
+      });
     }
   }
   items.sort((a, b) => a.name.localeCompare(b.name));
