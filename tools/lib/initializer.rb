@@ -31,7 +31,10 @@ module FelesBuild
 
     def self.runtime_url(filename)
       tag = ENV["NORANEKO_RUNTIME_TAG"]
-      return release_url(tag, filename) if tag && !tag.empty?
+      if tag && !tag.empty?
+        LOGGER.info "NORANEKO_RUNTIME_TAG=#{tag}: dl は見ずに、GitHub release のその tag から取る"
+        return release_url(tag, filename)
+      end
 
       from_dl(filename) || from_releases(filename) ||
         "https://github.com/#{REPO}/releases/latest/download/#{filename}"
@@ -47,20 +50,38 @@ module FelesBuild
     end
 
     # dl は /latest/<target> で最新の sha へ 302 する。行き先の URL をもらう。
+    #
+    # 取れなかったときは、**なぜ dl にしなかったのか**を言う。黙って nil を返すと、
+    # そのあと GitHub release(2025-09 の 143 で止まっている)が静かに使われて、
+    # 古い runtime のまま気づけない。
     def self.from_dl(_filename)
       target = dl_target
-      return nil unless target
+      if target.nil?
+        LOGGER.warn "dl.f3liz.casa: #{Defines::PLATFORM}/#{Defines::ARCH} の的が無い"
+        return nil
+      end
 
-      result = Utils.run_checked("curl", "-sIL", "-o", File::NULL, "-w", "%{http_code} %{url_effective}",
-                                 "#{DL}/latest/#{target}")
-      code, url = result[:stdout].split
-      return nil unless result[:success] && code == "200" && url
+      latest = "#{DL}/latest/#{target}"
+      2.times do |attempt| # dl はまれにまばたきする(502 を一度見た)。一度だけ訊き直す
+        result = Utils.run_checked("curl", "-sIL", "-o", File::NULL, "-w", "%{http_code} %{url_effective}",
+                                   latest)
+        code, url = result[:stdout].split
 
-      # dl が返す名前は、いつも moz-artifact とは限らない(linux は package した
-      # ほうの名前で置かれていることがある)。中の形は同じ(`<base_name>/…`)なので
-      # そのまま使うけれど、**実際に取ったものの名前は出す**
-      LOGGER.info "Runtime from dl.f3liz.casa: #{url}"
-      url
+        if result[:success] && code == "200" && url
+          # dl が返す名前は、いつも moz-artifact とは限らない(linux は package した
+          # ほうの名前で置かれていることがある)。中の形は同じ(`<base_name>/…`)なので
+          # そのまま使うけれど、**実際に取ったものの名前は出す**
+          LOGGER.info "Runtime from dl.f3liz.casa: #{url}"
+          return url
+        end
+
+        reason = result[:success] ? "HTTP #{code}" : "curl failed: #{result[:stderr].strip}"
+        # 404 は訊き直しても同じ。まばたき(5xx や curl の失敗)だけ、一度やり直す
+        again = attempt.zero? && (!result[:success] || code.to_s.start_with?("5"))
+        LOGGER.warn "dl.f3liz.casa: #{latest} → #{reason}#{again ? " (もう一度だけ訊く)" : ""}"
+        break unless again
+      end
+      nil
     end
 
     # その資産を持つ、一番新しい release。platform が揃うまで prerelease にしか
