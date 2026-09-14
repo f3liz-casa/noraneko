@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
 
-require "fileutils"
 require_relative "defines"
 require_relative "utils"
 
@@ -13,12 +12,14 @@ module FelesBuild
       File.join(Defines::PATHS[:loader_modules], "link-modules") => Defines::PATHS[:modules],
     }.freeze
 
+    # 張れなかったら、そこで止める。このまま進むと tsdown が
+    # 「cannot find entry link-modules/**/*.mts」と言って転ぶ ── 近道が無いのが
+    # 本当の理由なのに、そうは読めない。
     def self.run
-      LINKS.each do |link, target|
-        FileUtils.rm_rf(link) # symlink は辿らずに、その symlink だけが外れる
-        FileUtils.ln_sf(target, link)
-      rescue => e
-        LOGGER.warn "Failed to create symlink #{link} -> #{target}: #{e.message}"
+      failed = LINKS.reject { |link, target| Utils.create_symlink(link, target) }
+      unless failed.empty?
+        raise "近道を張れなかった: #{failed.keys.join(', ')}\n" \
+              "  この先で tsdown が entry を見つけられずに転ぶので、ここで止める。"
       end
       LOGGER.success "Symlinks created successfully."
     end

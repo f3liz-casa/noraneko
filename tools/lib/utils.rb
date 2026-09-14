@@ -31,11 +31,34 @@ module FelesBuild
       end
     end
 
+    # 近道を一つ張る。張れたら true。
+    #
+    # Windows の symlink は Developer Mode か管理者でないと張れない(Errno::EACCES)。
+    # junction(mklink /J)なら権限が要らず、張り先はどれもディレクトリなので足りる。
     def self.create_symlink(link, target)
+      return create_junction(link, target) if Defines::PLATFORM == :windows
+
       FileUtils.rm_rf(link) # symlink は辿らずに、その symlink だけが外れる
       FileUtils.ln_sf(target, link)
+      true
     rescue => e
       warn "Failed to create symlink #{link} -> #{target}: #{e.message}"
+      false
+    end
+
+    # junction を外すのは rmdir(/s を付けない。付けると張り先の中身まで消える)。
+    # 前が無ければ rmdir は転ぶけれど、それでいい ── 消すものが無いだけ。
+    def self.create_junction(link, target)
+      win_link = link.tr("/", "\\")
+      run_checked("cmd", "/c", "rmdir", win_link)
+      FileUtils.rm_f(link) # junction でなく、ただのファイルだったとき
+
+      result = run_checked("cmd", "/c", "mklink", "/J", win_link, target.tr("/", "\\"))
+      return true if result[:success]
+
+      warn "Failed to create junction #{link} -> #{target}: " \
+           "#{result[:stdout].strip} #{result[:stderr].strip}"
+      false
     end
 
     # FEATURE_MOUNTS の [張る名前, project からの相対] を base_dir の下に張る。
