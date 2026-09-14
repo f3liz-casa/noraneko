@@ -59,7 +59,8 @@ module FelesBuild
 
   # 建てて、開いて、閉じたら一緒に片づける(vite だけ残さない)。
   def self.serve_and_launch
-    %w[INT TERM HUP].each do |signal|
+    # HUP は Windows に無い(Signal.list にも載らない)。知っている名前だけ捕まえる
+    %w[INT TERM HUP].select { |name| Signal.list.key?(name) }.each do |signal|
       Signal.trap(signal) do
         LOGGER.info "Shutting down (SIG#{signal})..."
         DevServer.shutdown
