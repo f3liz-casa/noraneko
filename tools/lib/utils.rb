@@ -20,6 +20,18 @@ module FelesBuild
       raise "Command failed: #{command} #{args.join(' ')}\n#{result[:stderr]}"
     end
 
+    # 外の道具に一つ訊く。答えが無ければ nil。
+    #
+    # shell を通さない。`pgrep ... 2>/dev/null` のように書くと、Windows では cmd が
+    # /dev/null をパスだと読んで「지정된 경로를 찾을 수 없습니다」と言う。道具そのものが
+    # 無い platform(Windows の pgrep / ps / lsof)も、ここで静かに nil になる。
+    def self.ask(command, *args)
+      result = run_checked(command, *args)
+      result[:success] ? result[:stdout] : nil
+    rescue Errno::ENOENT
+      nil
+    end
+
     # 走らせて、行が出るたびに呼ぶ(stdout と stderr は分けたまま)。
     def self.run_with_logging(command)
       Open3.popen3(*command) do |stdin, stdout, stderr, wait|
@@ -31,11 +43,34 @@ module FelesBuild
       end
     end
 
+    # 近道を一つ張る。張れたら true。
+    #
+    # Windows の symlink は Developer Mode か管理者でないと張れない(Errno::EACCES)。
+    # junction(mklink /J)なら権限が要らず、張り先はどれもディレクトリなので足りる。
     def self.create_symlink(link, target)
+      return create_junction(link, target) if Defines::PLATFORM == :windows
+
       FileUtils.rm_rf(link) # symlink は辿らずに、その symlink だけが外れる
       FileUtils.ln_sf(target, link)
+      true
     rescue => e
       warn "Failed to create symlink #{link} -> #{target}: #{e.message}"
+      false
+    end
+
+    # junction を外すのは rmdir(/s を付けない。付けると張り先の中身まで消える)。
+    # 前が無ければ rmdir は転ぶけれど、それでいい ── 消すものが無いだけ。
+    def self.create_junction(link, target)
+      win_link = link.tr("/", "\\")
+      run_checked("cmd", "/c", "rmdir", win_link)
+      FileUtils.rm_f(link) # junction でなく、ただのファイルだったとき
+
+      result = run_checked("cmd", "/c", "mklink", "/J", win_link, target.tr("/", "\\"))
+      return true if result[:success]
+
+      warn "Failed to create junction #{link} -> #{target}: " \
+           "#{result[:stdout].strip} #{result[:stderr].strip}"
+      false
     end
 
     # FEATURE_MOUNTS の [張る名前, project からの相対] を base_dir の下に張る。

@@ -100,6 +100,18 @@ export interface InstalledDrop {
   note?: string;
   registry?: string;
 }
+/** 起動時に一つ入れ直した結果(Drops.sys.mts と同じ形) */
+export interface DropStartupEntry {
+  name: string;
+  ok: boolean;
+  ms: number;
+  error: string;
+}
+export interface DropStartupReport {
+  running: boolean;
+  ms: number;
+  entries: Record<string, DropStartupEntry>;
+}
 export interface DropsApi {
   listRegistries(): Registry[];
   addRegistry(r: Registry): void;
@@ -112,6 +124,8 @@ export interface DropsApi {
   removeDrop(ref: string): Promise<void>;
   listDrops(): Record<string, InstalledDrop>;
   listCatalog(): Promise<{ items: CatalogItem[]; failed: { registry: string; reason: string }[] }>;
+  /** 起動時にどれが起きて、どれが転んだか。console を読まずに済むように */
+  getStartupReport(): DropStartupReport;
 }
 
 export const dropsApi: DropsApi | null = (() => {

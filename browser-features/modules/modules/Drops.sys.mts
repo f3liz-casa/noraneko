@@ -320,6 +320,27 @@ function readZipEntries(path: string): Map<string, string> {
   return out;
 }
 
+/**
+ * manifest が sha256 で指した file を、手元に用意する。
+ *
+ * 同じ bytes がもう置いてあれば、落とさない ── manifest が指しているのは名前では
+ * なく **中身** なので、digest が合えばそれが「その file」。見るたびに何 MB も
+ * 引き直していた(戻って、もう一度見る、を繰り返すとそのぶん待つ)。
+ */
+async function ensureFile(url: string, path: string, sha256: string, label: string): Promise<void> {
+  if (await IOUtils.exists(path)) {
+    if ((await IOUtils.computeHexDigest(path, "sha256")) === sha256) return;
+    await IOUtils.remove(path, { ignoreAbsent: true }); // 違うものが残っていた
+  }
+  const resp = await fetch(url, { cache: "no-store" });
+  if (!resp.ok) throw new Error(`download failed: ${url} (${resp.status})`);
+  await IOUtils.write(path, new Uint8Array(await resp.arrayBuffer()), { tmpPath: `${path}.tmp` });
+  if ((await IOUtils.computeHexDigest(path, "sha256")) !== sha256) {
+    await IOUtils.remove(path);
+    throw new Error(`sha256 mismatch: ${label}`);
+  }
+}
+
 /** registry の判を確かめる。無ければ ok=false で理由を書く。止めはしない */
 async function checkAttestations(reg: Registry, uuid: string, manifestBytes: Uint8Array, semver?: string) {
   const { verifyKeylessBundle } = ChromeUtils.importESModule("resource://noraneko/modules/sigstore/Sigstore.sys.mjs");
@@ -338,25 +359,15 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
   const uuid = parseUuid(ref);
   const { reg, manifest: m, bytes: manifestBytes } = await findDrop(uuid, registryName);
   console.log(`[noraneko-drops] inspect ${uuid} (${m.name}) @ ${reg.name}: manifest`);
-  const attestations = await checkAttestations(reg, uuid, manifestBytes);
   const dir = dropDir(uuid);
   await IOUtils.makeDirectory(dir, { createAncestors: true, ignoreExisting: true });
-  const entries: DropInspection["entries"] = [];
-  for (const e of m.entries) {
+
+  const oneEntry = async (e: DropManifest["entries"][number]): Promise<DropInspection["entries"][number]> => {
     if (!/^[A-Za-z0-9._-]+$/.test(e.file)) throw new Error(`bad file name: ${e.file}`);
-    const url = `${reg.base}/${uuid}/${e.file}`;
-    const resp = await fetch(url, { cache: "no-store" });
-    if (!resp.ok) throw new Error(`download failed: ${url} (${resp.status})`);
-    const bytes = new Uint8Array(await resp.arrayBuffer());
     const edir = entryDir(uuid, e.version);
     await IOUtils.makeDirectory(edir, { createAncestors: true, ignoreExisting: true });
     const path = PathUtils.join(edir, e.file);
-    await IOUtils.write(path, bytes, { tmpPath: `${path}.tmp` });
-    const digest = await IOUtils.computeHexDigest(path, "sha256");
-    if (digest !== e.sha256) {
-      await IOUtils.remove(path);
-      throw new Error(`sha256 mismatch: ${e.file}`);
-    }
+    await ensureFile(`${reg.base}/${uuid}/${e.file}`, path, e.sha256, e.file);
     console.log(`[noraneko-drops] inspect ${m.name}: ${e.file} sha256 ok, reading zip`);
     const files = readZipEntries(path);
     console.log(`[noraneko-drops] inspect ${m.name}: ${e.file} ${files.size} entries`);
@@ -367,7 +378,7 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
     } catch {
       // actor.json が壊れているなら空のまま(表示だけの話。入れるときに改めて読んで失敗する)
     }
-    entries.push({
+    return {
       id: wm.browser_specific_settings?.gecko?.id ?? e.id,
       name: e.name,
       version: wm.version ?? e.version,
@@ -385,8 +396,40 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
         .filter(([n]) => !n.startsWith("source/"))
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([n, text]) => ({ path: n, text })),
-    });
-  }
+    };
+  };
+
+  // 使う library も、同じように落として、sha と判を見て、中を読む(版は manifest に固定されたもの)
+  const oneDep = async (d: DepRef): Promise<InspectedDep> => {
+    const du = parseUuid(d.uuid);
+    const { manifest: dm, bytes: dbytes } = await fetchDropManifest(reg, du, d.version);
+    const dattest = await checkAttestations(reg, du, dbytes, d.version);
+    const ddir = depDir(uuid, d.name, d.version);
+    await IOUtils.makeDirectory(ddir, { createAncestors: true, ignoreExisting: true });
+    const dentries = await Promise.all(dm.entries.map(async (e) => {
+      if (!/^[A-Za-z0-9._-]+$/.test(e.file)) throw new Error(`bad file name: ${e.file}`);
+      const path = PathUtils.join(ddir, e.file);
+      await ensureFile(`${reg.base}/${dropPath(du, d.version)}/${e.file}`, path, e.sha256, `${d.name}/${e.file}`);
+      const files = readZipEntries(path);
+      return {
+        file: e.file,
+        version: e.version,
+        sha256: e.sha256,
+        files: [...files.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([p, text]) => ({ path: p, text })),
+      };
+    }));
+    console.log(`[noraneko-drops] inspect ${m.name}: dep ${d.name} ${d.version} ok`);
+    return { ...d, attestations: dattest, manifest: dm, entries: dentries };
+  };
+
+  // 判・entry・dep は互いを待たない。前は manifest → 判 → entry → dep と一列だった
+  // (それぞれが registry への往復)。Promise.all は並べても **順を保つ**
+  const [attestations, entries, deps] = await Promise.all([
+    checkAttestations(reg, uuid, manifestBytes),
+    Promise.all(m.entries.map(oneEntry)),
+    Promise.all((m.deps ?? []).map(oneDep)),
+  ]);
+
   // 絵: manifest が「どの xpi の中か」を覚えている。落として sha を見たあとの file から読む。
   // 一枚を開いているときは xpi がもう手元にあるので、絵のために取りに行くことはしない
   let icon: string | null = null;
@@ -402,32 +445,6 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
     if (dataUri) shots.push({ file: shot.file, dataUri });
   }
 
-  // 使う library も、同じように落として、sha と判を見て、中を読む(版は manifest に固定されたもの)
-  const deps: InspectedDep[] = [];
-  for (const d of m.deps ?? []) {
-    const du = parseUuid(d.uuid);
-    const { manifest: dm, bytes: dbytes } = await fetchDropManifest(reg, du, d.version);
-    const dattest = await checkAttestations(reg, du, dbytes, d.version);
-    const ddir = depDir(uuid, d.name, d.version);
-    await IOUtils.makeDirectory(ddir, { createAncestors: true, ignoreExisting: true });
-    const dentries: InspectedDep["entries"] = [];
-    for (const e of dm.entries) {
-      if (!/^[A-Za-z0-9._-]+$/.test(e.file)) throw new Error(`bad file name: ${e.file}`);
-      const url = `${reg.base}/${dropPath(du, d.version)}/${e.file}`;
-      const resp = await fetch(url, { cache: "no-store" });
-      if (!resp.ok) throw new Error(`download failed: ${url} (${resp.status})`);
-      const path = PathUtils.join(ddir, e.file);
-      await IOUtils.write(path, new Uint8Array(await resp.arrayBuffer()), { tmpPath: `${path}.tmp` });
-      if ((await IOUtils.computeHexDigest(path, "sha256")) !== e.sha256) {
-        await IOUtils.remove(path);
-        throw new Error(`sha256 mismatch: ${d.name}/${e.file}`);
-      }
-      const files = readZipEntries(path);
-      dentries.push({ file: e.file, version: e.version, sha256: e.sha256, files: [...files.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([p, text]) => ({ path: p, text })) });
-    }
-    console.log(`[noraneko-drops] inspect ${m.name}: dep ${d.name} ${d.version} ok`);
-    deps.push({ ...d, attestations: dattest, manifest: dm, entries: dentries });
-  }
   return { uuid, name: m.name, icon, shots, registry: reg, attestations, manifest: m, deps, entries };
 }
 
@@ -627,41 +644,51 @@ function iconUrlOf(reg: Registry, uuid: string, icon: unknown): string | null {
 }
 
 export async function listCatalog(): Promise<{ items: CatalogItem[]; failed: { registry: string; reason: string }[] }> {
-  const items: CatalogItem[] = [];
-  const seen = new Set<string>();
-  const failed: { registry: string; reason: string }[] = [];
-  for (const reg of listRegistries()) {
+  // registry 同士は関係ないので、/index.json は並べて訊く。前は一つずつ待っていて、
+  // 三つあれば三往復ぶん待たされた。**並べても順は listRegistries のまま** ──
+  // 同じ uuid を二つが持っていたら、先に並んでいるほうを採る(findDrop と同じ順)
+  const shelves = await Promise.all(listRegistries().map(async (reg) => {
     try {
       const resp = await fetch(`${reg.base}/index.json`, { cache: "no-store" });
       if (!resp.ok) throw new Error(`${resp.status}`);
-      const body = (await resp.json()) as { drops?: unknown[] };
-      for (const raw of body.drops ?? []) {
-        const d = raw as Partial<CatalogItem>;
-        const uuid = typeof d.uuid === "string" ? d.uuid.toLowerCase() : "";
-        if (!UUID.test(uuid) || seen.has(uuid)) continue;
-        if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(d.name ?? "")) continue;
-        seen.add(uuid);
-        items.push({
-          uuid,
-          name: d.name as string,
-          note: typeof d.note === "string" ? d.note : "",
-          lib: d.lib === true,
-          // 棚は xpi を落とす前なので、絵は manifest の隣の一枚を指す。file の名前だけ見てから
-          // 組み立てる(sha256 を照らすのは配る側。ここは URL を作るだけ)
-          icon: iconUrlOf(reg, uuid, d.icon),
-          shots: typeof d.shots === "number" ? d.shots : 0,
-          contact: Array.isArray(d.contact) ? d.contact.filter((c) => typeof c === "string") : [],
-          version: typeof d.version === "string" ? d.version : null,
-          entries: Array.isArray(d.entries) ? d.entries : [],
-          deps: Array.isArray(d.deps) ? d.deps : [],
-          source: (d.source as CatalogItem["source"]) ?? null,
-          rekor: typeof d.rekor === "number" ? d.rekor : null,
-          registry: reg.name,
-        });
-      }
+      return { reg, body: (await resp.json()) as { drops?: unknown[] }, error: "" };
     } catch (e) {
-      failed.push({ registry: reg.name, reason: String((e as Error)?.message ?? e) });
       console.warn(`[noraneko-drops] ${reg.name} の棚が読めない:`, e);
+      return { reg, body: null, error: String((e as Error)?.message ?? e) };
+    }
+  }));
+
+  const items: CatalogItem[] = [];
+  const seen = new Set<string>();
+  const failed: { registry: string; reason: string }[] = [];
+  for (const { reg, body, error } of shelves) {
+    if (!body) {
+      failed.push({ registry: reg.name, reason: error });
+      continue;
+    }
+    for (const raw of body.drops ?? []) {
+      const d = raw as Partial<CatalogItem>;
+      const uuid = typeof d.uuid === "string" ? d.uuid.toLowerCase() : "";
+      if (!UUID.test(uuid) || seen.has(uuid)) continue;
+      if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(d.name ?? "")) continue;
+      seen.add(uuid);
+      items.push({
+        uuid,
+        name: d.name as string,
+        note: typeof d.note === "string" ? d.note : "",
+        lib: d.lib === true,
+        // 棚は xpi を落とす前なので、絵は manifest の隣の一枚を指す。file の名前だけ見てから
+        // 組み立てる(sha256 を照らすのは配る側。ここは URL を作るだけ)
+        icon: iconUrlOf(reg, uuid, d.icon),
+        shots: typeof d.shots === "number" ? d.shots : 0,
+        contact: Array.isArray(d.contact) ? d.contact.filter((c) => typeof c === "string") : [],
+        version: typeof d.version === "string" ? d.version : null,
+        entries: Array.isArray(d.entries) ? d.entries : [],
+        deps: Array.isArray(d.deps) ? d.deps : [],
+        source: (d.source as CatalogItem["source"]) ?? null,
+        rekor: typeof d.rekor === "number" ? d.rekor : null,
+        registry: reg.name,
+      });
     }
   }
   items.sort((a, b) => a.name.localeCompare(b.name));
@@ -673,45 +700,92 @@ export function listDrops(): Record<string, InstalledDrop> {
   return readInstalled();
 }
 
+/** 起動時に一つ入れ直した結果(about:nora:drops の「入っている」が、これを行に出す) */
+export interface DropStartupEntry {
+  name: string;
+  /** dep も file も全部通ったか */
+  ok: boolean;
+  /** かかった時間(ms) */
+  ms: number;
+  /** 転んだ理由。ok なら空 */
+  error: string;
+}
+/** 起動時の入れ直し、ぜんぶ。console を読まなくても、画面がこれを見れば分かる */
+export interface DropStartupReport {
+  /** まだ入れ直している途中 */
+  running: boolean;
+  /** 全部でかかった時間(ms)。running のあいだは 0 */
+  ms: number;
+  entries: Record<string, DropStartupEntry>;
+}
+
+let startup: DropStartupReport = { running: false, ms: 0, entries: {} };
+
+export function getStartupReport(): DropStartupReport {
+  return { running: startup.running, ms: startup.ms, entries: { ...startup.entries } };
+}
+
+/** 一つ入れ直す。dep の別名を張ってから、その drop の file を入れる(この順は守る) */
+async function restoreOne(uuid: string, d: InstalledDrop): Promise<void> {
+  const began = Date.now();
+  const errors: string[] = [];
+
+  for (const dep of d.deps ?? []) {
+    try {
+      // 版の無い path で入っていたもの(この形より前)も、そのまま読む
+      const versioned = PathUtils.join(depDir(uuid, dep.name, dep.version), dep.file);
+      const flat = PathUtils.join(dropDir(uuid), "deps", dep.name, dep.file);
+      mountDep(dep, (await IOUtils.exists(versioned)) ? versioned : flat);
+    } catch (e) {
+      errors.push(`dep ${dep.name}: ${(e as Error)?.message ?? e}`);
+      console.error(`[noraneko-drops] restore ${d.name ?? uuid} dep ${dep.name} failed:`, e);
+    }
+  }
+  for (const [i, f] of (d.files ?? []).entries()) {
+    try {
+      const version = d.versions?.[i] ?? "";
+      // 版の無い path で入っていたもの(この形より前)も、そのまま読む
+      const versioned = PathUtils.join(entryDir(uuid, version), f);
+      const flat = PathUtils.join(dropDir(uuid), f);
+      await installFile(uuid, version, (await IOUtils.exists(versioned)) ? versioned : flat);
+    } catch (e) {
+      errors.push(`${f}: ${(e as Error)?.message ?? e}`);
+      console.error(`[noraneko-drops] restore ${d.name ?? uuid}/${f} failed:`, e);
+    }
+  }
+
+  const ms = Date.now() - began;
+  startup.entries[uuid] = { name: d.name ?? uuid, ok: errors.length === 0, ms, error: errors.join(" / ") };
+  if (d.files?.length) console.log(`[noraneko-drops] restored ${d.name ?? uuid} (${d.ids.join(", ")}) in ${ms}ms`);
+}
+
 /**
  * 起動時: 一度「入れる」を押した drop を手元の xpi から入れ直す(承認は一回でいい。画面には常に出る)。
  * dev build だけ: NORANEKO_DROP_UUID があれば見ずに入れる(試験用。製品にはこの道は無い)。
+ *
+ * drop 同士は独立なので、並べて入れ直す ── 直列だと、一つ遅いものが後ろ全部を待たせる。
+ * 一つの中だけは順のまま(dep の別名 → file)。
  */
 export async function restoreDropsAtStartup(): Promise<void> {
   const all = readInstalled();
-  for (const [uuid, d] of Object.entries(all)) {
-    if (!UUID.test(uuid)) {
-      // 古い形(key が uuid でない)は入れ直せない。一覧からは外す(手元の xpi も古い形で、もう入らない)
-      console.warn(`[noraneko-drops] dropping old entry "${uuid}" (形が古い。入れ直して)`);
-      delete all[uuid];
-      writeInstalled(all);
-      continue;
-    }
-    for (const dep of d.deps ?? []) {
-      try {
-        // 版の無い path で入っていたもの(この形より前)も、そのまま読む
-        const versioned = PathUtils.join(depDir(uuid, dep.name, dep.version), dep.file);
-        const flat = PathUtils.join(dropDir(uuid), "deps", dep.name, dep.file);
-        mountDep(dep, (await IOUtils.exists(versioned)) ? versioned : flat);
-      } catch (e) {
-        console.error(`[noraneko-drops] restore ${d.name ?? uuid} dep ${dep.name} failed:`, e);
-      }
-    }
-    for (const [i, f] of (d.files ?? []).entries()) {
-      try {
-        const version = d.versions?.[i] ?? "";
-        // 版の無い path で入っていたもの(この形より前)も、そのまま読む
-        const versioned = PathUtils.join(entryDir(uuid, version), f);
-        const flat = PathUtils.join(dropDir(uuid), f);
-        await installFile(uuid, version, (await IOUtils.exists(versioned)) ? versioned : flat);
-      } catch (e) {
-        console.error(`[noraneko-drops] restore ${d.name ?? uuid}/${f} failed:`, e);
-      }
-    }
-    if (d.files?.length) console.log(`[noraneko-drops] restored ${d.name ?? uuid} (${d.ids.join(", ")})`);
+
+  // 古い形(key が uuid でない)は入れ直せない。一覧からは外す(手元の xpi も古い形で、もう入らない)
+  for (const uuid of Object.keys(all)) {
+    if (UUID.test(uuid)) continue;
+    console.warn(`[noraneko-drops] dropping old entry "${uuid}" (形が古い。入れ直して)`);
+    delete all[uuid];
+    writeInstalled(all);
   }
+
+  const began = Date.now();
+  startup = { running: true, ms: 0, entries: {} };
+  await Promise.all(Object.entries(all).map(([uuid, d]) => restoreOne(uuid, d)));
+  startup = { running: false, ms: Date.now() - began, entries: startup.entries };
+
   const ref = IS_DEV ? Services.env.get(ENV_UUID) : ""; // uuid
-  console.log(`[noraneko-drops] startup: dev=${IS_DEV} env=${ref || "-"} restored=${Object.keys(all).length}`);
+  console.log(
+    `[noraneko-drops] startup: dev=${IS_DEV} env=${ref || "-"} restored=${Object.keys(all).length} in ${startup.ms}ms`,
+  );
   if (ref && !all[ref.trim().toLowerCase()]) {
     try {
       await installDrop(await inspectDrop(ref, Services.env.get("NORANEKO_DROP_REGISTRY") || undefined));

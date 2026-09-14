@@ -58,9 +58,10 @@ module FelesBuild
     # (port では見ない: 取られていた port を避けて別の port に逃げた vite が、
     #  あとで browser の 5180 を塞いだことがある)
     def self.kill_stale
-      pids = `pgrep -f npm:vite 2>/dev/null`.split.map(&:to_i) - [Process.pid]
+      pids = Utils.ask("pgrep", "-f", "npm:vite").to_s.split.map(&:to_i) - [Process.pid]
       killed = pids.count do |pid|
-        line = `lsof -a -d cwd -p #{pid} -Fn 2>/dev/null`.lines.find { |l| l.start_with?("n") }
+        line = Utils.ask("lsof", "-a", "-d", "cwd", "-p", pid.to_s, "-Fn")
+                    .to_s.lines.find { |l| l.start_with?("n") }
         cwd = line.to_s[1..].to_s.chomp
         next false unless cwd.start_with?(Defines::PROJECT_ROOT)
 
