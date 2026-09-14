@@ -37,11 +37,20 @@ module FelesBuild
         "https://github.com/#{REPO}/releases/latest/download/#{filename}"
     end
 
+    # dl での的の名(箱の BUILD_TARGET と同じ字)。windows は bin_archive と同じく x86_64 だけ
+    def self.dl_target
+      case Defines::PLATFORM
+      when :darwin then "macos-#{Defines::ARCH}"
+      when :linux then "linux-#{Defines::ARCH}"
+      when :windows then "windows-x86_64"
+      end
+    end
+
     # dl は /latest/<target> で最新の sha へ 302 する。行き先の URL をもらう。
     def self.from_dl(_filename)
-      return nil unless %i[darwin linux].include?(Defines::PLATFORM)
+      target = dl_target
+      return nil unless target
 
-      target = "#{Defines::PLATFORM == :darwin ? 'macos' : 'linux'}-#{Defines::ARCH}"
       result = Utils.run_checked("curl", "-sIL", "-o", File::NULL, "-w", "%{http_code} %{url_effective}",
                                  "#{DL}/latest/#{target}")
       code, url = result[:stdout].split
@@ -179,7 +188,7 @@ module FelesBuild
 
     def self.extract(archive_path, format)
       case [Defines::PLATFORM, format]
-      in [_, :zip] then extract_nested_zip(archive_path)
+      in [_, :zip] then extract_zip(archive_path)
       in [:darwin, :tar_xz] then extract_mac_tar(archive_path)
       in [:darwin, :dmg] then extract_dmg(archive_path)
       in [:linux, :tar_xz]
@@ -190,16 +199,27 @@ module FelesBuild
       end
     end
 
-    # Windows の資産は zip の中に zip が入っている。
-    def self.extract_nested_zip(archive_path)
+    # Windows の資産は二通りある。GitHub release のものは Actions の artifact zip に
+    # 包まれていて、中のもう一枚が本体。dl.f3liz.casa は素の moz artifact(根が
+    # noraneko/)をそのまま配るので、一枚ほどけばもう中身。
+    def self.extract_zip(archive_path)
       Dir.mktmpdir("nora-outer-", Defines.in_root("_dist")) do |tmp|
         LOGGER.info "Extracting outer zip..."
         unzip(archive_path, tmp)
         inner = Dir.glob(File.join(tmp, "*.zip")).first
-        raise "No inner zip file found in the extracted archive" unless inner
 
-        LOGGER.info "Extracting inner zip..."
-        unzip(inner, Defines::PATHS[:bin_root])
+        if inner
+          LOGGER.info "Extracting inner zip..."
+          unzip(inner, Defines::PATHS[:bin_root])
+        else
+          LOGGER.info "No inner zip; the archive is the runtime itself."
+          FileUtils.mkdir_p(Defines::PATHS[:bin_root])
+          Dir.children(tmp).each do |name|
+            dest = File.join(Defines::PATHS[:bin_root], name)
+            FileUtils.rm_rf(dest)
+            FileUtils.mv(File.join(tmp, name), dest)
+          end
+        end
       end
       Utils.run_checked("chmod", "-R", "755", Defines::PATHS[:bin_root]) if Defines::PLATFORM != :windows
     end
