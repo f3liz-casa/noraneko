@@ -15,7 +15,7 @@
 
 import { useEffect, useState } from "preact/hooks";
 import { dropsApi } from "./lib/privileged.ts";
-import type { CatalogItem, DropInspection, InstalledDrop } from "./lib/privileged.ts";
+import type { CatalogItem, DropInspection, DropStartupReport, InstalledDrop } from "./lib/privileged.ts";
 import { useTask } from "./lib/useTask.ts";
 import { Registries } from "./components/Registries.tsx";
 import { DropSheet } from "./components/DropSheet.tsx";
@@ -36,6 +36,15 @@ export function Drops() {
   const [reading, setReading] = useState(false);
   const [installed, setInstalled] = useState<Record<string, InstalledDrop>>(dropsApi ? dropsApi.listDrops() : {});
   const { busy, msg, run } = useTask(() => setInstalled(dropsApi ? dropsApi.listDrops() : {}));
+  // 起動時にどれが起きて、どれが転んだか。console を読まずに済むように行へ出す
+  const [startup, setStartup] = useState<DropStartupReport | null>(dropsApi ? dropsApi.getStartupReport() : null);
+
+  // 起動してすぐこの頁を開くと、まだ入れ直している最中のことがある。終わるまで見に行く
+  useEffect(() => {
+    if (!dropsApi || !startup?.running) return;
+    const t = setInterval(() => setStartup(dropsApi!.getStartupReport()), 500);
+    return () => clearInterval(t);
+  }, [startup?.running]);
 
   // 棚を引く(registry ごとの /index.json)。一つ転んでも、残りは並べる
   useEffect(() => {
@@ -131,6 +140,7 @@ export function Drops() {
       {panel === "installed" && (
         <>
           <p class="hint">この profile に入っているもの。戻すと built-in に返る。再起動は要らない。</p>
+          <Startup report={startup} />
           {haveList.length === 0 && orphans.length === 0 && <p class="msg">まだ何も入っていない</p>}
           {haveList.length > 0 && <Shelf items={haveList} installed={installed} onOpen={(i) => inspect(i.uuid, i.registry)} />}
           {orphans.length > 0 && (
@@ -143,6 +153,7 @@ export function Drops() {
                     <span class="desc">{d.note ?? ""}</span>
                     <code class="code">{u}</code>
                     <code class="code">{d.ids.join(", ")} @ {(d.versions ?? []).join(", ")} · {d.registry ?? "?"}</code>
+                    <Woke report={startup} uuid={u} />
                   </span>
                   <button class="quiet" disabled={busy} onClick={() => remove(u)}>戻す</button>
                 </div>
@@ -158,6 +169,7 @@ export function Drops() {
                   <span class="text">
                     <span class="label">{i.name}</span>
                     <code class="code">{(installed[i.uuid]?.versions ?? []).join(", ")} · {i.registry}</code>
+                    <Woke report={startup} uuid={i.uuid} />
                   </span>
                   <button class="quiet" disabled={busy} onClick={() => remove(i.uuid)}>戻す</button>
                 </div>
@@ -184,6 +196,33 @@ export function Drops() {
     </Frame>
   );
 }
+
+/** 起動時の入れ直しを、ひとこと。ここを見れば console を開かなくていい */
+function Startup({ report }: { report: DropStartupReport | null }) {
+  if (!report) return null;
+  if (report.running) return <p class="msg">起動時の入れ直し: いま入れている…</p>;
+
+  const all = Object.values(report.entries);
+  if (all.length === 0) return null;
+  const bad = all.filter((e) => !e.ok);
+  return (
+    <p class="msg">
+      起動時の入れ直し: {all.length - bad.length} 個 起きた
+      {bad.length > 0 && <>・{bad.length} 個 転んだ</>}({secs(report.ms)})
+    </p>
+  );
+}
+
+/** その drop が、この起動でちゃんと起きたか */
+function Woke({ report, uuid }: { report: DropStartupReport | null; uuid: string }) {
+  if (!report) return null;
+  const e = report.entries[uuid];
+  if (!e) return <code class="code">{report.running ? "起動時: 入れ直している…" : "この回に入れた"}</code>;
+  if (e.ok) return <code class="code">起動時: 起きた({secs(e.ms)})</code>;
+  return <code class="code" title={e.error}>起動時: 転んだ — {e.error}</code>;
+}
+
+const secs = (ms: number) => `${(ms / 1000).toFixed(1)} 秒`;
 
 /** 左のレールと、右の一枚。GNOME Software と同じ絵 */
 function Frame({ panel, setPanel, counts, children }: {
