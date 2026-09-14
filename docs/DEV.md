@@ -53,7 +53,7 @@ Closing the browser window stops the dev servers and ends the task.
 | macOS arm64 (Apple Silicon) | **Works.** Verified from a clean clone, 2026-09-12. |
 | Linux aarch64 | **Should work.** A current runtime is published and its layout is the one the tooling expects; we have not yet run it end to end on a Linux machine. Please tell us how it goes. |
 | Linux x86_64 | **No current runtime.** The CI builder is aarch64, so the newest x86_64 artifact is from 2025-09 (`passed-20250917142938`) and will drift from the code here. You can still try it by pinning that tag (below). |
-| Windows x86_64 | Same as Linux x86_64: only the 2025-09 artifact. |
+| Windows x86_64 | **Should work.** A current runtime (155.0.1) is published on `dl.f3liz.casa`, built by the x86_64 CI box; we have not yet run the dev loop on a Windows machine. Please tell us how it goes. |
 
 If your platform has no runtime, the download step stops and says so, rather
 than leaving you with a broken extract.
