@@ -59,6 +59,13 @@ export const NoranekoStartup = {
       } catch (error) {
         console.error("[noraneko-drops] link handler failed:", error);
       }
+      // drop がしたことを受ける場所(singleton)。窓ごとに居る actor の一行が、
+      // ここ一箇所に届く(DropBus.sys.mts)。誰も見ていなくても、投げた側は壊れない
+      try {
+        ChromeUtils.importESModule("resource://noraneko/modules/DropBus.sys.mjs").startDropBus();
+      } catch (error) {
+        console.error("[noraneko-dropbus] startup failed:", error);
+      }
       // sigstore の verifier(library)がブラウザの中で動くかの自己確認。ログ一行だけ
       ChromeUtils.importESModule("resource://noraneko/modules/sigstore/Sigstore.sys.mjs")
         .selfCheck()
