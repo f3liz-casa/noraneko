@@ -23,6 +23,10 @@
 const PREF_REGISTRIES = "noraneko.drops.registries"; // JSON: Registry[]。空なら既定の一つ
 const PREF_INSTALLED = "noraneko.drops.installed"; // JSON: { [uuid]: { name, ids, files, versions, at, note, registry } }
 const ENV_UUID = "NORANEKO_DROP_UUID"; // dev build だけ: 起動時にこの env(uuid)があれば見ずに入れる(試験用)
+// 手元の棚を見に行く間隔(秒)。0 なら見ない(既定)。書いている人のための pref で、
+// 見るのは **127.0.0.1 / localhost の registry だけ** -- 配られたものが黙って
+// 入れ替わるのは、この repo がいちばんしたくないこと
+const PREF_DEV_WATCH = "noraneko.drops.dev.watch";
 const DIR_NAME = "noraneko-drops";
 // tsdown の --env.MODE は import.meta.env.MODE の式をそのまま置き換えるので、cast や ?. を挟むと効かない
 const IS_DEV = import.meta.env.MODE === "dev";
@@ -35,6 +39,9 @@ const { FileUtils } = ChromeUtils.importESModule(
 );
 const { NetUtil } = ChromeUtils.importESModule(
   "resource://gre/modules/NetUtil.sys.mjs",
+);
+const { setInterval, clearInterval } = ChromeUtils.importESModule(
+  "resource://gre/modules/Timer.sys.mjs",
 );
 
 /** drop を配る registry(iOS の代替ストアと同じ絵: 既定の一つ + 本人が足したもの) */
@@ -199,20 +206,37 @@ function entryDir(uuid: string, version: string): string {
   return PathUtils.join(dropDir(uuid), version);
 }
 /**
- * profile/noraneko-drops/<uuid>/deps/<name>/<version>/
+ * profile/noraneko-drops/deps/<uuid>/<version>/ — 使う library の置き場。
  *
- * 版が path に入る。入っていないと、版を上げても書き先が同じ file なので、
- * その session は前の版の jar handle が生きたまま = 中身は古いまま になる
- * (registry の docs/TRAPS.md「入れ替えた dep は、その session ではまだ古い bytes」。
- * std 1.1.0 の bytes が 1.2.0 として動いて半時間溶かした)。
+ * **drop ごとではなく、uuid と版で一つだけ。** 同じ `std-preact-xul` 1.2.2 を
+ * 二枚の drop が使っていても、落ちるのは一度で、置き場は一つ (npm の flat
+ * `node_modules` と同じ絵)。前は `dropDir(uuid)/deps/<name>/<version>` に
+ * drop ごとに落としていたので、同じ版が枚数だけ降りていた。
+ *
+ * 版が path に入るのは前と同じ理由。入っていないと、版を上げても書き先が同じ
+ * file なので、その session は前の版の jar handle が生きたまま = 中身は古いまま
+ * になる (registry の docs/TRAPS.md「入れ替えた dep は、その session ではまだ
+ * 古い bytes」。std 1.1.0 の bytes が 1.2.0 として動いて半時間溶かした)。
+ *
+ * 名前は入れない。名前は札であって正体ではないので、同じ uuid に別の名札を
+ * 書いた drop が混ざる (registry の README: 別の registry に同じ名前があっても、
+ * uuid が違えば別のもの)。正体で引く。
  */
-function depDir(uuid: string, name: string, version: string): string {
+function sharedDepDir(uuid: string, version: string): string {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`bad dep version: ${version}`);
+  return PathUtils.join(PathUtils.profileDir, DIR_NAME, "deps", uuid, version);
+}
+/**
+ * 前の形(drop ごとの置き場)。**読むためだけ**に残す — 前の版で入れた drop が
+ * 手元にあるとき、restore がそこを読めるように (新しく落とす先は sharedDepDir)。
+ */
+function legacyDepDir(uuid: string, name: string, version: string): string {
   if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(name)) throw new Error(`bad dep name: ${name}`);
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`bad dep version: ${version}`);
   return PathUtils.join(dropDir(uuid), "deps", name, version);
 }
 /** build.ts(child.sys.mjs)と同じ規則: "noraneko-dep-" + uuid + "-" + semver、[a-z0-9] 以外は "-"、小文字 */
-function depAlias(d: DepRef): string {
+function depAlias(d: Pick<DepRef, "uuid" | "version">): string {
   return `noraneko-dep-${d.uuid}-${d.version}`.replace(/[^a-z0-9]/gi, "-").toLowerCase();
 }
 /** dl の path: <uuid>(最新)か <uuid>/v/<semver>(その版のまま) */
@@ -399,12 +423,15 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
     };
   };
 
-  // 使う library も、同じように落として、sha と判を見て、中を読む(版は manifest に固定されたもの)
+  // 使う library も、同じように落として、sha と判を見て、中を読む(版は manifest に固定されたもの)。
+  // **同じ uuid・同じ版が既に落ちてあれば、落とさない** — 置き場は uuid と版で一つ
+  // (dedup。二枚目の drop は、一枚目が置いていったものをそのまま読む)。`ensureFile` が
+  // 「同じ bytes が既にあれば落とさない」を見ている。
   const oneDep = async (d: DepRef): Promise<InspectedDep> => {
     const du = parseUuid(d.uuid);
     const { manifest: dm, bytes: dbytes } = await fetchDropManifest(reg, du, d.version);
     const dattest = await checkAttestations(reg, du, dbytes, d.version);
-    const ddir = depDir(uuid, d.name, d.version);
+    const ddir = sharedDepDir(du, d.version);
     await IOUtils.makeDirectory(ddir, { createAncestors: true, ignoreExisting: true });
     const dentries = await Promise.all(dm.entries.map(async (e) => {
       if (!/^[A-Za-z0-9._-]+$/.test(e.file)) throw new Error(`bad file name: ${e.file}`);
@@ -446,6 +473,19 @@ export async function inspectDrop(ref: string, registryName?: string): Promise<D
   }
 
   return { uuid, name: m.name, icon, shots, registry: reg, attestations, manifest: m, deps, entries };
+}
+
+/**
+ * 共有置き場に、その版の entry が全部そろっていて、sha256 も合っているか。
+ * 一個でも欠けるか、合わなければ false (落とし直す)。
+ */
+async function depEntriesMatch(dir: string, entries: { file: string; sha256: string }[]): Promise<boolean> {
+  for (const e of entries) {
+    const path = PathUtils.join(dir, e.file);
+    if (!(await IOUtils.exists(path))) return false;
+    if ((await IOUtils.computeHexDigest(path, "sha256")) !== e.sha256) return false;
+  }
+  return true;
 }
 
 /**
@@ -503,7 +543,7 @@ export async function verifyDrop(inspected: DropInspection): Promise<{ ok: boole
   let checked = 0;
   for (const d of inspected.deps ?? []) {
     for (const e of d.entries) {
-      const path = PathUtils.join(depDir(uuid, d.name, d.version), e.file);
+      const path = PathUtils.join(sharedDepDir(parseUuid(d.uuid), d.version), e.file);
       checked++;
       if (!(await IOUtils.exists(path)) || (await IOUtils.computeHexDigest(path, "sha256")) !== e.sha256) {
         bad.push(`${d.name}/${e.file}`);
@@ -531,7 +571,7 @@ export async function installDrop(inspected: DropInspection): Promise<string[]> 
   const deps: InstalledDrop["deps"] = [];
   for (const d of inspected.deps ?? []) {
     for (const e of d.entries) {
-      const path = PathUtils.join(depDir(uuid, d.name, d.version), e.file);
+      const path = PathUtils.join(sharedDepDir(parseUuid(d.uuid), d.version), e.file);
       // 無いときは、無いと言う。**戻すと、落としてあった dep の bytes も一緒に消える**ので、
       // 戻したあとに前の inspection のまま入れると、ここに来る(下の entries と同じ形に)
       if (!(await IOUtils.exists(path))) throw new Error(`見てから入れて: ${d.name}/${e.file} が無い`);
@@ -540,12 +580,10 @@ export async function installDrop(inspected: DropInspection): Promise<string[]> 
       deps.push({ name: d.name, uuid: d.uuid, version: d.version, lib: d.lib, wasm: d.wasm, file: e.file });
       console.log(`[noraneko-drops] dep ${d.name} ${d.version} ← ${path}`);
     }
-    // この drop が使わなくなった版は置いていかない(版が path に入るので、
-    // 上書きされずに残る。消してよいのは、いま入れた版以外のもの)
-    const kept = PathUtils.filename(depDir(uuid, d.name, d.version));
-    for (const other of await IOUtils.getChildren(PathUtils.join(dir, "deps", d.name)).catch(() => [])) {
-      if (PathUtils.filename(other) !== kept) await IOUtils.remove(other, { recursive: true, ignoreAbsent: true });
-    }
+    // この drop が使わなくなった版は、**もう誰も使っていなければ**置いていかない
+    // (共有置き場なので、他の drop がまだ使っているなら残す。使っているかの判定は
+    //  removeDrop と同じ one-shot のものを使う)
+    await collectSharedDeps();
   }
   for (const e of m.entries) {
     const path = PathUtils.join(entryDir(uuid, e.version), e.file);
@@ -602,9 +640,125 @@ export async function removeDrop(ref: string): Promise<void> {
   await IOUtils.remove(dropDir(uuid), { recursive: true, ignoreAbsent: true });
   delete all[uuid];
   writeInstalled(all);
+  // 誰も使わなくなった共有の dep を片づける(この drop が最後の使い手かもしれない)
+  await collectSharedDeps();
   // built-in の actor を登録し直す(同じ名前のものが戻る)
   await ChromeUtils.importESModule("resource://noraneko/modules/NoranekoStartup.sys.mjs").registerBuiltinWebExtActors();
 }
+
+/**
+ * 共有置き場(deps/<uuid>/<version>)のうち、**もうどの入れた drop も使っていない版**
+ * を消す。使っているかは、いま入っている drop の `deps` を全部集めて突き合わせるだけ
+ * (参照カウントは持たない — 入れた一覧が既にその真実を持っている)。
+ *
+ * 誰かが使っていれば、その版は置いていく(別の drop の共有物)。入れた drop が
+ * 一枚も無ければ、deps/ ごと空になる。
+ */
+async function collectSharedDeps(): Promise<void> {
+  const used = new Set<string>();
+  for (const d of Object.values(readInstalled())) {
+    for (const dep of d.deps ?? []) used.add(`${dep.uuid}/${dep.version}`);
+  }
+  const root = PathUtils.join(PathUtils.profileDir, DIR_NAME, "deps");
+  for (const uuidDir of await IOUtils.getChildren(root).catch(() => [])) {
+    const du = PathUtils.filename(uuidDir);
+    for (const verDir of await IOUtils.getChildren(uuidDir).catch(() => [])) {
+      const version = PathUtils.filename(verDir);
+      if (!used.has(`${du}/${version}`)) {
+        await IOUtils.remove(verDir, { recursive: true, ignoreAbsent: true });
+        setAlias(depAlias({ uuid: du, version }), null);
+      }
+    }
+    // 版が一つも残らなければ、uuid の箱ごと畳む
+    const left = await IOUtils.getChildren(uuidDir).catch(() => []);
+    if (left.length === 0) await IOUtils.remove(uuidDir, { recursive: true, ignoreAbsent: true });
+  }
+}
+
+/**
+ * 入れ直す: 戻して、見直して、また入れる。
+ *
+ * 手元で組み直したものを見るときの道。戻すと落としてあった bytes も一緒に消えるので、
+ * 前の inspection のまま入れると「見てから入れて」に落ちる -- だから必ず見直してから。
+ *
+ * 版が同じまま bytes だけ替わっていると、その session では **古い module が動く**
+ * (`.sys.mjs` は ESM として URL で cache されていて、その URL に版が入っている)。
+ * registry の `scripts/build.rb --dev` は版に四つ目を足すので、手元の輪ではそこに
+ * 落ちない。判が押された版なら、そもそも同じ版で bytes は変わらない。
+ */
+export async function reinstallDrop(ref: string, registryName?: string): Promise<string[]> {
+  const uuid = parseUuid(ref);
+  const from = registryName ?? readInstalled()[uuid]?.registry;
+  await removeDrop(uuid);
+  return await installDrop(await inspectDrop(uuid, from));
+}
+
+/** 手元の棚か。配られたものは、黙って入れ替えない */
+function isLocalRegistry(r: Registry): boolean {
+  try {
+    const h = new URL(r.base).hostname;
+    return h === "127.0.0.1" || h === "localhost" || h === "[::1]" || h === "::1";
+  } catch {
+    return false;
+  }
+}
+
+let devTimer: number | null = null;
+let devBusy = false;
+const devQuiet = new Set<string>(); // もう言った転びかた(直ったら忘れる)。同じ行を秒ごとに出さないため
+
+/**
+ * 手元の棚を見て、版が動いていたら入れ直す(`noraneko.drops.dev.watch` が秒数のとき)。
+ *
+ * 書いているあいだの輪の、ブラウザ側の半分: registry の `scripts/dev.rb` が組んで
+ * 棚に置き、こちらが気づいて入れ替える。ブラウザを建て直さなくてよくなる。
+ */
+async function devWatchTick(): Promise<void> {
+  if (devBusy) return;
+  devBusy = true;
+  try {
+    const local = new Map(listRegistries().filter(isLocalRegistry).map((r) => [r.name, r]));
+    if (local.size === 0) return;
+    for (const [uuid, d] of Object.entries(readInstalled())) {
+      const reg = d.registry ? local.get(d.registry) : undefined;
+      if (!reg) continue;
+      try {
+        const { manifest } = await fetchDropManifest(reg, uuid);
+        const there = manifest.entries?.[0]?.version;
+        const here = d.versions?.[0];
+        if (!there || there === here) {
+          devQuiet.delete(uuid);
+          continue;
+        }
+        await reinstallDrop(uuid, reg.name);
+        devQuiet.delete(uuid);
+        console.log(`[noraneko-drops] ${d.name ?? uuid} ${here} → ${there} に入れ直した(手元の棚 ${reg.name})`);
+      } catch (e) {
+        // 棚が立っていない・組んでいる最中、はよくあること。一度だけ言って、あとは黙る
+        if (devQuiet.has(uuid)) continue;
+        devQuiet.add(uuid);
+        console.warn(`[noraneko-drops] ${d.name ?? uuid}: 手元の棚が見られない:`, e);
+      }
+    }
+  } finally {
+    devBusy = false;
+  }
+}
+
+/** pref のとおりに、見張りを立て直す(0 で止まる。立てたり止めたりは、その場で効く) */
+function applyDevWatch(): void {
+  if (devTimer !== null) {
+    clearInterval(devTimer);
+    devTimer = null;
+  }
+  const seconds = Services.prefs.getIntPref(PREF_DEV_WATCH, 0);
+  if (seconds <= 0) return;
+  devTimer = setInterval(() => void devWatchTick(), Math.max(1, seconds) * 1000);
+  console.log(`[noraneko-drops] 手元の棚を ${seconds} 秒ごとに見ます(${PREF_DEV_WATCH})`);
+}
+
+/** pref が動いたら、その場で立て直す(裸の関数でなく observe を持つもので渡す) */
+const devWatchObserver = { observe: () => applyDevWatch() };
 
 /** 棚の一件(registry の /index.json が返す形に、どの registry のものかを足したもの) */
 export interface CatalogItem {
@@ -732,10 +886,12 @@ async function restoreOne(uuid: string, d: InstalledDrop): Promise<void> {
 
   for (const dep of d.deps ?? []) {
     try {
-      // 版の無い path で入っていたもの(この形より前)も、そのまま読む
-      const versioned = PathUtils.join(depDir(uuid, dep.name, dep.version), dep.file);
+      // 共有置き場が本番。前の形(drop ごと)や、版の無い path で入っていたものも、
+      // そのまま読む — 入れ直すまでは古い場所に居る
+      const shared = PathUtils.join(sharedDepDir(parseUuid(dep.uuid), dep.version), dep.file);
+      const legacy = PathUtils.join(legacyDepDir(uuid, dep.name, dep.version), dep.file);
       const flat = PathUtils.join(dropDir(uuid), "deps", dep.name, dep.file);
-      mountDep(dep, (await IOUtils.exists(versioned)) ? versioned : flat);
+      mountDep(dep, (await IOUtils.exists(shared)) ? shared : (await IOUtils.exists(legacy)) ? legacy : flat);
     } catch (e) {
       errors.push(`dep ${dep.name}: ${(e as Error)?.message ?? e}`);
       console.error(`[noraneko-drops] restore ${d.name ?? uuid} dep ${dep.name} failed:`, e);
